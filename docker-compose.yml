@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: tavren-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tavren
+      POSTGRES_PASSWORD: tavren_dev_pw
+      POSTGRES_DB: tavren_ops
+    ports:
+      - "5433:5432"
+    volumes:
+      - tavren_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tavren -d tavren_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tavren_pgdata:

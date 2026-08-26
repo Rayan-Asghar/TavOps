@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Tokens lifted from tavren.io so the internal tool reads as the same product:
+   --accent-red #FB0044 (hover #d10050), near-black surfaces, Inter 300-700.  */
+@theme {
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-2: #1c1c1c;
+  --color-surface-3: #232323;
+  --color-border: #2a2a2a;
+  --color-border-strong: #3a3a3a;
+
+  --color-fg: #f5f5f5;
+  --color-fg-muted: #a0a0a0;
+  --color-fg-subtle: #6e6e6e;
+
+  --color-brand: #fb0044;
+  --color-brand-hover: #d10050;
+  --color-brand-dim: #8a0026;
+
+  /* Status hues, all drawn from tavren.io's own variables so nothing clashes
+     with the crimson. Brand red is reserved for actions and true urgency —
+     if every warning were crimson, none of them would read as urgent. */
+  --color-ok: #37ca37;
+  --color-warn: #f6ad55;
+  --color-info: #188bf6;
+  --color-danger: #fb0044;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm
+           text-fg placeholder:text-fg-subtle
+           focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25;
+  }
+  .field option {
+    @apply bg-surface-2 text-fg;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-fg-subtle;
+  }
+
+  /* Tailwind v4 resolves @apply against utilities only, so these repeat the
+     base rather than composing a shared `.btn`. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
+           text-sm font-medium transition-colors
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
+           text-sm font-medium transition-colors
+           disabled:cursor-not-allowed disabled:opacity-50
+           bg-brand text-white hover:bg-brand-hover;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5
+           text-sm font-medium transition-colors
+           disabled:cursor-not-allowed disabled:opacity-50
+           border border-border bg-surface-2 text-fg
+           hover:border-border-strong hover:bg-surface-3;
+  }
+  .card {
+    @apply rounded-xl border border-border bg-surface;
+  }
+}
