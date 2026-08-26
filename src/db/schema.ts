@@ -102,6 +102,34 @@ export const notificationKind = pgEnum("notification_kind", [
   "update_missing",
   "sync_failed",
   "project_at_risk",
+  "feasibility_requested",
+  "feasibility_answered",
+  "followup_due",
+  "timer_left_running",
+]);
+
+export const timerStatus = pgEnum("timer_status", [
+  "running",
+  "paused",
+  "completed",
+]);
+
+/** Upwork-style proposal pipeline, in the order a deal actually moves. */
+export const proposalStatus = pgEnum("proposal_status", [
+  "sent",
+  "viewed",
+  "responded",
+  "meeting",
+  "qualified",
+  "won",
+  "lost",
+]);
+
+export const feasibilityStatus = pgEnum("feasibility_status", [
+  "not_needed",
+  "pending",
+  "approved",
+  "rejected",
 ]);
 
 /* ------------------------------------------------------------------ *
@@ -456,6 +484,121 @@ export const syncJobs = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
+ * Time tracking
+ * ------------------------------------------------------------------ */
+
+/**
+ * A stopwatch attached to one task.
+ *
+ * Elapsed time is NOT stored as a running total. `accumulatedSeconds` banks
+ * everything up to the last pause and `resumedAt` marks the start of the
+ * current running segment, so elapsed = accumulated + (now - resumedAt) while
+ * running. That way a crashed browser, a closed laptop or a server restart
+ * loses nothing — the clock is derived from timestamps, never ticked.
+ */
+export const timeSessions = pgTable(
+  "time_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: timerStatus("status").default("running").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    /** Null while paused. */
+    resumedAt: timestamp("resumed_at", { withTimezone: true }),
+    accumulatedSeconds: integer("accumulated_seconds").default(0).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    completionNote: text("completion_note"),
+    /** Set when someone corrects a forgotten timer; the reason is mandatory. */
+    adjustedSeconds: integer("adjusted_seconds"),
+    adjustmentReason: text("adjustment_reason"),
+    workLogId: uuid("work_log_id").references(() => workLogs.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("time_sessions_user_idx").on(t.userId, t.status),
+    index("time_sessions_task_idx").on(t.taskId),
+  ],
+);
+
+/* ------------------------------------------------------------------ *
+ * Business development
+ * ------------------------------------------------------------------ */
+
+/**
+ * One Upwork (or inbound) proposal.
+ *
+ * This is the record that answers "is this rep busy, or actually producing
+ * qualified opportunities" — activity counts and outcome counts live on the
+ * same row, so the two can never drift apart. On a win it becomes the
+ * sales -> delivery handoff via `wonProjectId` rather than being retyped.
+ */
+export const proposals = pgTable(
+  "proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    clientId: uuid("client_id").references(() => clients.id, {
+      onDelete: "set null",
+    }),
+    jobTitle: varchar("job_title", { length: 300 }).notNull(),
+    jobUrl: text("job_url"),
+    category: varchar("category", { length: 80 }),
+    source: varchar("source", { length: 40 }).default("upwork").notNull(),
+    budgetAmount: numeric("budget_amount", { precision: 12, scale: 2 }),
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    status: proposalStatus("status").default("sent").notNull(),
+
+    sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    meetingAt: timestamp("meeting_at", { withTimezone: true }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+
+    /** Routed to a lead when the rep cannot judge the technical scope alone. */
+    feasibility: feasibilityStatus("feasibility").default("not_needed").notNull(),
+    feasibilityAssignedToId: uuid("feasibility_assigned_to_id").references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
+    feasibilityNote: text("feasibility_note"),
+
+    followUpDueAt: timestamp("follow_up_due_at", { withTimezone: true }),
+    wonValue: numeric("won_value", { precision: 12, scale: 2 }),
+    /** The handoff: a won proposal points at the project it became. */
+    wonProjectId: uuid("won_project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("proposals_owner_idx").on(t.ownerId, t.sentAt),
+    index("proposals_status_idx").on(t.status),
+    index("proposals_followup_idx").on(t.followUpDueAt),
+  ],
+);
+
+/* ------------------------------------------------------------------ *
  * Audit — scoped to the data that actually warrants it
  * ------------------------------------------------------------------ */
 
@@ -586,5 +729,26 @@ export const syncJobsRelations = relations(syncJobs, ({ one }) => ({
   workLog: one(workLogs, {
     fields: [syncJobs.workLogId],
     references: [workLogs.id],
+  }),
+}));
+
+export const timeSessionsRelations = relations(timeSessions, ({ one }) => ({
+  task: one(tasks, { fields: [timeSessions.taskId], references: [tasks.id] }),
+  project: one(projects, {
+    fields: [timeSessions.projectId],
+    references: [projects.id],
+  }),
+  user: one(users, { fields: [timeSessions.userId], references: [users.id] }),
+}));
+
+export const proposalsRelations = relations(proposals, ({ one }) => ({
+  owner: one(users, { fields: [proposals.ownerId], references: [users.id] }),
+  client: one(clients, {
+    fields: [proposals.clientId],
+    references: [clients.id],
+  }),
+  wonProject: one(projects, {
+    fields: [proposals.wonProjectId],
+    references: [projects.id],
   }),
 }));

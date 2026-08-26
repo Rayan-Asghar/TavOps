@@ -1,0 +1,252 @@
+import { notFound, redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { getActor } from "@/lib/auth";
+import { can } from "@/lib/rbac";
+import { unresolvedCount } from "@/server/notifications";
+import {
+  bdStats,
+  listProposals,
+  conversionByCategory,
+} from "@/server/proposal-queries";
+import { STATUS_LABEL } from "@/server/proposal-schemas";
+import { AppShell, SectionIntro } from "@/components/app-shell";
+import { Badge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
+import { ProposalForm } from "@/components/proposal-form";
+import { AdvanceStatus, FeasibilityAnswer } from "@/components/proposal-actions";
+
+const STATUS_TONE: Record<string, Tone> = {
+  sent: "neutral",
+  viewed: "blue",
+  responded: "blue",
+  meeting: "violet",
+  qualified: "amber",
+  won: "green",
+  lost: "red",
+};
+
+function fmtDate(d: Date | null) {
+  return d ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }) : "—";
+}
+
+export default async function SalesPage() {
+  const actor = await getActor();
+  if (!actor) redirect("/login");
+
+  const [me] = await db
+    .select({ name: users.name, globalRole: users.globalRole })
+    .from(users)
+    .where(eq(users.id, actor.id))
+    .limit(1);
+
+  const role = me?.globalRole ?? "developer";
+  const canCreate = can(role, "proposal.create");
+  const canAnswer = can(role, "feasibility.answer");
+  // Delivery leads reach this page only to answer feasibility requests.
+  if (!canCreate && !canAnswer) notFound();
+
+  const seesAll = can(role, "proposal.viewAll");
+
+  const [stats, rows, byCategory, count] = await Promise.all([
+    bdStats(actor.id, seesAll),
+    listProposals(actor.id, seesAll, canAnswer),
+    conversionByCategory(actor.id, seesAll),
+    unresolvedCount(actor.id),
+  ]);
+
+  const now = new Date();
+
+  return (
+    <AppShell
+      userName={me?.name ?? "Unknown"}
+      userRole={role}
+      inboxCount={count}
+      title="Sales"
+    >
+      <SectionIntro
+        eyebrow="SALES → DELIVERY"
+        title="Pipeline"
+        description={
+          seesAll
+            ? "Every rep's activity and outcomes on one row, so the two cannot be reported separately."
+            : "Your proposals, responses and follow-ups."
+        }
+      />
+
+      <MetricGrid>
+        <MetricCard
+          label="Sent today"
+          value={String(stats.sentToday)}
+          change={`${stats.sentWeek} this week`}
+          note="Activity. On its own this number proves nothing."
+        />
+        <MetricCard
+          label="Responses today"
+          value={String(stats.responsesToday)}
+          change={`${stats.responseRate.toFixed(0)}% rate`}
+          changeTone={stats.responseRate >= 15 ? "positive" : "negative"}
+          note="Replies, meetings and wins on proposals you sent."
+        />
+        <MetricCard
+          label="Meetings booked"
+          value={String(stats.meetingsBooked)}
+          note="Last 30 days."
+        />
+        <MetricCard
+          label="Won this month"
+          value={String(stats.wonMonth)}
+          accent
+          change={`$${stats.wonValueMonth.toLocaleString()}`}
+          note={`${stats.winRate.toFixed(1)}% of proposals sent.`}
+        />
+      </MetricGrid>
+
+      {(stats.followUpsDue > 0 || stats.feasibilityWaiting > 0) && (
+        <div className="mb-4 flex flex-wrap gap-3">
+          {stats.followUpsDue > 0 && (
+            <div className="panel flex items-center gap-3 px-4 py-3">
+              <span className="h-[7px] w-[7px] rounded-full bg-[#df9c00]" aria-hidden />
+              <strong className="text-[13px]">{stats.followUpsDue}</strong>
+              <span className="text-[11px] text-fg-muted">follow-ups due</span>
+            </div>
+          )}
+          {stats.feasibilityWaiting > 0 && (
+            <div className="panel flex items-center gap-3 px-4 py-3">
+              <span className="h-[7px] w-[7px] rounded-full bg-brand" aria-hidden />
+              <strong className="text-[13px]">{stats.feasibilityWaiting}</strong>
+              <span className="text-[11px] text-fg-muted">
+                waiting on a technical read
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">PIPELINE</p>
+                <h3 className="m-0 text-[18px] tracking-[-.035em]">Proposals</h3>
+              </div>
+              <span className="text-[11px] text-fg-muted">{rows.length} shown</span>
+            </div>
+
+            {rows.length === 0 ? (
+              <p className="p-10 text-center text-[12px] text-fg-muted">
+                No proposals logged yet.
+              </p>
+            ) : (
+              <ul>
+                {rows.map((r) => {
+                  const overdue =
+                    r.followUpDueAt &&
+                    r.followUpDueAt <= now &&
+                    !["won", "lost"].includes(r.status);
+                  return (
+                    <li
+                      key={r.id}
+                      className="border-b border-border p-4 last:border-b-0"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="text-[12px]">{r.jobTitle}</strong>
+                            <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>
+                              {STATUS_LABEL[r.status] ?? r.status}
+                            </Badge>
+                            {r.feasibility === "pending" && (
+                              <Badge tone="amber">Feasibility pending</Badge>
+                            )}
+                            {r.feasibility === "approved" && (
+                              <Badge tone="green">Feasible</Badge>
+                            )}
+                            {r.feasibility === "rejected" && (
+                              <Badge tone="red">Not feasible</Badge>
+                            )}
+                            {overdue && <Badge tone="amber">Follow up</Badge>}
+                          </div>
+                          <p className="mt-1 text-[10px] text-fg-muted">
+                            {r.category ?? "Uncategorised"} · {r.source} ·{" "}
+                            {r.budgetAmount ? `$${r.budgetAmount}` : "no budget"} ·
+                            sent {fmtDate(r.sentAt)}
+                            {seesAll && r.ownerName && ` · ${r.ownerName}`}
+                            {r.status === "won" && r.wonValue && ` · won $${r.wonValue}`}
+                          </p>
+                          {r.feasibilityNote && (
+                            <p className="mt-1 text-[10px] text-fg">
+                              <span className="font-bold">Tech read:</span>{" "}
+                              {r.feasibilityNote}
+                            </p>
+                          )}
+                          {r.jobUrl && (
+                            <a
+                              href={r.jobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-block text-[10px] font-bold text-brand hover:underline"
+                            >
+                              Open job ↗
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          {(r.ownerId === actor.id || seesAll) && (
+                            <AdvanceStatus proposalId={r.id} status={r.status} />
+                          )}
+                          {canAnswer && r.feasibility === "pending" && (
+                            <FeasibilityAnswer proposalId={r.id} />
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          {byCategory.length > 0 && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <p className="eyebrow">WHERE TO KEEP BIDDING</p>
+                  <h3 className="m-0 text-[18px] tracking-[-.035em]">
+                    Response rate by category
+                  </h3>
+                </div>
+              </div>
+              <div className="p-5">
+                {byCategory.map((c) => {
+                  const rate = c.sent ? (c.responded / c.sent) * 100 : 0;
+                  return (
+                    <div key={c.category} className="mb-4 last:mb-0">
+                      <div className="flex items-baseline justify-between text-[11px]">
+                        <span className="font-bold">{c.category}</span>
+                        <span className="text-fg-muted">
+                          {c.responded}/{c.sent} replied · {c.won} won
+                          {c.wonValue > 0 && ` · $${c.wonValue.toLocaleString()}`}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-[5px] bg-surface-2">
+                        <span
+                          className="block h-full bg-brand"
+                          style={{ width: `${Math.min(100, rate)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+
+        <aside>{canCreate && <ProposalForm />}</aside>
+      </div>
+    </AppShell>
+  );
+}

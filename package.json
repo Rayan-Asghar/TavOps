@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "db:reset": "docker compose down -v && docker compose up -d && sleep 4 && pnpm db:migrate && bash scripts/bootstrap.sh"
+    "db:reset": "docker compose down -v && docker compose up -d && sleep 4 && pnpm db:migrate && bash scripts/bootstrap.sh",
+    "db:seed:proposals": "tsx --env-file=.env.local scripts/seed-proposals.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

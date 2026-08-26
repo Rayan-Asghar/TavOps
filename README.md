@@ -30,6 +30,9 @@ submit button.
 | Work logs, task-level and project-level | Working |
 | Blockers with automatic routing and SLA escalation | Working |
 | Needs-attention inbox with de-duplication | Working |
+| Task timer: start / pause / resume / finish, auto work log | Working |
+| Timer correction with mandatory reason + audit entry | Working |
+| BD pipeline: proposals, feasibility routing, conversion by category | Working |
 | Sheets sync queue, retry/backoff, failure alerting | Working |
 | Live Google Sheets write | Needs credentials — see below |
 | Sales pipeline, QA checklists, change requests, dashboards | Not in v1 |
@@ -161,6 +164,47 @@ src/server/sweeps.ts    escalation, stale detection, health
 src/server/sync-worker.ts queue drain with backoff
 drizzle/                migrations, including the RLS backstop
 ```
+
+## Time tracking
+
+A developer opens a task, hits **Start**, and the hours are measured rather
+than typed. On **Finish** they add a one-line note and the system writes the
+work log, moves the task, notifies the reviewer and queues the client sheet —
+the same fan-out the manual form uses, via `recordWorkInTx`, so the two paths
+cannot drift.
+
+Elapsed time is **never stored as a running total**. `accumulated_seconds`
+banks everything up to the last pause and `resumed_at` marks the current
+segment, so elapsed is derived as `accumulated + (now - resumed_at)`. A closed
+laptop, a killed tab or a server restart loses nothing, because nothing was
+being ticked.
+
+One timer per person at a time. Starting a second names the running one rather
+than silently stopping it — quietly discarding time somebody is still earning
+is worse than refusing. A timer left running past 12h becomes an inbox item for
+the person timing it, not their lead: it is a mistake, not misconduct.
+Corrections require a reason, and the measured value is kept beside the
+correction rather than overwritten.
+
+## Business development
+
+The BD screen answers one question: **is this rep busy, or actually producing
+qualified opportunities?** Activity counts and outcome counts live on the same
+row, so they can never be reported separately and flatter each other.
+
+Pipeline: `sent → viewed → responded → meeting → qualified → won / lost`. Each
+move stamps its own timestamp, so funnel timings come from real events rather
+than one mutable "updated" column.
+
+- **Response rate by category** is the number that changes behaviour. Volume
+  says a rep is busy; this says which niches are worth bidding on at all.
+- A rep can flag **needs a technical read**, which routes the job to a delivery
+  lead and lands in their inbox. The lead sees only the proposals routed to
+  them — they own none, so an owner-only filter would leave them unable to
+  answer.
+- Follow-ups default to two days out and become inbox items when they lapse.
+- A won proposal carries `won_project_id`: the record *becomes* the sales →
+  delivery handoff instead of being retyped.
 
 ## Two design decisions worth knowing
 

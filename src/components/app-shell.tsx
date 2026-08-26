@@ -42,6 +42,10 @@ export function AppShell({
     { href: "/projects", label: "Projects", icon: "projects" },
   ];
 
+  if (can(role, "proposal.create") || can(role, "feasibility.answer")) {
+    main.push({ href: "/sales", label: "Sales", icon: "sales" });
+  }
+
   // Only surface what is actually built. A nav full of dead links reads as a
   // broken product rather than a roadmap.
   const management: NavEntry[] = can(role, "user.manage")

@@ -7,6 +7,7 @@ import {
   InboxIcon,
   ProjectsIcon,
   PeopleIcon,
+  SalesIcon,
   MenuIcon,
   CloseIcon,
 } from "./icons";
@@ -14,7 +15,7 @@ import {
 export type NavEntry = {
   href: string;
   label: string;
-  icon: "inbox" | "projects" | "people";
+  icon: "inbox" | "projects" | "people" | "sales";
   count?: number;
   danger?: boolean;
 };
@@ -23,6 +24,7 @@ const ICONS = {
   inbox: InboxIcon,
   projects: ProjectsIcon,
   people: PeopleIcon,
+  sales: SalesIcon,
 };
 
 function NavLink({

@@ -22,6 +22,9 @@ export const CAPABILITIES = [
   "blocker.resolve",
   "review.approve",
   "sheet.configure",
+  "proposal.create",
+  "proposal.viewAll",
+  "feasibility.answer",
   "finance.view",
   "rates.view",
   "user.manage",
@@ -59,6 +62,9 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.resolve",
     "review.approve",
     "sheet.configure",
+    "proposal.create",
+    "proposal.viewAll",
+    "feasibility.answer",
     "finance.view",
     "audit.view",
   ],
@@ -73,6 +79,8 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "worklog.create",
     "worklog.viewAll",
     "blocker.create",
+    "proposal.create",
+    "proposal.viewAll",
   ],
 
   delivery_lead: [
@@ -85,9 +93,10 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.resolve",
     "review.approve",
     "sheet.configure",
+    "feasibility.answer",
   ],
 
-  sales: ["blocker.create", "worklog.create"],
+  sales: ["blocker.create", "worklog.create", "proposal.create"],
 
   developer: ["worklog.create", "blocker.create", "task.edit"],
 

@@ -18,6 +18,12 @@ import { AppShell } from "@/components/app-shell";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
 import { LogWorkForm } from "@/components/log-work-form";
 import { BlockerForm } from "@/components/blocker-form";
+import {
+  ActiveTimerPanel,
+  StartTimerButton,
+  type ActiveSession,
+} from "@/components/task-timer";
+import { activeSessionFor } from "@/server/timer";
 
 function fmtDate(d: Date | null): string {
   return d
@@ -130,6 +136,21 @@ export default async function ProjectPage({
       .limit(8),
     unresolvedCount(actor.id),
   ]);
+
+  const rawSession = await activeSessionFor(actor.id);
+  // Dates cross the server/client boundary as ISO strings.
+  const session: ActiveSession | null = rawSession
+    ? {
+        id: rawSession.id,
+        taskId: rawSession.taskId,
+        taskTitle: rawSession.taskTitle,
+        status: rawSession.status as "running" | "paused",
+        accumulatedSeconds: rawSession.accumulatedSeconds,
+        resumedAt: rawSession.resumedAt?.toISOString() ?? null,
+        startedAt: rawSession.startedAt.toISOString(),
+      }
+    : null;
+  const sessionOnThisProject = rawSession?.projectId === id;
 
   // Money is fetched only when the role allows it, and only inside the RLS
   // opt-in. Without both, the query returns nothing.
@@ -269,9 +290,9 @@ export default async function ProjectPage({
               <table className="w-full min-w-[620px] border-collapse">
                 <thead>
                   <tr>
-                    {["Task", "Assignee", "Status", "Due", "Est"].map((h) => (
+                    {["Task", "Assignee", "Status", "Due", "Est", ""].map((h) => (
                       <th
-                        key={h}
+                        key={h || "actions"}
                         className="h-[42px] border-b border-border px-4 text-left text-[8px] font-black uppercase tracking-[.12em] text-fg-muted"
                       >
                         {h}
@@ -299,6 +320,21 @@ export default async function ProjectPage({
                       </td>
                       <td className="px-4 font-mono text-[9px] text-fg-muted">
                         {t.estimatedHours ?? "—"}
+                      </td>
+                      <td className="px-4 text-right">
+                        {can(role, "worklog.create") &&
+                          t.status !== "done" &&
+                          session?.taskId !== t.id && (
+                            <StartTimerButton
+                              taskId={t.id}
+                              disabled={!!session}
+                            />
+                          )}
+                        {session?.taskId === t.id && (
+                          <span className="text-[9px] font-bold text-brand">
+                            TIMING
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -352,6 +388,18 @@ export default async function ProjectPage({
         </div>
 
         <aside className="space-y-4">
+          {session && sessionOnThisProject && (
+            <ActiveTimerPanel session={session} />
+          )}
+          {session && !sessionOnThisProject && (
+            <div className="panel border-l-[3px] border-l-warn p-4">
+              <p className="eyebrow m-0">TIMER RUNNING ELSEWHERE</p>
+              <p className="m-0 mt-1 text-[11px] text-fg-muted">
+                You are timing &ldquo;{session.taskTitle}&rdquo; on another
+                project. Finish it before starting one here.
+              </p>
+            </div>
+          )}
           {can(role, "worklog.create") && (
             <LogWorkForm
               projectId={project.id}

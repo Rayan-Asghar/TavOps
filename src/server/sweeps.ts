@@ -1,7 +1,8 @@
 import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { blockers, projects, tasks } from "@/db/schema";
+import { blockers, projects, proposals, tasks, timeSessions } from "@/db/schema";
 import { addBusinessHours, businessHoursBetween } from "@/lib/business-time";
+import { elapsedSeconds, RUNAWAY_TIMER_HOURS } from "@/lib/timer-utils";
 import { notify } from "./notifications";
 
 const ESCALATION_STEP_HOURS = 8;
@@ -226,9 +227,87 @@ export async function recomputeProjectHealth() {
   return { checked: active.length, changed };
 }
 
+/**
+ * Catches timers somebody forgot to stop.
+ *
+ * Left alone these silently inflate a developer's logged hours, which is worse
+ * than losing the entry: a wrong number that looks precise. The nudge goes to
+ * the person timing, not their lead — it is a mistake, not a misconduct.
+ */
+export async function flagRunawayTimers() {
+  const open = await db
+    .select({
+      id: timeSessions.id,
+      userId: timeSessions.userId,
+      projectId: timeSessions.projectId,
+      status: timeSessions.status,
+      accumulatedSeconds: timeSessions.accumulatedSeconds,
+      resumedAt: timeSessions.resumedAt,
+      taskTitle: tasks.title,
+    })
+    .from(timeSessions)
+    .innerJoin(tasks, eq(timeSessions.taskId, tasks.id))
+    .where(eq(timeSessions.status, "running"));
+
+  let flagged = 0;
+  for (const s of open) {
+    const hours =
+      elapsedSeconds({
+        status: "running",
+        accumulatedSeconds: s.accumulatedSeconds,
+        resumedAt: s.resumedAt,
+      }) / 3600;
+    if (hours < RUNAWAY_TIMER_HOURS) continue;
+
+    await notify({
+      userId: s.userId,
+      kind: "timer_left_running",
+      title: `Timer still running on ${s.taskTitle}`,
+      body: `It has been going ${Math.floor(hours)}h. If you forgot to stop it, correct the time on the project page — the reason is recorded.`,
+      projectId: s.projectId,
+      isActionable: true,
+      dedupeKey: `runaway_timer:${s.id}`,
+    });
+    flagged++;
+  }
+  return { flagged };
+}
+
+/** Proposals whose follow-up date has passed and that are still in play. */
+export async function flagDueFollowUps() {
+  const due = await db
+    .select({
+      id: proposals.id,
+      ownerId: proposals.ownerId,
+      jobTitle: proposals.jobTitle,
+    })
+    .from(proposals)
+    .where(
+      and(
+        lt(proposals.followUpDueAt, new Date()),
+        ne(proposals.status, "won"),
+        ne(proposals.status, "lost"),
+      ),
+    );
+
+  for (const p of due) {
+    await notify({
+      userId: p.ownerId,
+      kind: "followup_due",
+      title: `Follow up: ${p.jobTitle}`,
+      body: "No movement since you sent this. Nudge the client or mark it lost.",
+      isActionable: true,
+      dedupeKey: `followup:${p.id}`,
+    });
+  }
+  return { due: due.length };
+}
+
 export async function runAllSweeps() {
   const escalation = await escalateBlockers();
   const stale = await flagStaleTasks();
   const health = await recomputeProjectHealth();
-  return { escalation, stale, health };
+  const timers = await flagRunawayTimers();
+  const followUps = await flagDueFollowUps();
+  return { escalation, stale, health, timers, followUps };
 }
