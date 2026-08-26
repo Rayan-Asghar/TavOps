@@ -1,6 +1,6 @@
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { proposals, users } from "@/db/schema";
+import { clients, proposals, users } from "@/db/schema";
 
 /**
  * Read side of the BD pipeline.
@@ -115,6 +115,7 @@ export async function listProposals(
       feasibility: proposals.feasibility,
       feasibilityNote: proposals.feasibilityNote,
       wonValue: proposals.wonValue,
+      wonProjectId: proposals.wonProjectId,
       ownerName: users.name,
       ownerId: proposals.ownerId,
     })
@@ -144,4 +145,32 @@ export async function conversionByCategory(actorId: string, seesAll: boolean) {
     .groupBy(sql`coalesce(${proposals.category}, 'Uncategorised')`)
     .orderBy(sql`count(*) desc`)
     .limit(12);
+}
+
+/** Options the handoff form needs: existing clients and assignable leads. */
+export async function handoffOptions() {
+  const [clientRows, staff] = await Promise.all([
+    db.select({ id: clients.id, name: clients.name }).from(clients).orderBy(clients.name),
+    db
+      .select({ id: users.id, name: users.name, role: users.globalRole })
+      .from(users)
+      .where(eq(users.isActive, true))
+      .orderBy(users.name),
+  ]);
+  return {
+    clients: clientRows,
+    leads: staff
+      .filter((u) => u.role === "delivery_lead" || u.role === "pm")
+      .map(({ id, name }) => ({ id, name })),
+    pms: staff.filter((u) => u.role === "pm").map(({ id, name }) => ({ id, name })),
+  };
+}
+
+/** Won proposals still missing a project — the handoff backlog. */
+export async function pendingHandoffCount(): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(proposals)
+    .where(sql`${proposals.status} = 'won' and ${proposals.wonProjectId} is null`);
+  return row?.n ?? 0;
 }

@@ -152,8 +152,34 @@ export async function advanceProposal(
       patch.wonValue = data.wonValue.toFixed(2);
     }
 
-    await db.update(proposals).set(patch).where(eq(proposals.id, row.id));
+    await db.transaction(async (tx) => {
+      await tx.update(proposals).set(patch).where(eq(proposals.id, row.id));
+
+      // A win that nobody converts is a deal with no delivery attached, so it
+      // becomes an actionable item rather than waiting to be noticed.
+      if (data.status === "won" && !row.wonProjectId) {
+        const pms = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.isActive, true), eq(users.globalRole, "pm")));
+        for (const pm of pms) {
+          await notify(
+            {
+              userId: pm.id,
+              kind: "task_assigned",
+              title: `Handoff waiting: ${row.jobTitle}`,
+              body: "Sales won this. Convert it into a project on the Sales page.",
+              isActionable: true,
+              dedupeKey: `handoff_waiting:${row.id}`,
+            },
+            tx,
+          );
+        }
+      }
+    });
+
     revalidatePath("/sales");
+    revalidatePath("/");
     return { ok: true, message: `Moved to ${data.status}.` };
   } catch (err) {
     return toState(err);

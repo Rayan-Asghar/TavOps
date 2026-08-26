@@ -33,6 +33,7 @@ submit button.
 | Task timer: start / pause / resume / finish, auto work log | Working |
 | Timer correction with mandatory reason + audit entry | Working |
 | BD pipeline: proposals, feasibility routing, conversion by category | Working |
+| Won proposal → draft project handoff | Working |
 | Sheets sync queue, retry/backoff, failure alerting | Working |
 | Live Google Sheets write | Needs credentials — see below |
 | Sales pipeline, QA checklists, change requests, dashboards | Not in v1 |
@@ -205,6 +206,23 @@ than one mutable "updated" column.
 - Follow-ups default to two days out and become inbox items when they lapse.
 - A won proposal carries `won_project_id`: the record *becomes* the sales →
   delivery handoff instead of being retyped.
+
+### The handoff
+
+Marking a proposal **won** puts an actionable item in every PM's inbox — a win
+nobody converts is a deal with no delivery attached. Converting creates the
+project with everything already known carried across: the rep who won it stays
+`sales_owner`, the budget becomes the contract value, the notes become the
+scope, and a new client is created if there is not one already. Members are
+seeded so the named people can see it immediately.
+
+The project is created as a **draft, never active**. A PM and delivery lead
+still have to confirm assets, scope and team before work starts, and a project
+that appeared already-running would skip that step.
+
+The internal deadline is validated to fall on or before the client deadline.
+An internal date after the client's is not a buffer — it is a missed deadline
+waiting to happen.
 
 ## Two design decisions worth knowing
 

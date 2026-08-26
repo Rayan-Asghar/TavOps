@@ -9,12 +9,16 @@ import {
   bdStats,
   listProposals,
   conversionByCategory,
+  handoffOptions,
+  pendingHandoffCount,
 } from "@/server/proposal-queries";
 import { STATUS_LABEL } from "@/server/proposal-schemas";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
 import { ProposalForm } from "@/components/proposal-form";
 import { AdvanceStatus, FeasibilityAnswer } from "@/components/proposal-actions";
+import { HandoffForm } from "@/components/handoff-form";
+import Link from "next/link";
 
 const STATUS_TONE: Record<string, Tone> = {
   sent: "neutral",
@@ -48,12 +52,17 @@ export default async function SalesPage() {
 
   const seesAll = can(role, "proposal.viewAll");
 
-  const [stats, rows, byCategory, count] = await Promise.all([
-    bdStats(actor.id, seesAll),
-    listProposals(actor.id, seesAll, canAnswer),
-    conversionByCategory(actor.id, seesAll),
-    unresolvedCount(actor.id),
-  ]);
+  const canConvert = can(role, "project.create");
+
+  const [stats, rows, byCategory, count, options, pendingHandoffs] =
+    await Promise.all([
+      bdStats(actor.id, seesAll),
+      listProposals(actor.id, seesAll, canAnswer),
+      conversionByCategory(actor.id, seesAll),
+      unresolvedCount(actor.id),
+      canConvert ? handoffOptions() : Promise.resolve(null),
+      canConvert ? pendingHandoffCount() : Promise.resolve(0),
+    ]);
 
   const now = new Date();
 
@@ -102,13 +111,22 @@ export default async function SalesPage() {
         />
       </MetricGrid>
 
-      {(stats.followUpsDue > 0 || stats.feasibilityWaiting > 0) && (
+      {(stats.followUpsDue > 0 || stats.feasibilityWaiting > 0 || pendingHandoffs > 0) && (
         <div className="mb-4 flex flex-wrap gap-3">
           {stats.followUpsDue > 0 && (
             <div className="panel flex items-center gap-3 px-4 py-3">
               <span className="h-[7px] w-[7px] rounded-full bg-[#df9c00]" aria-hidden />
               <strong className="text-[13px]">{stats.followUpsDue}</strong>
               <span className="text-[11px] text-fg-muted">follow-ups due</span>
+            </div>
+          )}
+          {pendingHandoffs > 0 && (
+            <div className="panel flex items-center gap-3 px-4 py-3">
+              <span className="h-[7px] w-[7px] rounded-full bg-ok" aria-hidden />
+              <strong className="text-[13px]">{pendingHandoffs}</strong>
+              <span className="text-[11px] text-fg-muted">
+                won, waiting to become projects
+              </span>
             </div>
           )}
           {stats.feasibilityWaiting > 0 && (
@@ -199,6 +217,29 @@ export default async function SalesPage() {
                           )}
                           {canAnswer && r.feasibility === "pending" && (
                             <FeasibilityAnswer proposalId={r.id} />
+                          )}
+                          {r.status === "won" && r.wonProjectId && (
+                            <Link
+                              href={`/projects/${r.wonProjectId}`}
+                              className="text-[10px] font-bold text-brand hover:underline"
+                            >
+                              Delivered as a project →
+                            </Link>
+                          )}
+                          {r.status === "won" && !r.wonProjectId && (
+                            canConvert && options ? (
+                              <HandoffForm
+                                proposalId={r.id}
+                                suggestedName={r.jobTitle}
+                                suggestedType={r.category}
+                                suggestedValue={r.wonValue ?? r.budgetAmount}
+                                clients={options.clients}
+                                leads={options.leads}
+                                pms={options.pms}
+                              />
+                            ) : (
+                              <Badge tone="amber">Awaiting handoff</Badge>
+                            )
                           )}
                         </div>
                       </div>
