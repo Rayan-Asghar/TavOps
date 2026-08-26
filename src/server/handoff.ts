@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, withFinanceAccess } from "@/db";
@@ -16,6 +16,7 @@ import { requireActor } from "@/lib/auth";
 import { assertCan } from "@/lib/rbac";
 import { notify } from "./notifications";
 import { convertProposalSchema } from "./handoff-schemas";
+import { nextProjectCode } from "./project-code";
 
 export type HandoffState = {
   ok?: boolean;
@@ -35,28 +36,6 @@ function toState(err: unknown): HandoffState {
     return { error: "Check the highlighted fields.", fieldErrors };
   }
   return { error: err instanceof Error ? err.message : String(err) };
-}
-
-/** "Northwind Apparel" -> "NA-003". Readable, and unique per client prefix. */
-async function nextProjectCode(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  clientName: string,
-): Promise<string> {
-  const prefix =
-    clientName
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .replace(/[^A-Z]/g, "") || "TV";
-
-  const [row] = await tx
-    .select({ n: sql<number>`count(*)::int` })
-    .from(projects)
-    .where(sql`${projects.code} like ${prefix + "-%"}`);
-
-  return `${prefix}-${String((row?.n ?? 0) + 1).padStart(3, "0")}`;
 }
 
 /**

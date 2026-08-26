@@ -26,7 +26,9 @@ submit button.
 | Auth + roles (7 roles, see below) | Working |
 | Admin UI for creating / deactivating people | Working |
 | Projects, scoped per user | Working |
-| Tasks with status workflow | Working |
+| Tasks: create, assign, estimate, due dates | Working |
+| Project creation (direct, for non-sales work) | Working |
+| QA review queue: approve / send back, revision rounds | Working |
 | Work logs, task-level and project-level | Working |
 | Blockers: rule-based routing, severity SLAs, escalation | Working |
 | Client deadline hidden from developers | Working |
@@ -166,6 +168,19 @@ src/server/sweeps.ts    escalation, stale detection, health
 src/server/sync-worker.ts queue drain with backoff
 drizzle/                migrations, including the RLS backstop
 ```
+
+## QA review
+
+A task marked ready lands in **/review** for anyone holding `review.approve`,
+scoped to projects they can see. Approving finishes the task; sending it back
+returns it to `in_progress` with a reason — and the reason is **required**,
+because a rejection with no explanation just guarantees another round trip.
+
+Each decision is its own row in `reviews` rather than a status flag. A task
+approved first time and one approved on the fourth attempt look identical from
+`tasks.status`, and the difference between them is the entire point of tracking
+QA. The queue shows the round number, and the reviewer's **first-pass rate**
+falls out of the same data.
 
 ## Blocker routing
 

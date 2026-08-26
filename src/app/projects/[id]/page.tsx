@@ -19,6 +19,9 @@ import { AppShell } from "@/components/app-shell";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
 import { LogWorkForm } from "@/components/log-work-form";
 import { BlockerForm } from "@/components/blocker-form";
+import { TaskForm } from "@/components/task-form";
+import { ReviewForm } from "@/components/review-form";
+import { activateProject } from "@/server/project-actions";
 import {
   ActiveTimerPanel,
   StartTimerButton,
@@ -213,6 +216,23 @@ export default async function ProjectPage({
         )}
       </div>
 
+      {project.lifecycle === "draft" && can(role, "project.edit") && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 panel border-l-[3px] border-l-warn p-4">
+          <div>
+            <p className="eyebrow m-0">DRAFT</p>
+            <p className="m-0 mt-0.5 text-[12px] text-fg-muted">
+              Not active yet. Confirm assets, scope and team, then start the clock.
+            </p>
+          </div>
+          <form action={activateProject}>
+            <input type="hidden" name="projectId" value={project.id} />
+            <button type="submit" className="btn-primary py-2 text-[12px]">
+              Set active
+            </button>
+          </form>
+        </div>
+      )}
+
       <dl
         className={`mb-4 grid grid-cols-2 gap-px border border-border bg-border ${
           seesClientDeadline ? "lg:grid-cols-5" : "lg:grid-cols-4"
@@ -360,7 +380,13 @@ export default async function ProjectPage({
                         {t.estimatedHours ?? "—"}
                       </td>
                       <td className="px-4 text-right">
-                        {can(role, "worklog.create") &&
+                        {t.status === "in_review" && can(role, "review.approve") ? (
+                          <div className="flex justify-end">
+                            <ReviewForm taskId={t.id} compact />
+                          </div>
+                        ) : null}
+                        {t.status !== "in_review" &&
+                          can(role, "worklog.create") &&
                           t.status !== "done" &&
                           session?.taskId !== t.id && (
                             <StartTimerButton
@@ -437,6 +463,12 @@ export default async function ProjectPage({
                 project. Finish it before starting one here.
               </p>
             </div>
+          )}
+          {can(role, "task.create") && (
+            <TaskForm
+              projectId={project.id}
+              members={memberRows}
+            />
           )}
           {can(role, "worklog.create") && (
             <LogWorkForm

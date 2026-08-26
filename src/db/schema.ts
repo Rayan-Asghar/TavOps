@@ -100,6 +100,11 @@ export const blockerStatus = pgEnum("blocker_status", [
  *  the sales owner rather than counting against the developer. */
 export const ownerSide = pgEnum("owner_side", ["internal", "client"]);
 
+export const reviewDecision = pgEnum("review_decision", [
+  "approved",
+  "revision_needed",
+]);
+
 export const syncMode = pgEnum("sync_mode", ["append", "update"]);
 
 export const syncStatus = pgEnum("sync_status", [
@@ -119,6 +124,8 @@ export const notificationKind = pgEnum("notification_kind", [
   "update_missing",
   "sync_failed",
   "project_at_risk",
+  "review_approved",
+  "revision_requested",
   "feasibility_requested",
   "feasibility_answered",
   "followup_due",
@@ -414,6 +421,46 @@ export const blockers = pgTable(
     index("blockers_project_idx").on(t.projectId),
     index("blockers_status_idx").on(t.status),
     index("blockers_assigned_idx").on(t.assignedToId),
+  ],
+);
+
+/**
+ * One QA decision on one task.
+ *
+ * Kept as its own row rather than a status flag so revision rounds are
+ * countable: a task approved first time and a task approved on the fourth
+ * attempt look identical from `tasks.status` alone, and the difference is the
+ * whole point of tracking QA.
+ */
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    reviewerId: uuid("reviewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Who submitted the work, so the round-trip is attributable both ways. */
+    submittedById: uuid("submitted_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    decision: reviewDecision("decision").notNull(),
+    comments: text("comments"),
+    /** 1 for the first review of a task, 2 for the next, and so on. */
+    round: integer("round").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("reviews_task_idx").on(t.taskId),
+    index("reviews_project_idx").on(t.projectId),
+    index("reviews_reviewer_idx").on(t.reviewerId, t.createdAt),
   ],
 );
 
@@ -777,5 +824,17 @@ export const proposalsRelations = relations(proposals, ({ one }) => ({
   wonProject: one(projects, {
     fields: [proposals.wonProjectId],
     references: [projects.id],
+  }),
+}));
+
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  task: one(tasks, { fields: [reviews.taskId], references: [tasks.id] }),
+  project: one(projects, {
+    fields: [reviews.projectId],
+    references: [projects.id],
+  }),
+  reviewer: one(users, {
+    fields: [reviews.reviewerId],
+    references: [users.id],
   }),
 }));

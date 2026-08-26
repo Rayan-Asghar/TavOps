@@ -8,6 +8,7 @@ import { accessibleProjectIds } from "@/lib/access";
 import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { HealthBadge, Badge } from "@/components/badges";
+import { can } from "@/lib/rbac";
 
 function fmtDate(d: Date | null): string {
   return d
@@ -83,6 +84,13 @@ export default async function ProjectsPage() {
           scope === null
             ? "Every active project across the agency."
             : "Projects you own or are assigned to."
+        }
+        actions={
+          can(me?.globalRole ?? "developer", "project.create") ? (
+            <Link href="/projects/new" className="btn-primary">
+              + New project
+            </Link>
+          ) : undefined
         }
       />
 

@@ -42,6 +42,10 @@ export function AppShell({
     { href: "/projects", label: "Projects", icon: "projects" },
   ];
 
+  if (can(role, "review.approve")) {
+    main.push({ href: "/review", label: "Review", icon: "review" });
+  }
+
   if (can(role, "proposal.create") || can(role, "feasibility.answer")) {
     main.push({ href: "/sales", label: "Sales", icon: "sales" });
   }
