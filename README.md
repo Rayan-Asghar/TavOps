@@ -23,7 +23,8 @@ submit button.
 
 | Module | State |
 | --- | --- |
-| Auth + roles (admin / pm / delivery_lead / sales / developer / collaborator) | Working |
+| Auth + roles (7 roles, see below) | Working |
+| Admin UI for creating / deactivating people | Working |
 | Projects, scoped per user | Working |
 | Tasks with status workflow | Working |
 | Work logs, task-level and project-level | Working |
@@ -46,7 +47,8 @@ pnpm dev
 
 Seeded accounts all use the password `tavren123` (development only).
 Sign in as `hammad@tavren.io` for the PM view or `ayan@tavren.io` for a
-developer's.
+developer's. Delete these before the app touches a real machine and create
+real accounts through **People** in the nav.
 
 ### Secrets
 
@@ -85,6 +87,45 @@ Two endpoints, both requiring `Authorization: Bearer $CRON_SECRET`:
 Note that Vercel's Hobby tier only runs cron **once per day** and forbids
 commercial use, which makes it a poor fit. Use a cheap VPS, Cloudflare Workers
 cron triggers, or any external scheduler hitting these URLs.
+
+## Roles
+
+| Role | Sees projects | Sees others' activity | Financials |
+| --- | --- | --- | --- |
+| `admin` | all | yes | yes, incl. pay rates |
+| `pm` | all | yes | yes |
+| `sales_head` | all | yes | no |
+| `delivery_lead` | theirs | own only | no |
+| `sales` | theirs | own only | no |
+| `developer` | assigned only | own only | no |
+| `collaborator` | assigned only, expires | own only | no |
+
+"Activity" means the work-log feed — who logged which hours. A developer sees
+only their own entries; the section is titled *Your activity* rather than
+silently showing a partial list. Task status and blockers stay visible to
+everyone on the project, so a delivery lead can still run reviews without
+seeing the whole timesheet.
+
+`sales_head` exists because Muzammil (Sales Manager / BD) and the reps
+(Saqlain, Shahab) need different visibility — the head answers for the whole
+pipeline, a rep only for their own deals.
+
+## Managing people
+
+**People** in the nav (admins only; the route 404s for everyone else).
+
+- Creating an account generates a 16-character password and shows it **once**.
+  It is bcrypt-hashed immediately and is not recoverable — use *Reset password*
+  if it is lost.
+- The generated alphabet excludes `0/O/1/l/I`, because these get transcribed by
+  hand into a chat message.
+- Accounts are **deactivated, never deleted**: logged hours have to stay
+  attributable to someone.
+- Collaborators require an access expiry; it revokes itself on that date.
+- An admin cannot deactivate their own account, and the last active admin
+  cannot be switched off.
+- `user.create`, `user.deactivate` and `user.reset_password` are written to
+  `audit_log`.
 
 ## Security model
 

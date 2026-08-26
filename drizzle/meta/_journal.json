@@ -15,6 +15,13 @@
       "when": 1787774072468,
       "tag": "0001_finance_rls_backstop",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787777076915,
+      "tag": "0002_add_sales_head_role",
+      "breakpoints": true
     }
   ]
 }

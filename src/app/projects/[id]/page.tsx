@@ -65,6 +65,12 @@ export default async function ProjectPage({
 
   const reporter = { id: users.id, name: users.name };
 
+  // Whether this person sees the whole timesheet feed or only their own
+  // entries. Decided before the query so the scoping happens in SQL rather
+  // than by filtering rows the page already fetched.
+  const role = me?.globalRole ?? "developer";
+  const seesAllActivity = can(role, "worklog.viewAll");
+
   const [taskRows, blockerRows, recentLogs, count] = await Promise.all([
     db
       .select({
@@ -108,7 +114,11 @@ export default async function ProjectPage({
       .from(workLogs)
       .leftJoin(users, eq(workLogs.userId, users.id))
       .leftJoin(tasks, eq(workLogs.taskId, tasks.id))
-      .where(eq(workLogs.projectId, id))
+      .where(
+        seesAllActivity
+          ? eq(workLogs.projectId, id)
+          : and(eq(workLogs.projectId, id), eq(workLogs.userId, actor.id)),
+      )
       .orderBy(desc(workLogs.workDate))
       .limit(8),
     unresolvedCount(actor.id),
@@ -116,7 +126,6 @@ export default async function ProjectPage({
 
   // Money is fetched only when the role allows it, and only inside the RLS
   // opt-in. Without both, the query returns nothing.
-  const role = me?.globalRole ?? "developer";
   const finance = can(role, "finance.view")
     ? await withFinanceAccess(async (tx) => {
         const [row] = await tx
@@ -260,12 +269,23 @@ export default async function ProjectPage({
           </section>
 
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-fg">
-              Recent activity
-            </h2>
+            <div className="mb-3 flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold text-fg">
+                {seesAllActivity ? "Recent activity" : "Your activity"}
+              </h2>
+              <span className="text-xs text-fg-subtle">
+                {seesAllActivity
+                  ? "everyone on this project"
+                  : "only entries you logged"}
+              </span>
+            </div>
             <ul className="card divide-y divide-border">
               {recentLogs.length === 0 && (
-                <li className="p-4 text-sm text-fg-muted">Nothing logged yet.</li>
+                <li className="p-4 text-sm text-fg-muted">
+                  {seesAllActivity
+                    ? "Nothing logged yet."
+                    : "You have not logged anything on this project yet."}
+                </li>
               )}
               {recentLogs.map((l) => (
                 <li key={l.id} className="flex gap-3 p-3 text-sm">

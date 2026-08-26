@@ -22,6 +22,9 @@ export const globalRole = pgEnum("global_role", [
   "admin",
   "pm",
   "delivery_lead",
+  // Sales Manager / BD (Muzammil) is separated from the reps (Saqlain,
+  // Shahab): the head sees org-wide activity, a rep sees only their own.
+  "sales_head",
   "sales",
   "developer",
   "collaborator",

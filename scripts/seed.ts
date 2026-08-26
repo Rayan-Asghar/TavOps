@@ -34,7 +34,7 @@ async function main() {
       { name: "Rayan", email: "contact@tavren.io", passwordHash: hash, globalRole: "admin", skills: ["ops"] },
       { name: "Hammad", email: "hammad@tavren.io", passwordHash: hash, globalRole: "pm", skills: ["delivery", "client-comms"] },
       { name: "Hozefa", email: "hozefa@tavren.io", passwordHash: hash, globalRole: "delivery_lead", skills: ["shopify", "wordpress"] },
-      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["bd"] },
+      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: hash, globalRole: "sales_head", skills: ["bd"] },
       { name: "Saqlain", email: "saqlain@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
       { name: "Shahab", email: "shahab@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
       { name: "Ayan", email: "ayan@tavren.io", passwordHash: hash, globalRole: "developer", skills: ["shopify", "liquid", "react"] },

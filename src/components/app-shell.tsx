@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { logoutAction } from "@/server/auth-actions";
+import { can, type GlobalRole } from "@/lib/rbac";
 
 export function AppShell({
   children,
@@ -42,6 +43,14 @@ export function AppShell({
             >
               Projects
             </Link>
+            {can(userRole as GlobalRole, "user.manage") && (
+              <Link
+                href="/admin/users"
+                className="rounded px-3 py-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg"
+              >
+                People
+              </Link>
+            )}
           </nav>
 
           <div className="ml-auto flex items-center gap-3">

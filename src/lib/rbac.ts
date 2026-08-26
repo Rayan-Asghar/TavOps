@@ -17,7 +17,7 @@ export const CAPABILITIES = [
   "task.assign",
   "task.edit",
   "worklog.create",
-  "worklog.viewTeam",
+  "worklog.viewAll",
   "blocker.create",
   "blocker.resolve",
   "review.approve",
@@ -54,7 +54,7 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "task.assign",
     "task.edit",
     "worklog.create",
-    "worklog.viewTeam",
+    "worklog.viewAll",
     "blocker.create",
     "blocker.resolve",
     "review.approve",
@@ -63,13 +63,24 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "audit.view",
   ],
 
+  /**
+   * Sales Manager / BD. Sees org-wide activity and every project's health so
+   * they can answer for the deals they closed, but not the money: contract
+   * value stays behind `finance.view` until that is asked for explicitly.
+   */
+  sales_head: [
+    "project.viewAll",
+    "worklog.create",
+    "worklog.viewAll",
+    "blocker.create",
+  ],
+
   delivery_lead: [
     "project.edit",
     "task.create",
     "task.assign",
     "task.edit",
     "worklog.create",
-    "worklog.viewTeam",
     "blocker.create",
     "blocker.resolve",
     "review.approve",
@@ -111,7 +122,11 @@ export function assertCan(role: GlobalRole, capability: Capability): void {
  * explicit membership row or an owner field pointing at them — this is what
  * stops a developer from walking project IDs in the URL bar.
  */
-export const ORG_WIDE_ROLES: readonly GlobalRole[] = ["admin", "pm"];
+export const ORG_WIDE_ROLES: readonly GlobalRole[] = [
+  "admin",
+  "pm",
+  "sales_head",
+];
 
 export function seesAllProjects(role: GlobalRole): boolean {
   return ORG_WIDE_ROLES.includes(role);
