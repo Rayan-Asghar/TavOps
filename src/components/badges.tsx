@@ -1,46 +1,49 @@
 import type { ReactNode } from "react";
+import { CheckIcon, AlertIcon } from "./icons";
 
-/* Tinted fills rather than solid ones: on a near-black surface a saturated
-   block of colour fights the crimson brand accent for attention, and the
-   accent has to stay the loudest thing on the page. */
+/* Soft-tinted pills on a light canvas, per the reference. Crimson is reserved
+   for brand actions and true urgency, so danger uses the deeper red. */
 const TONES = {
-  neutral: "bg-surface-3 text-fg-muted border-border-strong",
-  green: "bg-ok/12 text-ok border-ok/30",
-  amber: "bg-warn/12 text-warn border-warn/30",
-  red: "bg-danger/15 text-danger border-danger/35",
-  blue: "bg-info/12 text-info border-info/30",
-  violet: "bg-[#a78bfa]/12 text-[#a78bfa] border-[#a78bfa]/30",
+  neutral: "bg-[#ededed] text-[#555]",
+  green: "bg-ok-soft text-ok",
+  amber: "bg-warn-soft text-warn",
+  red: "bg-danger-soft text-danger",
+  blue: "bg-info-soft text-info",
+  violet: "bg-[#efe9fb] text-[#5b3fa8]",
 } as const;
 
 export type Tone = keyof typeof TONES;
 
 export function Badge({
-  tone = "neutral",
+  tone = "blue",
   children,
 }: {
   tone?: Tone;
   children: ReactNode;
 }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}
-    >
-      {children}
-    </span>
-  );
+  return <span className={`tag ${TONES[tone]}`}>{children}</span>;
 }
 
-const HEALTH_TONE: Record<string, Tone> = {
-  on_track: "green",
-  at_risk: "amber",
-  blocked: "red",
-};
-
+/** Health reads as a word plus a mark, never colour alone. */
 export function HealthBadge({ health }: { health: string }) {
+  if (health === "blocked") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[.09em] text-danger">
+        <AlertIcon /> At Risk
+      </span>
+    );
+  }
+  if (health === "at_risk") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[.09em] text-warn">
+        <AlertIcon /> Attention
+      </span>
+    );
+  }
   return (
-    <Badge tone={HEALTH_TONE[health] ?? "neutral"}>
-      {health.replace("_", " ")}
-    </Badge>
+    <span className="inline-flex items-center gap-1.5 text-[8px] font-black uppercase tracking-[.09em] text-ok">
+      <CheckIcon /> Healthy
+    </span>
   );
 }
 
@@ -55,7 +58,83 @@ const TASK_TONE: Record<string, Tone> = {
 export function TaskStatusBadge({ status }: { status: string }) {
   return (
     <Badge tone={TASK_TONE[status] ?? "neutral"}>
-      {status.replace("_", " ")}
+      {status.replace(/_/g, " ")}
     </Badge>
+  );
+}
+
+/** Bordered metric tile. The grid draws its own left/top edge so the cards
+ *  tile seamlessly without doubled borders. */
+export function MetricGrid({ children }: { children: ReactNode }) {
+  return (
+    <section className="my-6 grid grid-cols-1 border-l border-t border-border sm:grid-cols-2 xl:grid-cols-4">
+      {children}
+    </section>
+  );
+}
+
+export function MetricCard({
+  label,
+  value,
+  note,
+  change,
+  changeTone,
+  progress,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  change?: string;
+  changeTone?: "positive" | "negative";
+  progress?: number;
+  accent?: boolean;
+}) {
+  return (
+    <article
+      className={`min-h-[180px] border-b border-r border-border p-5 ${
+        accent ? "bg-fg text-white" : "bg-surface"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span
+          className={`text-[9px] font-black uppercase tracking-[.12em] ${
+            accent ? "text-[#aaa]" : "text-fg-muted"
+          }`}
+        >
+          {label}
+        </span>
+        {change && (
+          <span
+            className={`text-[9px] font-semibold ${
+              changeTone === "positive"
+                ? "text-ok"
+                : changeTone === "negative"
+                  ? "text-brand"
+                  : "text-fg-muted"
+            }`}
+          >
+            {change}
+          </span>
+        )}
+      </div>
+      <strong className="mt-6 block text-[43px] leading-none tracking-[-.055em]">
+        {value}
+      </strong>
+      {typeof progress === "number" && (
+        <div className="progress">
+          <span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        </div>
+      )}
+      {note && (
+        <p
+          className={`mt-3.5 max-w-[220px] text-[11px] ${
+            accent ? "text-[#aaa]" : "text-fg-muted"
+          }`}
+        >
+          {note}
+        </p>
+      )}
+    </article>
   );
 }

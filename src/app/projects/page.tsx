@@ -6,8 +6,14 @@ import { blockers, clients, projects, tasks, users, workLogs } from "@/db/schema
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { unresolvedCount } from "@/server/notifications";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, SectionIntro } from "@/components/app-shell";
 import { HealthBadge, Badge } from "@/components/badges";
+
+function fmtDate(d: Date | null): string {
+  return d
+    ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit" })
+    : "—";
+}
 
 export default async function ProjectsPage() {
   const actor = await getActor();
@@ -19,10 +25,11 @@ export default async function ProjectsPage() {
     .where(eq(users.id, actor.id))
     .limit(1);
 
-  const scope = await accessibleProjectIds(actor);
-  const count = await unresolvedCount(actor.id);
+  const [scope, count] = await Promise.all([
+    accessibleProjectIds(actor),
+    unresolvedCount(actor.id),
+  ]);
 
-  // scope === null means an org-wide role: no restriction to apply.
   const rows =
     scope !== null && scope.length === 0
       ? []
@@ -31,24 +38,26 @@ export default async function ProjectsPage() {
             id: projects.id,
             code: projects.code,
             name: projects.name,
+            description: projects.description,
+            projectType: projects.projectType,
             health: projects.health,
             lifecycle: projects.lifecycle,
             clientName: clients.name,
             internalDueDate: projects.internalDueDate,
+            totalTasks: sql<number>`(
+              select count(*)::int from ${tasks}
+               where ${tasks.projectId} = ${projects.id})`,
+            doneTasks: sql<number>`(
+              select count(*)::int from ${tasks}
+               where ${tasks.projectId} = ${projects.id}
+                 and ${tasks.status} = 'done')`,
             openBlockers: sql<number>`(
               select count(*)::int from ${blockers}
                where ${blockers.projectId} = ${projects.id}
-                 and ${blockers.status} <> 'resolved'
-            )`,
-            openTasks: sql<number>`(
-              select count(*)::int from ${tasks}
-               where ${tasks.projectId} = ${projects.id}
-                 and ${tasks.status} <> 'done'
-            )`,
+                 and ${blockers.status} <> 'resolved')`,
             loggedHours: sql<string>`(
-              select coalesce(sum(${workLogs.hours}), 0)::text from ${workLogs}
-               where ${workLogs.projectId} = ${projects.id}
-            )`,
+              select coalesce(sum(${workLogs.hours}),0)::text from ${workLogs}
+               where ${workLogs.projectId} = ${projects.id})`,
           })
           .from(projects)
           .leftJoin(clients, eq(projects.clientId, clients.id))
@@ -65,66 +74,83 @@ export default async function ProjectsPage() {
       userName={me?.name ?? "Unknown"}
       userRole={me?.globalRole ?? "developer"}
       inboxCount={count}
+      title="Projects"
     >
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-fg">Projects</h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            {rows.length} project{rows.length === 1 ? "" : "s"} you can see.
-          </p>
-        </div>
-      </div>
+      <SectionIntro
+        eyebrow="DELIVERY CONTROL"
+        title="Projects"
+        description={
+          scope === null
+            ? "Every active project across the agency."
+            : "Projects you own or are assigned to."
+        }
+      />
 
       {rows.length === 0 ? (
-        <div className="card p-10 text-center text-sm text-fg-muted">
+        <div className="panel p-12 text-center text-[13px] text-fg-muted">
           No projects assigned to you yet.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-surface-2 text-left">
-              <tr className="text-xs uppercase tracking-wide text-fg-muted">
-                <th className="px-4 py-2.5 font-medium">Project</th>
-                <th className="px-4 py-2.5 font-medium">Client</th>
-                <th className="px-4 py-2.5 font-medium">Health</th>
-                <th className="px-4 py-2.5 font-medium">Open</th>
-                <th className="px-4 py-2.5 font-medium">Blockers</th>
-                <th className="px-4 py-2.5 font-medium">Logged</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((p) => (
-                <tr key={p.id} className="hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/projects/${p.id}`}
-                      className="font-medium text-fg hover:text-brand"
-                    >
-                      {p.name}
-                    </Link>
-                    <div className="font-mono text-xs text-fg-subtle">{p.code}</div>
-                  </td>
-                  <td className="px-4 py-3 text-fg-muted">
-                    {p.clientName ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <HealthBadge health={p.health} />
-                  </td>
-                  <td className="px-4 py-3 text-fg-muted">{p.openTasks}</td>
-                  <td className="px-4 py-3">
-                    {p.openBlockers > 0 ? (
-                      <Badge tone="red">{p.openBlockers}</Badge>
-                    ) : (
-                      <span className="text-fg-subtle">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-fg-muted">
-                    {Number(p.loggedHours).toFixed(1)}h
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map((p) => {
+            const pct =
+              p.totalTasks > 0
+                ? Math.round((p.doneTasks / p.totalTasks) * 100)
+                : 0;
+            const atRisk = p.health !== "on_track";
+
+            return (
+              <article
+                key={p.id}
+                className={`panel flex flex-col border-t-[3px] p-5 ${
+                  atRisk ? "border-t-brand" : "border-t-transparent"
+                }`}
+              >
+                <div className="mb-6 flex items-center justify-between">
+                  <HealthBadge health={p.health} />
+                  {p.openBlockers > 0 && (
+                    <Badge tone="red">
+                      {p.openBlockers} blocker{p.openBlockers === 1 ? "" : "s"}
+                    </Badge>
+                  )}
+                </div>
+
+                <p className="eyebrow">
+                  {(p.projectType ?? "PROJECT").toUpperCase()}
+                </p>
+                <h3 className="m-0 text-[20px] tracking-[-.04em]">{p.name}</h3>
+                <p className="mt-2 min-h-[38px] text-[10px] text-fg-muted">
+                  {p.description ?? p.clientName ?? ""}
+                </p>
+
+                <div className="mt-6 flex justify-between text-[9px] text-fg-muted">
+                  <span>
+                    {pct}% complete · {Number(p.loggedHours).toFixed(1)}h logged
+                  </span>
+                  <span>{fmtDate(p.internalDueDate)}</span>
+                </div>
+                <div className="progress">
+                  <span style={{ width: `${pct}%` }} />
+                </div>
+
+                <div className="mt-6 flex items-center justify-between">
+                  <span className="font-mono text-[9px] text-fg-subtle">
+                    {p.code}
+                  </span>
+                  <span className="text-[9px] text-fg-muted">
+                    {p.doneTasks}/{p.totalTasks} tasks
+                  </span>
+                </div>
+
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="btn-secondary mt-4 w-full"
+                >
+                  Open workspace
+                </Link>
+              </article>
+            );
+          })}
         </div>
       )}
     </AppShell>

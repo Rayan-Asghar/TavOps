@@ -44,7 +44,7 @@ export function UserRowActions({
           <button
             type="submit"
             disabled={resetting}
-            className="btn-ghost px-3 py-1.5 text-xs"
+            className="btn-secondary px-3 py-1.5 text-xs"
           >
             {resetting ? "Resetting…" : "Reset password"}
           </button>
@@ -64,7 +64,7 @@ export function UserRowActions({
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                className="btn-ghost px-3 py-1.5 text-xs"
+                className="btn-secondary px-3 py-1.5 text-xs"
               >
                 Cancel
               </button>
@@ -75,7 +75,7 @@ export function UserRowActions({
               disabled={blocked}
               title={blocked ? blockedReason : undefined}
               onClick={() => setConfirming(true)}
-              className="btn-ghost px-3 py-1.5 text-xs"
+              className="btn-secondary px-3 py-1.5 text-xs"
             >
               Deactivate
             </button>
@@ -84,7 +84,7 @@ export function UserRowActions({
           <form action={setUserActiveAction}>
             <input type="hidden" name="userId" value={userId} />
             <input type="hidden" name="makeActive" value="true" />
-            <button type="submit" className="btn-ghost px-3 py-1.5 text-xs">
+            <button type="submit" className="btn-secondary px-3 py-1.5 text-xs">
               Reactivate
             </button>
           </form>
@@ -96,7 +96,7 @@ export function UserRowActions({
       )}
 
       {resetState.ok && resetState.tempPassword && (
-        <div role="status" className="rounded-lg border border-ok/40 bg-ok/[0.06] p-3">
+        <div role="status" className="rounded-lg border border-ok bg-ok-soft p-3">
           <p className="mb-2 text-xs text-warn">
             New password for {userName}. Shown once — send it now.
           </p>

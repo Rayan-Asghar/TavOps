@@ -21,7 +21,7 @@ export function LogWorkForm({
   }, [state.ok]);
 
   return (
-    <form ref={formRef} action={action} className="card p-4">
+    <form ref={formRef} action={action} className="panel p-4">
       <h3 className="mb-3 text-sm font-semibold text-fg">Log work</h3>
       <input type="hidden" name="projectId" value={projectId} />
 
@@ -77,12 +77,12 @@ export function LogWorkForm({
         </div>
 
         {state.error && (
-          <p className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger/25">
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
             {state.error}
           </p>
         )}
         {state.ok && state.message && (
-          <p className="rounded-md bg-ok/10 px-3 py-2 text-sm text-ok ring-1 ring-inset ring-ok/25">
+          <p className="rounded-lg bg-ok-soft px-3 py-2 text-sm font-medium text-ok">
             {state.message}
           </p>
         )}

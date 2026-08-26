@@ -20,7 +20,18 @@ import { LogWorkForm } from "@/components/log-work-form";
 import { BlockerForm } from "@/components/blocker-form";
 
 function fmtDate(d: Date | null): string {
-  return d ? d.toISOString().slice(0, 10) : "—";
+  return d
+    ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit" })
+    : "—";
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-surface p-3.5">
+      <dt className="text-[9px] text-fg-muted">{label}</dt>
+      <dd className="m-0 mt-1 text-[15px] font-extrabold">{value}</dd>
+    </div>
+  );
 }
 
 export default async function ProjectPage({
@@ -63,8 +74,6 @@ export default async function ProjectPage({
 
   if (!project) notFound();
 
-  const reporter = { id: users.id, name: users.name };
-
   // Whether this person sees the whole timesheet feed or only their own
   // entries. Decided before the query so the scoping happens in SQL rather
   // than by filtering rows the page already fetched.
@@ -79,7 +88,6 @@ export default async function ProjectPage({
         status: tasks.status,
         dueDate: tasks.dueDate,
         estimatedHours: tasks.estimatedHours,
-        lastUpdateAt: tasks.lastUpdateAt,
         assigneeName: users.name,
       })
       .from(tasks)
@@ -92,11 +100,10 @@ export default async function ProjectPage({
         description: blockers.description,
         category: blockers.category,
         ownerSide: blockers.ownerSide,
-        status: blockers.status,
         isUrgent: blockers.isUrgent,
         escalationLevel: blockers.escalationLevel,
         createdAt: blockers.createdAt,
-        reportedBy: reporter.name,
+        reportedBy: users.name,
       })
       .from(blockers)
       .leftJoin(users, eq(blockers.reportedById, users.id))
@@ -138,127 +145,159 @@ export default async function ProjectPage({
     : null;
 
   const openTasks = taskRows.filter((t) => t.status !== "done");
+  const doneCount = taskRows.length - openTasks.length;
+  const totalHours = recentLogs.reduce((s, l) => s + Number(l.hours), 0);
 
   return (
-    <AppShell userName={me?.name ?? "Unknown"} userRole={role} inboxCount={count}>
-      <div className="mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-fg">{project.name}</h1>
-          <HealthBadge health={project.health} />
-          <Badge>{project.lifecycle}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-fg-muted">
-          <span className="font-mono">{project.code}</span>
-          {project.clientName && <> · {project.clientName}</>}
-          {project.projectType && <> · {project.projectType}</>}
+    <AppShell
+      userName={me?.name ?? "Unknown"}
+      userRole={role}
+      inboxCount={count}
+      title={project.name}
+    >
+      <div className="mb-7 mt-3.5 border-b border-fg pb-6 pt-6">
+        <p className="eyebrow">
+          {(project.projectType ?? "PROJECT").toUpperCase()}
+          {project.clientName && ` · ${project.clientName.toUpperCase()}`}
         </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <h2 className="display m-0 text-[clamp(28px,4vw,48px)]">
+            {project.name}
+          </h2>
+          <HealthBadge health={project.health} />
+          <Badge tone="neutral">{project.lifecycle}</Badge>
+        </div>
         {project.description && (
-          <p className="mt-2 max-w-2xl text-sm text-fg-muted">
+          <p className="mt-3 max-w-[560px] text-[12px] text-fg-muted">
             {project.description}
           </p>
         )}
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Internal due" value={fmtDate(project.internalDueDate)} />
-        <Stat label="Client due" value={fmtDate(project.clientDueDate)} />
-        <Stat label="Open tasks" value={String(openTasks.length)} />
-        <Stat
-          label="Open blockers"
-          value={String(blockerRows.length)}
-          tone={blockerRows.length > 0 ? "danger" : undefined}
-        />
-      </div>
+      <dl className="mb-4 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-5">
+        <Stat label="Internal deadline" value={fmtDate(project.internalDueDate)} />
+        <Stat label="Client deadline" value={fmtDate(project.clientDueDate)} />
+        <Stat label="Tasks done" value={`${doneCount}/${taskRows.length}`} />
+        <Stat label="Open blockers" value={String(blockerRows.length)} />
+        <Stat label="Code" value={project.code} />
+      </dl>
 
       {finance && (
-        <div className="mb-6 card border-warn/30 bg-warn/[0.06] p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-fg">Financials</h2>
-            <Badge tone="amber">Restricted</Badge>
+        <section className="panel mb-4 border-l-[3px] border-l-warn p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <p className="eyebrow m-0">RESTRICTED</p>
+            <Badge tone="amber">Commercial data</Badge>
           </div>
-          <div className="grid gap-4 text-sm sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <div className="text-xs text-fg-muted">Contract value</div>
-              <div className="font-mono text-fg">
+              <span className="text-[9px] text-fg-muted">Contract value</span>
+              <strong className="mt-1 block font-mono text-[18px]">
                 {finance.currency} {finance.contractValue ?? "—"}
-              </div>
+              </strong>
             </div>
             <div>
-              <div className="text-xs text-fg-muted">Budgeted hours</div>
-              <div className="font-mono text-fg">
+              <span className="text-[9px] text-fg-muted">Budgeted hours</span>
+              <strong className="mt-1 block font-mono text-[18px]">
                 {finance.budgetedHours ?? "—"}
-              </div>
+              </strong>
             </div>
             <div>
-              <div className="text-xs text-fg-muted">Platform fee</div>
-              <div className="font-mono text-fg">
+              <span className="text-[9px] text-fg-muted">Platform fee</span>
+              <strong className="mt-1 block font-mono text-[18px]">
                 {finance.platformFeePct ?? "0"}%
-              </div>
+              </strong>
             </div>
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-4">
           {blockerRows.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-fg">
-                Open blockers
-              </h2>
-              <ul className="space-y-2">
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <p className="eyebrow">UNRESOLVED</p>
+                  <h3 className="m-0 text-[18px] tracking-[-.035em]">
+                    Open blockers
+                  </h3>
+                </div>
+                <Badge tone="red">{blockerRows.length}</Badge>
+              </div>
+              <ul>
                 {blockerRows.map((b) => (
-                  <li key={b.id} className="card p-3">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <li key={b.id} className="attention-row">
+                    <span
+                      className={`signal ${b.ownerSide === "client" ? "bg-[#df9c00]" : "bg-brand"}`}
+                      aria-hidden
+                    />
+                    <div className="min-w-0">
+                      <strong className="block text-[12px]">
+                        {b.description}
+                      </strong>
+                      <span className="mt-1 block text-[9px] text-fg-subtle">
+                        Reported by {b.reportedBy ?? "unknown"} ·{" "}
+                        {fmtDate(b.createdAt)}
+                      </span>
+                    </div>
+                    <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-auto sm:shrink-0 sm:justify-end">
                       {b.isUrgent && <Badge tone="red">Urgent</Badge>}
                       <Badge tone={b.ownerSide === "client" ? "amber" : "blue"}>
-                        {b.ownerSide === "client" ? "Client dependency" : "Internal"}
+                        {b.ownerSide === "client" ? "Client" : "Internal"}
                       </Badge>
-                      <Badge>{b.category.replace(/_/g, " ")}</Badge>
                       {b.escalationLevel > 0 && (
                         <Badge tone="red">L{b.escalationLevel}</Badge>
                       )}
                     </div>
-                    <p className="text-sm text-fg">{b.description}</p>
-                    <p className="mt-1 text-xs text-fg-subtle">
-                      Reported by {b.reportedBy ?? "unknown"} ·{" "}
-                      {fmtDate(b.createdAt)}
-                    </p>
                   </li>
                 ))}
               </ul>
             </section>
           )}
 
-          <section>
-            <h2 className="mb-3 text-sm font-semibold text-fg">Tasks</h2>
-            <div className="card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-surface-2 text-left">
-                  <tr className="text-xs uppercase tracking-wide text-fg-muted">
-                    <th className="px-3 py-2 font-medium">Task</th>
-                    <th className="px-3 py-2 font-medium">Assignee</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Due</th>
-                    <th className="px-3 py-2 font-medium">Est</th>
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">DELIVERY</p>
+                <h3 className="m-0 text-[18px] tracking-[-.035em]">Tasks</h3>
+              </div>
+              <span className="text-[11px] text-fg-muted">
+                {openTasks.length} open
+              </span>
+            </div>
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[620px] border-collapse">
+                <thead>
+                  <tr>
+                    {["Task", "Assignee", "Status", "Due", "Est"].map((h) => (
+                      <th
+                        key={h}
+                        className="h-[42px] border-b border-border px-4 text-left text-[8px] font-black uppercase tracking-[.12em] text-fg-muted"
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {taskRows.map((t) => (
-                    <tr key={t.id} className="hover:bg-surface-2">
-                      <td className="px-3 py-2.5 font-medium text-fg">
+                    <tr
+                      key={t.id}
+                      className="border-b border-border last:border-b-0 hover:bg-[#fafaf8]"
+                    >
+                      <td className="h-[62px] px-4 text-[11px] font-bold">
                         {t.title}
                       </td>
-                      <td className="px-3 py-2.5 text-fg-muted">
+                      <td className="px-4 text-[11px] text-fg-muted">
                         {t.assigneeName ?? "Unassigned"}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4">
                         <TaskStatusBadge status={t.status} />
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-fg-muted">
+                      <td className="px-4 font-mono text-[9px] text-fg-muted">
                         {fmtDate(t.dueDate)}
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-fg-muted">
+                      <td className="px-4 font-mono text-[9px] text-fg-muted">
                         {t.estimatedHours ?? "—"}
                       </td>
                     </tr>
@@ -268,40 +307,47 @@ export default async function ProjectPage({
             </div>
           </section>
 
-          <section>
-            <div className="mb-3 flex items-baseline gap-2">
-              <h2 className="text-sm font-semibold text-fg">
-                {seesAllActivity ? "Recent activity" : "Your activity"}
-              </h2>
-              <span className="text-xs text-fg-subtle">
-                {seesAllActivity
-                  ? "everyone on this project"
-                  : "only entries you logged"}
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">
+                  {seesAllActivity ? "LIVE HISTORY" : "YOUR ENTRIES ONLY"}
+                </p>
+                <h3 className="m-0 text-[18px] tracking-[-.035em]">
+                  {seesAllActivity ? "Recent activity" : "Your activity"}
+                </h3>
+              </div>
+              <span className="text-[11px] text-fg-muted">
+                {totalHours.toFixed(2)}h shown
               </span>
             </div>
-            <ul className="card divide-y divide-border">
+            <div className="px-5 py-1">
               {recentLogs.length === 0 && (
-                <li className="p-4 text-sm text-fg-muted">
+                <p className="py-6 text-[12px] text-fg-muted">
                   {seesAllActivity
                     ? "Nothing logged yet."
                     : "You have not logged anything on this project yet."}
-                </li>
+                </p>
               )}
               {recentLogs.map((l) => (
-                <li key={l.id} className="flex gap-3 p-3 text-sm">
-                  <span className="font-mono text-xs text-fg-subtle">
-                    {fmtDate(l.workDate)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-fg">{l.notes}</p>
-                    <p className="mt-0.5 text-xs text-fg-subtle">
-                      {l.userName} · {l.taskTitle ?? "general"} ·{" "}
+                <div
+                  key={l.id}
+                  className="grid grid-cols-[14px_1fr] gap-2.5 border-b border-border py-3.5 last:border-b-0"
+                >
+                  <span className="mt-1 h-[7px] w-[7px] rounded-full bg-brand" />
+                  <div className="min-w-0">
+                    <strong className="text-[11px]">{l.notes}</strong>
+                    <p className="m-0 mt-1 text-[10px] text-fg-muted">
+                      {l.taskTitle ?? "General project work"} ·{" "}
                       {Number(l.hours).toFixed(2)}h
                     </p>
+                    <small className="text-[9px] text-fg-subtle">
+                      {fmtDate(l.workDate)} · {l.userName}
+                    </small>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           </section>
         </div>
 
@@ -321,28 +367,5 @@ export default async function ProjectPage({
         </aside>
       </div>
     </AppShell>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "danger";
-}) {
-  return (
-    <div className="card px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-fg-muted">{label}</div>
-      <div
-        className={`mt-0.5 text-lg font-semibold ${
-          tone === "danger" ? "text-danger" : "text-fg"
-        }`}
-      >
-        {value}
-      </div>
-    </div>
   );
 }

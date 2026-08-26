@@ -27,7 +27,7 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
         >
           {value}
         </code>
-        <button type="button" onClick={copy} className="btn-ghost shrink-0 px-3">
+        <button type="button" onClick={copy} className="btn-secondary shrink-0 px-3">
           {copied ? "Copied" : "Copy"}
         </button>
       </div>

@@ -41,7 +41,7 @@ export function CreateUserForm() {
           ref={resultRef}
           tabIndex={-1}
           role="status"
-          className="card border-ok/40 bg-ok/[0.06] p-4 outline-none"
+          className="panel border-ok bg-ok-soft p-4 outline-none"
         >
           <h3 className="text-sm font-semibold text-fg">
             {state.createdName} can now sign in
@@ -80,7 +80,7 @@ function UserFields({
   const isCollaborator = role === "collaborator";
 
   return (
-    <form action={action} noValidate className="@container card p-5">
+    <form action={action} noValidate className="@container panel p-5">
       <h2 className="mb-4 text-sm font-semibold text-fg">Add a person</h2>
 
       <div className="grid gap-4 @md:grid-cols-2">
@@ -181,7 +181,7 @@ function UserFields({
       {state.error && (
         <p
           role="alert"
-          className="mt-4 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger/25"
+          className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
         >
           {state.error}
         </p>

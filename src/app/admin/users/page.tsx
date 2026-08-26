@@ -6,7 +6,7 @@ import { getActor } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { unresolvedCount } from "@/server/notifications";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, type Tone } from "@/components/badges";
 import { CreateUserForm } from "@/components/create-user-form";
 import { UserRowActions } from "@/components/user-row-actions";
@@ -70,22 +70,21 @@ export default async function AdminUsersPage() {
   const inactive = people.filter((p) => !p.isActive);
 
   return (
-    <AppShell userName={me?.name ?? "Admin"} userRole={role} inboxCount={count}>
-      <nav aria-label="Breadcrumb" className="mb-4 text-xs text-fg-subtle">
-        Admin <span className="mx-1">/</span>
-        <span className="text-fg-muted">People</span>
-      </nav>
+    <AppShell
+      userName={me?.name ?? "Admin"}
+      userRole={role}
+      inboxCount={count}
+      title="People"
+    >
+      <SectionIntro
+        eyebrow="SECURITY & GOVERNANCE"
+        title="People"
+        description={`${active.length} active${
+          inactive.length > 0 ? `, ${inactive.length} deactivated` : ""
+        }. Accounts are never deleted — logged hours have to stay attributable.`}
+      />
 
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-fg">People</h1>
-        <p className="mt-1 text-sm text-fg-muted">
-          {active.length} active
-          {inactive.length > 0 && `, ${inactive.length} deactivated`}. Accounts
-          are never deleted — their logged hours have to stay attributable.
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         <section aria-labelledby="people-heading">
           <h2 id="people-heading" className="sr-only">
             Existing accounts
@@ -102,7 +101,7 @@ export default async function AdminUsersPage() {
               return (
                 <li
                   key={p.id}
-                  className={`card p-4 ${p.isActive ? "" : "opacity-60"}`}
+                  className={`panel p-4 ${p.isActive ? "" : "opacity-60"}`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
