@@ -64,6 +64,9 @@ export const projectRole = pgEnum("project_role", [
   "observer",
 ]);
 
+/** Categories are the routing key, so they name who owns the fix, not just
+ *  what went wrong. Splitting "missing access" from "missing asset" matters
+ *  because the two go to different people. */
 export const blockerCategory = pgEnum("blocker_category", [
   "missing_access",
   "unclear_requirement",
@@ -71,6 +74,20 @@ export const blockerCategory = pgEnum("blocker_category", [
   "waiting_on_client",
   "technical",
   "other",
+  "missing_asset",
+  "client_approval",
+  "scope_conflict",
+  "commercial_scope",
+  "qa_issue",
+  "dependency_dev",
+  "production_incident",
+]);
+
+export const blockerSeverity = pgEnum("blocker_severity", [
+  "low",
+  "normal",
+  "high",
+  "critical",
 ]);
 
 export const blockerStatus = pgEnum("blocker_status", [
@@ -371,6 +388,16 @@ export const blockers = pgTable(
     status: blockerStatus("status").default("open").notNull(),
     description: text("description").notNull(),
     isUrgent: boolean("is_urgent").default(false).notNull(),
+    severity: blockerSeverity("severity").default("normal").notNull(),
+    /** For dependency_dev: the developer whose work this is waiting on. */
+    blockedOnUserId: uuid("blocked_on_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Which rule picked the assignee, so "why did this come to me" is
+     *  answerable without re-deriving the routing. */
+    routingRule: varchar("routing_rule", { length: 60 }),
+    /** Notified but not accountable; the SLA clock sits on the assignee only. */
+    watcherIds: jsonb("watcher_ids").$type<string[]>().default([]).notNull(),
     slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
     escalationLevel: integer("escalation_level").default(0).notNull(),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),

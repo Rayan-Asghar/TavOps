@@ -49,14 +49,16 @@ export async function reportBlockerFormAction(
 ): Promise<FormState> {
   try {
     const taskId = String(formData.get("taskId") ?? "");
+    const blockedOn = String(formData.get("blockedOnUserId") ?? "");
     await reportBlocker({
       projectId: String(formData.get("projectId") ?? ""),
       taskId: taskId === "" ? null : taskId,
       category: String(formData.get("category") ?? "other") as never,
+      severity: String(formData.get("severity") || "normal") as never,
+      blockedOnUserId: blockedOn === "" ? undefined : blockedOn,
       description: String(formData.get("description") ?? ""),
-      isUrgent: formData.get("isUrgent") === "on",
     });
-    return { ok: true, message: "Reported. The right person has been notified." };
+    return { ok: true, message: "Reported and routed to the right person." };
   } catch (err) {
     return toState(err);
   }

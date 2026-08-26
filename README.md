@@ -28,7 +28,8 @@ submit button.
 | Projects, scoped per user | Working |
 | Tasks with status workflow | Working |
 | Work logs, task-level and project-level | Working |
-| Blockers with automatic routing and SLA escalation | Working |
+| Blockers: rule-based routing, severity SLAs, escalation | Working |
+| Client deadline hidden from developers | Working |
 | Needs-attention inbox with de-duplication | Working |
 | Task timer: start / pause / resume / finish, auto work log | Working |
 | Timer correction with mandatory reason + audit entry | Working |
@@ -165,6 +166,49 @@ src/server/sweeps.ts    escalation, stale detection, health
 src/server/sync-worker.ts queue drain with backoff
 drizzle/                migrations, including the RLS backstop
 ```
+
+## Blocker routing
+
+Blockers are **routed by rule, not broadcast**. The matrix lives in
+[src/lib/blocker-routing.ts](src/lib/blocker-routing.ts) as a pure function
+over a resolved context — no database, no auth, no clock — because it is the
+part most likely to be argued about and changed, and it should be testable
+without a server. Run `npx tsx scripts/routing-matrix.mjs` to print the whole
+table.
+
+| Blocker | Owner | Copied |
+| --- | --- | --- |
+| Missing access / asset / client approval | Client communication owner | PM |
+| Requirement unclear, conflict, decision | PM | Delivery lead |
+| Sales promised out of scope | Deal owner | PM |
+| Technical implementation | Technical overseer | PM |
+| QA / review issue | Project QA reviewer | Delivery lead |
+| Waiting on another developer | That developer | Their lead |
+| Production incident | Delivery lead | PM, immediately |
+
+Two distinctions the model depends on:
+
+- **Owner vs watcher.** Exactly one person owns a blocker and the SLA clock
+  sits on them; watchers are told and marked non-actionable. "Notify every
+  manager" produces an inbox nobody reads.
+- **Project role beats project default.** A project with its own technical
+  overseer or QA reviewer routes to them, not to the standing delivery lead.
+
+Severity sets the response window — low 16h, normal 8h, high 4h, critical 1h —
+and a production incident is forced to critical no matter what was ticked. The
+rule that fired is stored on the blocker, so "why did this come to me" is
+answerable without re-deriving anything, and the reporter is shown where it
+will go *before* they submit.
+
+## Deadlines
+
+Projects carry an internal date and a client-facing date. **Developers and
+collaborators only ever see the internal one**, labelled plainly as
+"Deadline" — someone who can see both knows the real deadline is the later one,
+which is exactly the slack the buffer exists to hold. Calling it "internal" to
+someone who cannot see the other would itself advertise that a later date
+exists. These are server components, so the hidden date is never rendered and
+never reaches the browser.
 
 ## Time tracking
 

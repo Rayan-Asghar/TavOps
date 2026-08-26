@@ -22,6 +22,7 @@ export const CAPABILITIES = [
   "blocker.resolve",
   "review.approve",
   "sheet.configure",
+  "deadline.viewClient",
   "proposal.create",
   "proposal.viewAll",
   "feasibility.answer",
@@ -62,6 +63,7 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.resolve",
     "review.approve",
     "sheet.configure",
+    "deadline.viewClient",
     "proposal.create",
     "proposal.viewAll",
     "feasibility.answer",
@@ -79,6 +81,7 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "worklog.create",
     "worklog.viewAll",
     "blocker.create",
+    "deadline.viewClient",
     "proposal.create",
     "proposal.viewAll",
   ],
@@ -93,10 +96,16 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.resolve",
     "review.approve",
     "sheet.configure",
+    "deadline.viewClient",
     "feasibility.answer",
   ],
 
-  sales: ["blocker.create", "worklog.create", "proposal.create"],
+  sales: [
+    "blocker.create",
+    "worklog.create",
+    "proposal.create",
+    "deadline.viewClient",
+  ],
 
   developer: ["worklog.create", "blocker.create", "task.edit"],
 
@@ -130,6 +139,15 @@ export function assertCan(role: GlobalRole, capability: Capability): void {
  * Roles that see every project without being a member. Everyone else needs an
  * explicit membership row or an owner field pointing at them — this is what
  * stops a developer from walking project IDs in the URL bar.
+ */
+/**
+ * Who may see the client-facing deadline.
+ *
+ * The internal date is the buffer. A developer who can see both knows the real
+ * deadline is the later one, which is exactly the slack the buffer exists to
+ * hold — so they see the internal date only, and it is labelled plainly as
+ * "Deadline". Calling it "internal" to someone who cannot see the other one
+ * just advertises that a second date exists.
  */
 export const ORG_WIDE_ROLES: readonly GlobalRole[] = [
   "admin",

@@ -3,11 +3,16 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { blockers, projects, tasks, type blockerCategory } from "@/db/schema";
+import { blockers, projectMembers, projects, tasks } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { addBusinessHours } from "@/lib/business-time";
+import {
+  resolveBlockerRouting,
+  type BlockerCategory,
+  type BlockerSeverity,
+} from "@/lib/blocker-routing";
 import { notify, resolveByDedupeKey } from "./notifications";
 import {
   reportBlockerSchema,
@@ -15,14 +20,6 @@ import {
   type ReportBlockerInput,
   type ResolveBlockerInput,
 } from "./schemas";
-
-type Category = (typeof blockerCategory.enumValues)[number];
-
-/** Categories the client owns. These stop the delivery clock. */
-const CLIENT_SIDE: readonly Category[] = ["waiting_on_client"];
-
-const URGENT_SLA_HOURS = 4;
-const NORMAL_SLA_HOURS = 8;
 
 
 /**
@@ -59,12 +56,34 @@ export async function reportBlocker(input: ReportBlockerInput) {
       if (!task) throw new Error("Task does not belong to that project.");
     }
 
-    const isClientSide = CLIENT_SIDE.includes(data.category);
-    const assignedToId = isClientSide
-      ? (project.salesOwnerId ?? project.pmId)
-      : (project.deliveryLeadId ?? project.pmId);
+    // Project-scoped role holders outrank the project-level defaults, so a
+    // project with its own technical overseer or QA reviewer routes to them.
+    const members = await tx
+      .select({ userId: projectMembers.userId, role: projectMembers.role })
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, data.projectId));
 
-    const slaHours = data.isUrgent ? URGENT_SLA_HOURS : NORMAL_SLA_HOURS;
+    const byRole: Record<string, string | null> = {};
+    for (const m of members) if (!byRole[m.role]) byRole[m.role] = m.userId;
+
+    const routing = resolveBlockerRouting({
+      category: data.category as BlockerCategory,
+      severity: data.severity as BlockerSeverity,
+      reporterId: actor.id,
+      project: {
+        pmId: project.pmId,
+        deliveryLeadId: project.deliveryLeadId,
+        salesOwnerId: project.salesOwnerId,
+      },
+      projectRoles: {
+        tech_lead: byRole.tech_lead,
+        qa: byRole.qa,
+        sales_owner: byRole.sales_owner,
+        pm: byRole.pm,
+      },
+      blockedOnUserId: data.blockedOnUserId ?? null,
+      blockedOnUserLeadId: project.deliveryLeadId,
+    });
 
     const [blocker] = await tx
       .insert(blockers)
@@ -72,12 +91,16 @@ export async function reportBlocker(input: ReportBlockerInput) {
         projectId: data.projectId,
         taskId: data.taskId ?? null,
         reportedById: actor.id,
-        assignedToId: assignedToId ?? null,
+        assignedToId: routing.assigneeId,
         category: data.category,
-        ownerSide: isClientSide ? "client" : "internal",
+        severity: data.severity,
+        blockedOnUserId: data.blockedOnUserId ?? null,
+        ownerSide: routing.ownerSide,
         description: data.description,
-        isUrgent: data.isUrgent,
-        slaDueAt: addBusinessHours(new Date(), slaHours),
+        isUrgent: data.severity === "critical" || data.severity === "high",
+        slaDueAt: addBusinessHours(new Date(), routing.slaHours),
+        routingRule: routing.rule,
+        watcherIds: routing.watcherIds,
       })
       .returning();
 
@@ -88,18 +111,36 @@ export async function reportBlocker(input: ReportBlockerInput) {
         .where(eq(tasks.id, data.taskId));
     }
 
-    if (assignedToId && assignedToId !== actor.id) {
+    // The assignee owns it; watchers are told but the clock is not on them.
+    if (routing.assigneeId && routing.assigneeId !== actor.id) {
       await notify(
         {
-          userId: assignedToId,
+          userId: routing.assigneeId,
           kind: "blocker_opened",
-          title: `${data.isUrgent ? "URGENT — " : ""}Blocked: ${project.name}`,
-          body: data.description,
+          title: `${data.severity === "critical" ? "CRITICAL — " : ""}Blocked: ${project.name}`,
+          body: `${data.description}\n\n${routing.explanation}`,
           projectId: data.projectId,
           taskId: data.taskId ?? null,
           blockerId: blocker.id,
           isActionable: true,
           dedupeKey: `blocker:${blocker.id}`,
+        },
+        tx,
+      );
+    }
+
+    for (const watcher of routing.watcherIds) {
+      await notify(
+        {
+          userId: watcher,
+          kind: "blocker_opened",
+          title: `FYI — blocked: ${project.name}`,
+          body: `${data.description}\n\nYou are copied, not accountable.`,
+          projectId: data.projectId,
+          taskId: data.taskId ?? null,
+          blockerId: blocker.id,
+          isActionable: false,
+          dedupeKey: `blocker_cc:${blocker.id}:${watcher}`,
         },
         tx,
       );
@@ -112,7 +153,6 @@ export async function reportBlocker(input: ReportBlockerInput) {
   revalidatePath("/");
   return created;
 }
-
 
 export async function resolveBlocker(input: ResolveBlockerInput) {
   const actor = await requireActor();

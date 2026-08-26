@@ -1,10 +1,11 @@
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { aliasedTable, and, desc, eq, ne } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
 import {
   blockers,
   clients,
   projectFinancials,
+  projectMembers,
   projects,
   tasks,
   users,
@@ -60,6 +61,9 @@ export default async function ProjectPage({
     .where(eq(users.id, actor.id))
     .limit(1);
 
+  // Second alias so the reporter and the assignee can be joined in one query.
+  const assignee = aliasedTable(users, "assignee");
+
   const [project] = await db
     .select({
       id: projects.id,
@@ -85,6 +89,10 @@ export default async function ProjectPage({
   // than by filtering rows the page already fetched.
   const role = me?.globalRole ?? "developer";
   const seesAllActivity = can(role, "worklog.viewAll");
+  // The internal date is the delivery buffer. Anyone who cannot see the
+  // client-facing date gets the internal one labelled plainly as "Deadline" —
+  // naming it "internal" would itself give away that a later date exists.
+  const seesClientDeadline = can(role, "deadline.viewClient");
 
   const [taskRows, blockerRows, recentLogs, count] = await Promise.all([
     db
@@ -106,13 +114,17 @@ export default async function ProjectPage({
         description: blockers.description,
         category: blockers.category,
         ownerSide: blockers.ownerSide,
+        severity: blockers.severity,
+        routingRule: blockers.routingRule,
         isUrgent: blockers.isUrgent,
         escalationLevel: blockers.escalationLevel,
         createdAt: blockers.createdAt,
         reportedBy: users.name,
+        assignedToName: assignee.name,
       })
       .from(blockers)
       .leftJoin(users, eq(blockers.reportedById, users.id))
+      .leftJoin(assignee, eq(blockers.assignedToId, assignee.id))
       .where(and(eq(blockers.projectId, id), ne(blockers.status, "resolved")))
       .orderBy(desc(blockers.isUrgent), desc(blockers.createdAt)),
     db
@@ -136,6 +148,12 @@ export default async function ProjectPage({
       .limit(8),
     unresolvedCount(actor.id),
   ]);
+
+  const memberRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(projectMembers)
+    .innerJoin(users, eq(projectMembers.userId, users.id))
+    .where(eq(projectMembers.projectId, id));
 
   const rawSession = await activeSessionFor(actor.id);
   // Dates cross the server/client boundary as ISO strings.
@@ -195,9 +213,20 @@ export default async function ProjectPage({
         )}
       </div>
 
-      <dl className="mb-4 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-5">
-        <Stat label="Internal deadline" value={fmtDate(project.internalDueDate)} />
-        <Stat label="Client deadline" value={fmtDate(project.clientDueDate)} />
+      <dl
+        className={`mb-4 grid grid-cols-2 gap-px border border-border bg-border ${
+          seesClientDeadline ? "lg:grid-cols-5" : "lg:grid-cols-4"
+        }`}
+      >
+        <Stat
+          label={seesClientDeadline ? "Internal deadline" : "Deadline"}
+          value={fmtDate(project.internalDueDate)}
+        />
+        {/* Not rendered at all rather than hidden with CSS: this is a server
+            component, so an unrendered value never reaches the browser. */}
+        {seesClientDeadline && (
+          <Stat label="Client deadline" value={fmtDate(project.clientDueDate)} />
+        )}
         <Stat label="Tasks done" value={`${doneCount}/${taskRows.length}`} />
         <Stat label="Open blockers" value={String(blockerRows.length)} />
         <Stat label="Code" value={project.code} />
@@ -259,10 +288,19 @@ export default async function ProjectPage({
                       <span className="mt-1 block text-[9px] text-fg-subtle">
                         Reported by {b.reportedBy ?? "unknown"} ·{" "}
                         {fmtDate(b.createdAt)}
+                        {b.assignedToName && (
+                          <>
+                            {" · "}
+                            <span className="font-bold text-fg-muted">
+                              owned by {b.assignedToName}
+                            </span>
+                          </>
+                        )}
                       </span>
                     </div>
                     <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-auto sm:shrink-0 sm:justify-end">
-                      {b.isUrgent && <Badge tone="red">Urgent</Badge>}
+                      {b.severity === "critical" && <Badge tone="red">Critical</Badge>}
+                      {b.severity === "high" && <Badge tone="amber">High</Badge>}
                       <Badge tone={b.ownerSide === "client" ? "amber" : "blue"}>
                         {b.ownerSide === "client" ? "Client" : "Internal"}
                       </Badge>
@@ -410,6 +448,7 @@ export default async function ProjectPage({
             <BlockerForm
               projectId={project.id}
               tasks={openTasks.map((t) => ({ id: t.id, title: t.title }))}
+              members={memberRows.filter((m) => m.id !== actor.id)}
             />
           )}
         </aside>

@@ -19,20 +19,42 @@ export const logWorkSchema = z.object({
 
 export type LogWorkInput = z.infer<typeof logWorkSchema>;
 
-export const reportBlockerSchema = z.object({
-  projectId: z.string().uuid(),
-  taskId: z.string().uuid().nullable().optional(),
-  category: z.enum([
-    "missing_access",
-    "unclear_requirement",
-    "needs_decision",
-    "waiting_on_client",
-    "technical",
-    "other",
-  ]),
-  description: z.string().trim().min(5, "Describe what you are blocked on."),
-  isUrgent: z.boolean().default(false),
-});
+export const reportBlockerSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    taskId: z.string().uuid().nullable().optional(),
+    category: z.enum([
+      "missing_access",
+      "missing_asset",
+      "client_approval",
+      "waiting_on_client",
+      "unclear_requirement",
+      "scope_conflict",
+      "needs_decision",
+      "commercial_scope",
+      "technical",
+      "qa_issue",
+      "dependency_dev",
+      "production_incident",
+      "other",
+    ]),
+    severity: z.enum(["low", "normal", "high", "critical"]).default("normal"),
+    /** Required when the blocker is another developer's unfinished work —
+     *  without it there is nobody to route to. */
+    blockedOnUserId: z
+      .string()
+      .uuid()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    description: z.string().trim().min(5, "Describe what you are blocked on."),
+  })
+  .refine(
+    (v) => v.category !== "dependency_dev" || !!v.blockedOnUserId,
+    {
+      message: "Say which developer you are waiting on.",
+      path: ["blockedOnUserId"],
+    },
+  );
 
 export type ReportBlockerInput = z.input<typeof reportBlockerSchema>;
 
