@@ -548,33 +548,41 @@ pnpm db:seed && pnpm db:seed:proposals
 | BD pipeline, feasibility routing, conversion by category | Working, verified |
 | Won proposal → draft project handoff | Working, verified |
 | Admin user management, audit log | Working, verified |
-| Sheets sync queue, retry, backoff, failure alerting | Working, verified **with a fake sheet id** |
-| **Live Google Sheets write** | **NEVER TESTED — no credentials** |
+| Sheets sync queue, retry, backoff, failure alerting | Working, verified |
+| **Live Google Sheets write** | **Working — verified end to end against a real sheet** |
 
 ---
 
 ## 9. Known issues
 
-### 9.1 The Google Sheets sync has never touched Google — highest risk
+### 9.1 Google Sheets is connected and proven
 
-**Run `pnpm sheets:doctor <spreadsheetId> [tab]` first.** It proves the whole
-write path against a real sheet and translates Google's errors into the thing to
-change. Three bugs were found by code review before it ever ran (unquoted sheet
-names in A1 ranges, `Math.max()` of an empty mapping, and unvalidated column
-letters) — assume there are more that only a real call will surface.
+Verified 2026-08-27 end to end: a developer logged work in the app, the job
+queued, `POST /api/cron/sync` drained it, and the row appeared in the real
+spreadsheet with the correct date, task, developer, hours, notes and status.
 
+Service account `tavren-sync@authentic-root-471504-q1.iam.gserviceaccount.com`,
+credentials in `.env.local`. Currently attached to **NW-001** only
+(`sheet_mappings` has one row).
 
-`src/server/sheets.ts` is unexercised. The queue, retry, exponential backoff,
-give-up-after-3 and admin alerting are all verified — but with
-`spreadsheetId = "1FAKE_SPREADSHEET_ID_FOR_TEST"`, which fails at
-`sheetsClient()` with:
+`pnpm sheets:doctor <spreadsheetId> [tab]` re-runs the full seven-check proof
+against any sheet, including the one that matters: it writes into an unmapped
+column as a client would, runs an update, and fails loudly if that column was
+overwritten. Run it whenever a new client sheet is attached.
 
-```
-Google Sheets is not configured. Set GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY.
-```
+Three bugs were found by code review *before* the first real call, all of which
+would have looked like Google's fault:
 
-This is the one feature that justifies building rather than buying, and it is the
-least proven thing in the codebase. See §10.1.
+- Sheet names were unquoted in A1 ranges, so a tab called `Time Log` produced
+  `Unable to parse range`. Fixed by `a1Range()`.
+- `Math.max()` over an empty mapping gave `-Infinity` and an opaque
+  `RangeError`.
+- A column mapped as `"1"` rather than `"A"` produced a negative index and the
+  value vanished silently.
+
+Remaining caveat: only **append mode** has run against Google. `update` mode
+(writing to a fixed row via `tasks.sheet_row_ref`) is exercised by the doctor's
+check 6 but has never run through the worker on a real client template.
 
 ### 9.2 `pnpm db:reset` silently breaks the app
 
@@ -627,29 +635,14 @@ insert, so it should hold, but it has not been proven that way.
 
 ## 10. Exact next steps, in order
 
-### 10.1 Prove the Sheets sync against real Google — do this first
+### 10.1 ~~Prove the Sheets sync~~ — DONE 2026-08-27
 
-Requires ~30 minutes of Google Cloud setup that only the user can do:
+Connected and verified (§9.1). What is left here:
 
-1. Create a GCP project, enable the **Google Sheets API**.
-2. Create a **service account**, download the JSON key.
-3. Put `client_email` → `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `private_key` →
-   `GOOGLE_PRIVATE_KEY` in `.env.local` (keep the `\n` escapes).
-4. Share a real client spreadsheet with the service-account address as **Editor**.
-5. Insert a `sheet_mappings` row for a project:
-   ```sql
-   INSERT INTO sheet_mappings (project_id, spreadsheet_id, sheet_name, mode, column_map)
-   VALUES ('<project-uuid>', '<real-sheet-id>', 'Timesheet', 'append',
-     '{"date":"A","taskTitle":"B","developer":"C","hours":"D","notes":"E","status":"F"}'::jsonb);
-   ```
-6. Log work in the app, then drain the queue:
-   ```bash
-   curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync
-   ```
-7. **Check specifically that `updateRowCells()` does not clobber unmapped
-   columns.** Put a value in an unmapped column of the client's sheet first and
-   confirm it survives. This is the failure mode that costs a client
-   relationship.
+- Attach the remaining projects: `pnpm sheets:attach <code> <spreadsheetId> [tab] [append|update]`
+- Run `pnpm sheets:doctor` against each new sheet before trusting it.
+- Exercise **update mode** through the worker on a real client template, which
+  append mode's success does not prove.
 
 ### 10.2 Deploy and schedule
 
