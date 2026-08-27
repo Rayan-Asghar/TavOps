@@ -22,6 +22,7 @@ export const CAPABILITIES = [
   "blocker.resolve",
   "review.approve",
   "sheet.configure",
+  "team.manage",
   "deadline.viewClient",
   "proposal.create",
   "proposal.viewAll",
@@ -37,23 +38,24 @@ export type Capability = (typeof CAPABILITIES)[number];
 /**
  * Global role -> capability grants.
  *
- * Two corrections against the original spec's permission table, both of which
- * would have blocked real work on day one:
+ * There are five roles, not seven. Hozefa, Hammad and Muzammil share `head`
+ * because they run the company together; splitting them into PM / delivery
+ * lead / sales head encoded a division of labour that does not hold in
+ * practice. What each of them owns is decided per project and per team, which
+ * is where the real distinction lives.
  *
- *  - PM and Delivery Lead were denied `worklog.create`, which would mean Hammad
- *    and Hozefa could never log the hours they actually bill.
- *  - Sales was granted project creation, contradicting the handoff flow where a
- *    project only exists once a deal converts. Sales gets read access to the
- *    projects they own instead.
+ * `rates.view` stays admin-only. The heads are partners and may well want it —
+ * it is one line here — but pay data is not granted by inference.
  */
 const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
   admin: CAPABILITIES,
 
-  pm: [
+  head: [
     "project.create",
     "project.edit",
     "project.viewAll",
     "project.manageMembers",
+    "team.manage",
     "task.create",
     "task.assign",
     "task.edit",
@@ -69,35 +71,6 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "feasibility.answer",
     "finance.view",
     "audit.view",
-  ],
-
-  /**
-   * Sales Manager / BD. Sees org-wide activity and every project's health so
-   * they can answer for the deals they closed, but not the money: contract
-   * value stays behind `finance.view` until that is asked for explicitly.
-   */
-  sales_head: [
-    "project.viewAll",
-    "worklog.create",
-    "worklog.viewAll",
-    "blocker.create",
-    "deadline.viewClient",
-    "proposal.create",
-    "proposal.viewAll",
-  ],
-
-  delivery_lead: [
-    "project.edit",
-    "task.create",
-    "task.assign",
-    "task.edit",
-    "worklog.create",
-    "blocker.create",
-    "blocker.resolve",
-    "review.approve",
-    "sheet.configure",
-    "deadline.viewClient",
-    "feasibility.answer",
   ],
 
   sales: [
@@ -149,11 +122,7 @@ export function assertCan(role: GlobalRole, capability: Capability): void {
  * "Deadline". Calling it "internal" to someone who cannot see the other one
  * just advertises that a second date exists.
  */
-export const ORG_WIDE_ROLES: readonly GlobalRole[] = [
-  "admin",
-  "pm",
-  "sales_head",
-];
+export const ORG_WIDE_ROLES: readonly GlobalRole[] = ["admin", "head"];
 
 export function seesAllProjects(role: GlobalRole): boolean {
   return ORG_WIDE_ROLES.includes(role);

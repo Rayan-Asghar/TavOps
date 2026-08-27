@@ -9,10 +9,8 @@ const initial: UserFormState = {};
 
 const ROLE_ORDER = [
   "developer",
-  "delivery_lead",
-  "pm",
   "sales",
-  "sales_head",
+  "head",
   "collaborator",
   "admin",
 ] as const;

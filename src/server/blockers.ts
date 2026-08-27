@@ -3,7 +3,14 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { blockers, projectMembers, projects, tasks } from "@/db/schema";
+import {
+  blockers,
+  projectMembers,
+  projects,
+  tasks,
+  teamMembers,
+  teams,
+} from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
@@ -66,6 +73,22 @@ export async function reportBlocker(input: ReportBlockerInput) {
     const byRole: Record<string, string | null> = {};
     for (const m of members) if (!byRole[m.role]) byRole[m.role] = m.userId;
 
+    // Teams overlap, so the reporter can have several leads; the routing engine
+    // breaks the tie by preferring one who is also on this project.
+    const leadRows = await tx
+      .select({ leadId: teams.leadId })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(teamMembers.userId, actor.id));
+
+    const reporterTeamLeadIds = [
+      ...new Set(
+        leadRows
+          .map((r) => r.leadId)
+          .filter((id): id is string => !!id && id !== actor.id),
+      ),
+    ];
+
     const routing = resolveBlockerRouting({
       category: data.category as BlockerCategory,
       severity: data.severity as BlockerSeverity,
@@ -81,6 +104,7 @@ export async function reportBlocker(input: ReportBlockerInput) {
         sales_owner: byRole.sales_owner,
         pm: byRole.pm,
       },
+      reporterTeamLeadIds,
       blockedOnUserId: data.blockedOnUserId ?? null,
       blockedOnUserLeadId: project.deliveryLeadId,
     });

@@ -52,9 +52,13 @@ export function AppShell({
 
   // Only surface what is actually built. A nav full of dead links reads as a
   // broken product rather than a roadmap.
-  const management: NavEntry[] = can(role, "user.manage")
-    ? [{ href: "/admin/users", label: "People", icon: "people" }]
-    : [];
+  const management: NavEntry[] = [];
+  if (can(role, "user.manage")) {
+    management.push({ href: "/admin/users", label: "People", icon: "people" });
+  }
+  if (can(role, "team.manage")) {
+    management.push({ href: "/admin/teams", label: "Teams", icon: "people" });
+  }
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[248px_minmax(0,1fr)]">

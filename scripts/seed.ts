@@ -15,6 +15,8 @@ import {
   projectMembers,
   projects,
   tasks,
+  teamMembers,
+  teams,
   userRates,
   users,
   workLogs,
@@ -32,9 +34,9 @@ async function main() {
     .insert(users)
     .values([
       { name: "Rayan", email: "contact@tavren.io", passwordHash: hash, globalRole: "admin", skills: ["ops"] },
-      { name: "Hammad", email: "hammad@tavren.io", passwordHash: hash, globalRole: "pm", skills: ["delivery", "client-comms"] },
-      { name: "Hozefa", email: "hozefa@tavren.io", passwordHash: hash, globalRole: "delivery_lead", skills: ["shopify", "wordpress"] },
-      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: hash, globalRole: "sales_head", skills: ["bd"] },
+      { name: "Hammad", email: "hammad@tavren.io", passwordHash: hash, globalRole: "head", skills: ["delivery", "client-comms"] },
+      { name: "Hozefa", email: "hozefa@tavren.io", passwordHash: hash, globalRole: "head", skills: ["shopify", "wordpress"] },
+      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: hash, globalRole: "head", skills: ["bd"] },
       { name: "Saqlain", email: "saqlain@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
       { name: "Shahab", email: "shahab@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
       { name: "Ayan", email: "ayan@tavren.io", passwordHash: hash, globalRole: "developer", skills: ["shopify", "liquid", "react"] },
@@ -94,6 +96,31 @@ async function main() {
       },
     ])
     .returning();
+
+  // Teams overlap on purpose: Ayan sits in both Shopify and Automation, so a
+  // blocker's fallback lead depends on which project it was raised against.
+  const [shopifyTeam, wpTeam, autoTeam, bdTeam] = await db
+    .insert(teams)
+    .values([
+      { name: "Shopify", leadId: by("Hozefa").id, discipline: "Shopify / Liquid" },
+      { name: "WordPress", leadId: by("Hozefa").id, discipline: "WordPress / PHP" },
+      { name: "Automation & AI", leadId: by("Hammad").id, discipline: "Automation / CRM" },
+      { name: "Business Development", leadId: by("Muzammil").id, discipline: "Sales" },
+    ])
+    .returning();
+
+  await db.insert(teamMembers).values([
+    { teamId: shopifyTeam.id, userId: by("Hozefa").id },
+    { teamId: shopifyTeam.id, userId: by("Ayan").id },
+    { teamId: shopifyTeam.id, userId: by("Ahmed").id },
+    { teamId: wpTeam.id, userId: by("Hozefa").id },
+    { teamId: wpTeam.id, userId: by("Abdur Rehman").id },
+    { teamId: autoTeam.id, userId: by("Hammad").id },
+    { teamId: autoTeam.id, userId: by("Ayan").id },
+    { teamId: bdTeam.id, userId: by("Muzammil").id },
+    { teamId: bdTeam.id, userId: by("Saqlain").id },
+    { teamId: bdTeam.id, userId: by("Shahab").id },
+  ]);
 
   await db.insert(projectMembers).values([
     { projectId: shopify.id, userId: by("Ayan").id, role: "developer" },

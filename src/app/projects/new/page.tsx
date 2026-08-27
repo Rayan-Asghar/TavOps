@@ -43,9 +43,9 @@ export default async function NewProjectPage() {
       />
       <ProjectForm
         clients={clientRows}
-        pms={pick("pm", "admin")}
-        leads={pick("delivery_lead", "pm")}
-        salesPeople={pick("sales", "sales_head")}
+        pms={pick("head", "admin")}
+        leads={pick("head")}
+        salesPeople={pick("sales", "head")}
       />
     </AppShell>
   );

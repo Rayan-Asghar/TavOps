@@ -18,13 +18,16 @@ import { relations } from "drizzle-orm";
  * Enums
  * ------------------------------------------------------------------ */
 
+/**
+ * Hozefa, Hammad and Muzammil run the company between them, so they share one
+ * `head` role rather than being split into PM / delivery lead / sales head.
+ * Which of them owns a given piece of work is decided by their role ON THAT
+ * PROJECT and by which team the person reporting it belongs to — not by a
+ * global title that would be wrong half the time.
+ */
 export const globalRole = pgEnum("global_role", [
   "admin",
-  "pm",
-  "delivery_lead",
-  // Sales Manager / BD (Muzammil) is separated from the reps (Saqlain,
-  // Shahab): the head sees org-wide activity, a rep sees only their own.
-  "sales_head",
+  "head",
   "sales",
   "developer",
   "collaborator",
@@ -206,6 +209,50 @@ export const userRates = pgTable("user_rates", {
     .notNull(),
   effectiveTo: timestamp("effective_to", { withTimezone: true }),
 });
+
+/**
+ * Teams are deliberately many-to-many.
+ *
+ * A developer can sit in more than one team and a lead runs several people, so
+ * "who is this person's lead" has no single answer in general — it is resolved
+ * per blocker, preferring the lead who is also on the project in question.
+ */
+export const teams = pgTable(
+  "teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 120 }).notNull(),
+    leadId: uuid("lead_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** What this team does, used to break ties when someone has two leads. */
+    discipline: varchar("discipline", { length: 60 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("teams_name_unique").on(t.name)],
+);
+
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("team_members_unique").on(t.teamId, t.userId),
+    index("team_members_user_idx").on(t.userId),
+  ],
+);
 
 /* ------------------------------------------------------------------ *
  * Clients & Projects
@@ -837,4 +884,14 @@ export const reviewsRelations = relations(reviews, ({ one }) => ({
     fields: [reviews.reviewerId],
     references: [users.id],
   }),
+}));
+
+export const teamsRelations = relations(teams, ({ one, many }) => ({
+  lead: one(users, { fields: [teams.leadId], references: [users.id] }),
+  members: many(teamMembers),
+}));
+
+export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
+  team: one(teams, { fields: [teamMembers.teamId], references: [teams.id] }),
+  user: one(users, { fields: [teamMembers.userId], references: [users.id] }),
 }));

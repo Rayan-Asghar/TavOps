@@ -100,12 +100,30 @@ cron triggers, or any external scheduler hitting these URLs.
 | Role | Sees projects | Sees others' activity | Financials |
 | --- | --- | --- | --- |
 | `admin` | all | yes | yes, incl. pay rates |
-| `pm` | all | yes | yes |
-| `sales_head` | all | yes | no |
-| `delivery_lead` | theirs | own only | no |
+| `head` | all | yes | yes, not pay rates |
 | `sales` | theirs | own only | no |
 | `developer` | assigned only | own only | no |
 | `collaborator` | assigned only, expires | own only | no |
+
+Hozefa, Hammad and Muzammil share **`head`**. Splitting them into PM /
+delivery lead / sales head encoded a division of labour that does not hold —
+they run the company jointly and each wears whichever hat a project needs.
+What any one of them owns is decided by their role *on that project* and by
+which team the person reporting it belongs to.
+
+`rates.view` stays admin-only. The heads are partners and may well want it —
+it is one line in `src/lib/rbac.ts` — but pay data is not granted by
+inference.
+
+## Teams
+
+Teams are **many-to-many on purpose**: a developer sits in several, and a lead
+runs more than one person. Ayan is in Shopify (led by Hozefa) and Automation
+(led by Hammad), so "who is Ayan's lead" has no single answer — it is resolved
+per blocker, preferring the lead who is also attached to that project.
+
+Managed at **/admin/teams**. The page flags anyone in no team at all, because a
+blocker they raise has no lead to fall back to.
 
 "Activity" means the work-log feed — who logged which hours. A developer sees
 only their own entries; the section is titled *Your activity* rather than
@@ -200,6 +218,12 @@ table.
 | QA / review issue | Project QA reviewer | Delivery lead |
 | Waiting on another developer | That developer | Their lead |
 | Production incident | Delivery lead | PM, immediately |
+| Anything else | **The reporter's team lead** | Project PM |
+
+**The reporter's team lead is always at least copied**, whatever the category.
+A lead should never learn second-hand that one of their people is stuck. When
+the project has no specialist for a category, the team lead becomes the owner
+rather than merely a watcher.
 
 Two distinctions the model depends on:
 

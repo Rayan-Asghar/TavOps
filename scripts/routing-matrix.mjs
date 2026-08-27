@@ -10,6 +10,7 @@ const ctx = (category, extra={}) => ({
   category, severity:'normal', reporterId:'ayan',
   project:{ pmId:'hammad', deliveryLeadId:'hozefa', salesOwnerId:'saqlain' },
   projectRoles:{ tech_lead:'hozefa', qa:'ahmed', sales_owner:'saqlain' },
+  reporterTeamLeadIds:['hozefa'],
   ...extra,
 });
 
@@ -40,3 +41,23 @@ console.log('  tech_lead=Abdur ->', n(r2.assigneeId));
 console.log('\n--- reporter is never their own watcher ---');
 const r3 = resolveBlockerRouting({ ...ctx('scope_conflict'), reporterId:'hozefa' });
 console.log('  reporter=Hozefa, watchers =', r3.watcherIds.map(n).join(', ') || '(none)');
+
+console.log('\n--- team lead is always at least copied ---');
+const t1 = resolveBlockerRouting({ ...ctx('qa_issue'), reporterTeamLeadIds:['muz'] });
+console.log('  qa_issue, Ayan led by Muzammil -> owner', n(t1.assigneeId), '| watchers', t1.watcherIds.map(n).join(', '));
+
+console.log('\n--- no project specialist: falls back to the team lead ---');
+const t2 = resolveBlockerRouting({
+  ...ctx('other'), projectRoles:{},
+  project:{ pmId:null, deliveryLeadId:null, salesOwnerId:null },
+  reporterTeamLeadIds:['hozefa'],
+});
+console.log('  other, bare project ->', n(t2.assigneeId), '| rule:', t2.rule);
+
+console.log('\n--- overlapping teams: picks the lead who is on this project ---');
+const t3 = resolveBlockerRouting({
+  ...ctx('other'), projectRoles:{},
+  project:{ pmId:null, deliveryLeadId:'hozefa', salesOwnerId:null },
+  reporterTeamLeadIds:['muz','hozefa'],
+});
+console.log('  leads [Muzammil, Hozefa], project lead Hozefa ->', n(t3.assigneeId));

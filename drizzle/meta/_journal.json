@@ -43,6 +43,13 @@
       "when": 1787782485333,
       "tag": "0005_reviews_table",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787843012953,
+      "tag": "0006_teams_and_head_role",
+      "breakpoints": true
     }
   ]
 }

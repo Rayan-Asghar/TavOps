@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
@@ -59,16 +59,8 @@ export async function createProposal(
         const [lead] = await tx
           .select({ id: users.id })
           .from(users)
-          .where(
-            and(
-              eq(users.isActive, true),
-              or(
-                eq(users.globalRole, "delivery_lead"),
-                eq(users.globalRole, "pm"),
-              ),
-            ),
-          )
-          .orderBy(users.globalRole)
+          .where(and(eq(users.isActive, true), eq(users.globalRole, "head")))
+          .orderBy(users.name)
           .limit(1);
         assignee = lead?.id ?? null;
       }
@@ -161,7 +153,7 @@ export async function advanceProposal(
         const pms = await tx
           .select({ id: users.id })
           .from(users)
-          .where(and(eq(users.isActive, true), eq(users.globalRole, "pm")));
+          .where(and(eq(users.isActive, true), eq(users.globalRole, "head")));
         for (const pm of pms) {
           await notify(
             {

@@ -159,10 +159,10 @@ export async function handoffOptions() {
   ]);
   return {
     clients: clientRows,
-    leads: staff
-      .filter((u) => u.role === "delivery_lead" || u.role === "pm")
-      .map(({ id, name }) => ({ id, name })),
-    pms: staff.filter((u) => u.role === "pm").map(({ id, name }) => ({ id, name })),
+    // Both lists are the heads now; kept as two fields so the handoff form can
+    // still name a PM and a delivery lead separately per project.
+    leads: staff.filter((u) => u.role === "head").map(({ id, name }) => ({ id, name })),
+    pms: staff.filter((u) => u.role === "head").map(({ id, name }) => ({ id, name })),
   };
 }
 

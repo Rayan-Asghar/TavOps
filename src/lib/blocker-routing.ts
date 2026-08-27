@@ -46,6 +46,12 @@ export type RoutingContext = {
     sales_owner?: string | null;
     pm?: string | null;
   };
+  /**
+   * Leads of every team the reporter belongs to. Teams overlap, so this is a
+   * list rather than a single id — the tie is broken by preferring the lead who
+   * is also on this project.
+   */
+  reporterTeamLeadIds?: string[];
   /** dependency_dev only: whose work this is waiting on, and their lead. */
   blockedOnUserId?: string | null;
   blockedOnUserLeadId?: string | null;
@@ -100,14 +106,41 @@ function cleanWatchers(
   return [...out];
 }
 
+/**
+ * Picks one lead when the reporter sits in several teams.
+ *
+ * Prefers a lead who is also attached to this project: if Ayan is in both the
+ * Shopify and Automation teams, a blocker on a Shopify project should reach the
+ * lead who is actually on it rather than whichever team was created first.
+ */
+function preferredTeamLead(
+  teamLeadIds: string[],
+  projectPeople: (string | null | undefined)[],
+): string | null {
+  if (teamLeadIds.length === 0) return null;
+  const onProject = new Set(projectPeople.filter(Boolean) as string[]);
+  return teamLeadIds.find((id) => onProject.has(id)) ?? teamLeadIds[0];
+}
+
 export function resolveBlockerRouting(ctx: RoutingContext): RoutingResult {
   const { project: p, projectRoles: r } = ctx;
 
-  // A project-scoped role holder outranks the project-level default.
-  const techOwner = firstOf(r.tech_lead, p.deliveryLeadId, p.pmId);
-  const qaOwner = firstOf(r.qa, r.tech_lead, p.deliveryLeadId, p.pmId);
-  const clientOwner = firstOf(r.sales_owner, p.salesOwnerId, p.pmId);
-  const pmOwner = firstOf(r.pm, p.pmId, p.deliveryLeadId);
+  const teamLead = preferredTeamLead(ctx.reporterTeamLeadIds ?? [], [
+    p.pmId,
+    p.deliveryLeadId,
+    p.salesOwnerId,
+    r.tech_lead,
+    r.qa,
+    r.pm,
+    r.sales_owner,
+  ]);
+
+  // Order of preference: a role holder on this project, then the reporter's own
+  // team lead, then the project-level default.
+  const techOwner = firstOf(r.tech_lead, teamLead, p.deliveryLeadId, p.pmId);
+  const qaOwner = firstOf(r.qa, r.tech_lead, teamLead, p.deliveryLeadId, p.pmId);
+  const clientOwner = firstOf(r.sales_owner, p.salesOwnerId, p.pmId, teamLead);
+  const pmOwner = firstOf(r.pm, p.pmId, teamLead, p.deliveryLeadId);
 
   let assigneeId: string | null = null;
   let watchers: (string | null | undefined)[] = [];
@@ -147,7 +180,7 @@ export function resolveBlockerRouting(ctx: RoutingContext): RoutingResult {
       // The person who can actually unblock it is the other developer; their
       // lead is told so it does not stall silently between two peers.
       assigneeId = firstOf(ctx.blockedOnUserId, techOwner);
-      watchers = [ctx.blockedOnUserLeadId, p.deliveryLeadId];
+      watchers = [ctx.blockedOnUserLeadId, teamLead, p.deliveryLeadId];
       rule = "dependency_dev";
       explanation =
         "Waiting on another developer's work, routed to them with their lead copied.";
@@ -174,7 +207,7 @@ export function resolveBlockerRouting(ctx: RoutingContext): RoutingResult {
       break;
 
     case "production_incident":
-      assigneeId = firstOf(p.deliveryLeadId, r.tech_lead, p.pmId);
+      assigneeId = firstOf(p.deliveryLeadId, r.tech_lead, teamLead, p.pmId);
       watchers = [p.pmId, r.tech_lead];
       rule = "incident";
       explanation =
@@ -182,11 +215,19 @@ export function resolveBlockerRouting(ctx: RoutingContext): RoutingResult {
       break;
 
     default:
-      assigneeId = firstOf(p.deliveryLeadId, p.pmId);
+      // Nothing specific matched, so it goes to the reporter's own lead — the
+      // person who knows what they are working on.
+      assigneeId = firstOf(teamLead, p.deliveryLeadId, p.pmId);
       watchers = [p.pmId];
-      rule = "default";
-      explanation = "No specific rule matched, routed to the delivery lead.";
+      rule = teamLead ? "team_lead" : "default";
+      explanation = teamLead
+        ? "No specialist rule matched, routed to the reporter's team lead."
+        : "No specific rule matched, routed to the project lead.";
   }
+
+  // The reporter's lead is always at least copied, whatever the category. A
+  // lead should never find out second-hand that one of their people is stuck.
+  if (teamLead && teamLead !== assigneeId) watchers.push(teamLead);
 
   // A production incident is critical regardless of what was ticked.
   const severity: BlockerSeverity =

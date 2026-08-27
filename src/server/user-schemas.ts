@@ -7,9 +7,7 @@ export const ASSIGNABLE_ROLES = globalRole.enumValues;
  *  are granting, and a wrong guess here is how people over-provision. */
 export const ROLE_DESCRIPTIONS: Record<string, string> = {
   admin: "Full access, including pay rates and user management.",
-  pm: "All projects, financials, and everyone's activity.",
-  delivery_lead: "Assigns and reviews work on their projects. No financials.",
-  sales_head: "All projects and everyone's activity. No financials.",
+  head: "Runs the company. All projects, financials, reviews and pipeline.",
   sales: "Only projects they own. Their own activity.",
   developer: "Only projects they are assigned to. Their own activity.",
   collaborator: "Temporary contractor. Set an access expiry.",
