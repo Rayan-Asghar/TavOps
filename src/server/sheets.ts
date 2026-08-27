@@ -34,12 +34,35 @@ export function sheetsClient(): sheets_v4.Sheets {
   return cached;
 }
 
+/**
+ * Builds an A1 range with the sheet name quoted correctly.
+ *
+ * A tab called "Time Log" produces `Time Log!A:F`, which the API rejects with
+ * `Unable to parse range`. Names containing anything but letters, digits and
+ * underscores must be single-quoted, and literal single quotes doubled. Client
+ * sheets have tab names like "Aug 2026" and "Dev Hours" far more often than
+ * "Sheet1", so this is the normal case, not the edge case.
+ */
+export function a1Range(sheetName: string, ref: string): string {
+  const safe = /^[A-Za-z_][A-Za-z0-9_]*$/.test(sheetName)
+    ? sheetName
+    : `'${sheetName.replace(/'/g, "''")}'`;
+  return `${safe}!${ref}`;
+}
+
 export type ColumnMap = Record<string, string>;
 
 /** Values keyed by Tavren field name, e.g. { hours: "6", notes: "Hero done" }. */
 export type RowValues = Record<string, string>;
 
 function columnToIndex(col: string): number {
+  // A mapping of "1" instead of "A" would otherwise produce a negative index,
+  // and the value would vanish into a stray array property rather than error.
+  if (!/^[A-Za-z]+$/.test(col)) {
+    throw new Error(
+      `Invalid column "${col}" in the sheet mapping. Use a column letter such as A or AB, not a number.`,
+    );
+  }
   let n = 0;
   for (const ch of col.toUpperCase()) {
     n = n * 26 + (ch.charCodeAt(0) - 64);
@@ -65,6 +88,11 @@ export async function appendRow(opts: {
     field,
     index: columnToIndex(col),
   }));
+  if (indices.length === 0) {
+    throw new Error("The sheet mapping is empty; nothing to write.");
+  }
+  // Math.max() of an empty list is -Infinity, and new Array(-Infinity) throws
+  // an opaque RangeError, so the guard above comes first.
   const width = Math.max(...indices.map((i) => i.index)) + 1;
 
   const row = new Array<string>(width).fill("");
@@ -72,9 +100,14 @@ export async function appendRow(opts: {
     row[index] = opts.values[field] ?? "";
   }
 
+  // Append against the full width of the mapping rather than A:A. With a
+  // single-column range the API infers the table from column A alone, which
+  // misplaces the row whenever column A has gaps.
+  const lastCol = indexToColumn(width - 1);
+
   await sheets.spreadsheets.values.append({
     spreadsheetId: opts.spreadsheetId,
-    range: `${opts.sheetName}!A:A`,
+    range: a1Range(opts.sheetName, `A:${lastCol}`),
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [row] },
@@ -102,7 +135,7 @@ export async function updateRowCells(opts: {
   const data = Object.entries(opts.columnMap)
     .filter(([field]) => opts.values[field] !== undefined)
     .map(([field, col]) => ({
-      range: `${opts.sheetName}!${col}${opts.rowNumber}`,
+      range: a1Range(opts.sheetName, `${col}${opts.rowNumber}`),
       values: [[opts.values[field] ?? ""]],
     }));
 
@@ -123,7 +156,7 @@ export async function readHeaderRow(opts: {
   const sheets = sheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: opts.spreadsheetId,
-    range: `${opts.sheetName}!${opts.headerRow}:${opts.headerRow}`,
+    range: a1Range(opts.sheetName, `${opts.headerRow}:${opts.headerRow}`),
   });
 
   const headers = res.data.values?.[0] ?? [];

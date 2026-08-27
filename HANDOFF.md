@@ -445,6 +445,8 @@ are mapped, not reset.
 | `pnpm db:seed:proposals` | 13 proposals across 5 categories |
 | `npx tsx scripts/routing-matrix.mjs` | Prints the whole blocker routing table |
 | `npx tsx --env-file=.env.local scripts/run-sweeps.ts` | Runs sweeps directly |
+| `pnpm sheets:doctor <id> [tab]` | Full Google Sheets round-trip test with actionable errors |
+| `pnpm sheets:attach <code> <id> [tab] [mode]` | Attaches a sheet to a project, guessing columns from its headers |
 | `bash scripts/bootstrap.sh` | Creates `tavren_app` role — **see §9.2 before running** |
 
 ---
@@ -554,6 +556,13 @@ pnpm db:seed && pnpm db:seed:proposals
 ## 9. Known issues
 
 ### 9.1 The Google Sheets sync has never touched Google — highest risk
+
+**Run `pnpm sheets:doctor <spreadsheetId> [tab]` first.** It proves the whole
+write path against a real sheet and translates Google's errors into the thing to
+change. Three bugs were found by code review before it ever ran (unquoted sheet
+names in A1 ranges, `Math.max()` of an empty mapping, and unvalidated column
+letters) — assume there are more that only a real call will surface.
+
 
 `src/server/sheets.ts` is unexercised. The queue, retry, exponential backoff,
 give-up-after-3 and admin alerting are all verified — but with
