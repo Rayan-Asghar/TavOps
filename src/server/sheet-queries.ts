@@ -32,10 +32,12 @@ export async function sheetStatusFor(projectId: string): Promise<SheetStatus> {
   }
 
   const [counts] = await db
+    // NOTE: these literals live inside sql`` and are invisible to tsc — the
+    // status enum rename broke this at runtime while the build stayed green.
     .select({
-      pending: sql<number>`count(*) filter (where ${syncJobs.status} = 'pending')::int`,
+      pending: sql<number>`count(*) filter (where ${syncJobs.status} = 'queued')::int`,
       failed: sql<number>`count(*) filter (where ${syncJobs.status} = 'failed')::int`,
-      succeeded: sql<number>`count(*) filter (where ${syncJobs.status} = 'success')::int`,
+      succeeded: sql<number>`count(*) filter (where ${syncJobs.status} = 'done')::int`,
     })
     .from(syncJobs)
     .where(eq(syncJobs.mappingId, mapping.id));
