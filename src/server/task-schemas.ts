@@ -63,6 +63,9 @@ export const createProjectSchema = z
     internalDueDate: optionalDate,
     clientDueDate: optionalDate,
     description: z.string().trim().max(4000).optional(),
+    /** Developers to put on the project straight away — without at least one,
+     *  no task on it can be assigned to anybody. */
+    developerIds: z.array(z.string().uuid()).default([]),
   })
   .refine(
     (v) =>

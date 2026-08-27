@@ -249,6 +249,22 @@ someone who cannot see the other would itself advertise that a later date
 exists. These are server components, so the hidden date is never rendered and
 never reaches the browser.
 
+## Project membership
+
+Who is on a project is managed from the project page (`project.manageMembers`).
+This is load-bearing in two places, not cosmetic:
+
+- **Tasks can only be assigned to project members.** Assigning work to someone
+  who cannot open the project is not a useful state, so the picker lists
+  members only. The create-project form asks for developers up front, and the
+  team panel warns when a project has none.
+- **Project roles are what blocker routing keys off.** Naming a technical
+  overseer or QA reviewer here is what makes those categories route to a person
+  rather than falling through to the default.
+
+Someone with open tasks on a project cannot be removed from it — that would
+orphan the work silently. Reassign first.
+
 ## Time tracking
 
 A developer opens a task, hits **Start**, and the hours are measured rather
@@ -262,6 +278,11 @@ banks everything up to the last pause and `resumed_at` marks the current
 segment, so elapsed is derived as `accumulated + (now - resumed_at)`. A closed
 laptop, a killed tab or a server restart loses nothing, because nothing was
 being ticked.
+
+You can only time your own work, or **pick up** something nobody is assigned —
+which claims the task, so the hours and the assignee agree about who did it.
+Timing a colleague's task would file their hours under your name, and the
+server refuses it whether or not the button is on screen.
 
 One timer per person at a time. Starting a second names the running one rather
 than silently stopping it — quietly discarding time somebody is still earning

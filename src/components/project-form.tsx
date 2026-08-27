@@ -11,11 +11,13 @@ export function ProjectForm({
   pms,
   leads,
   salesPeople,
+  developers,
 }: {
   clients: { id: string; name: string }[];
   pms: { id: string; name: string }[];
   leads: { id: string; name: string }[];
   salesPeople: { id: string; name: string }[];
+  developers: { id: string; name: string; globalRole: string }[];
 }) {
   const [state, action, pending] = useActionState(createProject, initial);
   const [clientId, setClientId] = useState("");
@@ -109,6 +111,36 @@ export function ProjectForm({
         <div>
           <label className="label" htmlFor="clientDueDate">Client deadline</label>
           <input id="clientDueDate" name="clientDueDate" type="date" className="field" />
+        </div>
+
+        <div className="sm:col-span-2">
+          <span className="label">Developers on this project</span>
+          {/* Without at least one, no task on the project can be assigned to
+              anyone, so this is asked for up front rather than discovered. */}
+          <div className="grid gap-1.5 rounded-lg border border-border bg-surface-2 p-3 sm:grid-cols-2">
+            {developers.length === 0 && (
+              <p className="m-0 text-[11px] text-fg-muted">
+                No developers exist yet. Create accounts under People first.
+              </p>
+            )}
+            {developers.map((d) => (
+              <label key={d.id} className="flex items-center gap-2 text-[12px]">
+                <input
+                  type="checkbox"
+                  name="developerIds"
+                  value={d.id}
+                  className="h-4 w-4"
+                />
+                <span>{d.name}</span>
+                <span className="text-[9px] text-fg-subtle">
+                  {d.globalRole.replace(/_/g, " ")}
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-[9px] text-fg-subtle">
+            You can add or change people later from the project page.
+          </p>
         </div>
 
         <div className="sm:col-span-2">

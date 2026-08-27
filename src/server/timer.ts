@@ -3,7 +3,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { auditLog, tasks, timeSessions } from "@/db/schema";
+import { auditLog, tasks, timeSessions, users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
@@ -53,13 +53,32 @@ export async function startTimer(formData: FormData): Promise<TimerState> {
     });
 
     const [task] = await db
-      .select({ id: tasks.id, projectId: tasks.projectId, title: tasks.title })
+      .select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        assigneeId: tasks.assigneeId,
+      })
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (!task) return { error: "That task no longer exists." };
 
     await assertProjectAccess(actor, task.projectId);
+
+    // Timing someone else's task would file their hours under your name, so
+    // the action refuses it. Hiding the button is not enough — this is the
+    // check that actually holds against a direct request.
+    if (task.assigneeId && task.assigneeId !== actor.id) {
+      const [owner] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, task.assigneeId))
+        .limit(1);
+      return {
+        error: `That task is assigned to ${owner?.name ?? "someone else"}. Reassign it first if you are taking it over.`,
+      };
+    }
 
     // One clock at a time. Silently stopping the other timer would quietly
     // discard time somebody is still earning, so this refuses and names it.
@@ -73,13 +92,24 @@ export async function startTimer(formData: FormData): Promise<TimerState> {
       };
     }
 
-    await db.insert(timeSessions).values({
-      taskId: task.id,
-      projectId: task.projectId,
-      userId: actor.id,
-      status: "running",
-      resumedAt: new Date(),
-      accumulatedSeconds: 0,
+    await db.transaction(async (tx) => {
+      // Picking up unassigned work claims it, so the task and the hours agree
+      // about who did it.
+      if (!task.assigneeId) {
+        await tx
+          .update(tasks)
+          .set({ assigneeId: actor.id, updatedAt: new Date() })
+          .where(eq(tasks.id, task.id));
+      }
+
+      await tx.insert(timeSessions).values({
+        taskId: task.id,
+        projectId: task.projectId,
+        userId: actor.id,
+        status: "running",
+        resumedAt: new Date(),
+        accumulatedSeconds: 0,
+      });
     });
 
     revalidatePath(`/projects/${task.projectId}`);

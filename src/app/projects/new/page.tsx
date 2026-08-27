@@ -46,6 +46,9 @@ export default async function NewProjectPage() {
         pms={pick("head", "admin")}
         leads={pick("head")}
         salesPeople={pick("sales", "head")}
+        developers={staff
+          .filter((u) => u.role === "developer" || u.role === "collaborator")
+          .map(({ id, name, role }) => ({ id, name, globalRole: role }))}
       />
     </AppShell>
   );

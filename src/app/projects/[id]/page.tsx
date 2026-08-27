@@ -5,7 +5,6 @@ import {
   blockers,
   clients,
   projectFinancials,
-  projectMembers,
   projects,
   tasks,
   users,
@@ -22,6 +21,11 @@ import { BlockerForm } from "@/components/blocker-form";
 import { TaskForm } from "@/components/task-form";
 import { ReviewForm } from "@/components/review-form";
 import { activateProject } from "@/server/project-actions";
+import { ProjectTeam } from "@/components/project-team";
+import {
+  projectMembersFor,
+  assignableStaff,
+} from "@/server/member-queries";
 import {
   ActiveTimerPanel,
   StartTimerButton,
@@ -105,6 +109,7 @@ export default async function ProjectPage({
         status: tasks.status,
         dueDate: tasks.dueDate,
         estimatedHours: tasks.estimatedHours,
+        assigneeId: tasks.assigneeId,
         assigneeName: users.name,
       })
       .from(tasks)
@@ -152,11 +157,16 @@ export default async function ProjectPage({
     unresolvedCount(actor.id),
   ]);
 
-  const memberRows = await db
-    .select({ id: users.id, name: users.name })
-    .from(projectMembers)
-    .innerJoin(users, eq(projectMembers.userId, users.id))
-    .where(eq(projectMembers.projectId, id));
+  const [teamMembersList, addableStaff] = await Promise.all([
+    projectMembersFor(id),
+    can(role, "project.manageMembers") ? assignableStaff(id) : Promise.resolve([]),
+  ]);
+
+  // Tasks can only be assigned to people who are actually on the project —
+  // otherwise the assignee cannot open what they were given.
+  const assignableMembers = teamMembersList
+    .filter((m) => m.role !== "observer")
+    .map((m) => ({ id: m.id, name: m.name }));
 
   const rawSession = await activeSessionFor(actor.id);
   // Dates cross the server/client boundary as ISO strings.
@@ -334,6 +344,13 @@ export default async function ProjectPage({
             </section>
           )}
 
+          <ProjectTeam
+            projectId={project.id}
+            members={teamMembersList}
+            assignable={addableStaff}
+            canManage={can(role, "project.manageMembers")}
+          />
+
           <section className="panel">
             <div className="panel-head">
               <div>
@@ -385,13 +402,18 @@ export default async function ProjectPage({
                             <ReviewForm taskId={t.id} compact />
                           </div>
                         ) : null}
+                        {/* You can only time your own work, or pick up
+                            something nobody is assigned. Timing a colleague's
+                            task would put their hours under your name. */}
                         {t.status !== "in_review" &&
-                          can(role, "worklog.create") &&
                           t.status !== "done" &&
+                          can(role, "worklog.create") &&
+                          (t.assigneeId === actor.id || t.assigneeId === null) &&
                           session?.taskId !== t.id && (
                             <StartTimerButton
                               taskId={t.id}
                               disabled={!!session}
+                              label={t.assigneeId === null ? "Pick up" : "Start"}
                             />
                           )}
                         {session?.taskId === t.id && (
@@ -467,7 +489,7 @@ export default async function ProjectPage({
           {can(role, "task.create") && (
             <TaskForm
               projectId={project.id}
-              members={memberRows}
+              members={assignableMembers}
             />
           )}
           {can(role, "worklog.create") && (
@@ -480,7 +502,7 @@ export default async function ProjectPage({
             <BlockerForm
               projectId={project.id}
               tasks={openTasks.map((t) => ({ id: t.id, title: t.title }))}
-              members={memberRows.filter((m) => m.id !== actor.id)}
+              members={assignableMembers.filter((m) => m.id !== actor.id)}
             />
           )}
         </aside>

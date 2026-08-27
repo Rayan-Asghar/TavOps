@@ -53,6 +53,7 @@ export async function createProject(
       internalDueDate: formData.get("internalDueDate") ?? "",
       clientDueDate: formData.get("clientDueDate") ?? "",
       description: formData.get("description") ?? undefined,
+      developerIds: formData.getAll("developerIds").map(String).filter(Boolean),
     });
 
     const created = await db.transaction(async (tx) => {
@@ -101,6 +102,10 @@ export async function createProject(
         ...(data.salesOwnerId
           ? [{ userId: data.salesOwnerId, role: "sales_owner" as const }]
           : []),
+        ...data.developerIds.map((userId) => ({
+          userId,
+          role: "developer" as const,
+        })),
       ];
       const seen = new Set<string>();
       for (const m of members) {
