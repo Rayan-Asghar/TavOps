@@ -144,7 +144,7 @@ export default async function InboxPage() {
               return (
                 <li key={n.id} className="attention-row">
                   <span
-                    className={`signal ${SIGNAL_COLOR[meta.signal]}`}
+                    className={`mt-1.5 signal ${SIGNAL_COLOR[meta.signal]}`}
                     aria-hidden
                   />
                   <div className="min-w-0">

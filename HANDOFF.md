@@ -314,7 +314,26 @@ form asks for developers up front, and the team panel warns when a project has
 none. Someone with open tasks **cannot be removed** from a project — that would
 orphan the work silently.
 
-### 4.15 UI follows tavren.io
+### 4.15 The project workspace is tabbed — `src/app/projects/[id]/page.tsx`
+
+It grew to four stacked panels on the left and four forms on the right, roughly
+2,200px tall. It is now **Overview · Tasks · Team · Activity**, around 1,000px.
+
+- **Tab state lives in the URL** (`?tab=tasks`), not component state, so links
+  are shareable, survive a refresh, and the content stays server-rendered —
+  which is what keeps the permission checks on the server.
+- **The right rail does not change between tabs.** What you are looking at
+  should not change what you can do.
+- Log work and Report blocker share one panel with a segmented control
+  (`src/components/action-panel.tsx`). A developer does one or the other, never
+  both at once; showing both tripled the rail height for no gain.
+- Add-a-task is collapsed behind a `Disclosure`. Creating a task is occasional
+  and should not occupy the page for everyone reading it.
+
+`.attention-row` in `globals.css` is **two columns below `sm`**, three above. A
+fixed three-column grid pushed the status badges off the left edge at 390px.
+
+### 4.16 UI follows tavren.io
 
 Extracted from the live site's CSS: accent `#FB0044` (hover `#d10050`), near-black
 sidebar `#070707`, paper canvas `#f5f5f3`, **Inter** 300–700, `rounded-xl`
