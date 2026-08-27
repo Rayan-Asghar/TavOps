@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-export type TabKey = "overview" | "tasks" | "team" | "activity";
+export type TabKey = "overview" | "tasks" | "team" | "activity" | "sync";
 
 export type TabDef = { key: TabKey; label: string; count?: number };
 

@@ -549,6 +549,7 @@ pnpm db:seed && pnpm db:seed:proposals
 | Won proposal → draft project handoff | Working, verified |
 | Admin user management, audit log | Working, verified |
 | Sheets sync queue, retry, backoff, failure alerting | Working, verified |
+| Per-project sheet setup in the app (Sync tab) | Working, verified |
 | **Live Google Sheets write** | **Working — verified end to end against a real sheet** |
 
 ---
@@ -564,6 +565,16 @@ spreadsheet with the correct date, task, developer, hours, notes and status.
 Service account `tavren-sync@authentic-root-471504-q1.iam.gserviceaccount.com`,
 credentials in `.env.local`. Currently attached to **NW-001** only
 (`sheet_mappings` has one row).
+
+Sheets are connected **per project, in the app**: the **Sync** tab on a project
+page (`sheet.configure` — heads and admin). Paste the sheet URL, pick the tab,
+adjust the guessed column mapping, connect. The tab also shows synced/queued/
+failed counts, a Test connection button, retry for failed jobs, pause, and
+disconnect.
+
+There is **one shared service account** for the whole app, not one per head.
+Access comes from sharing each spreadsheet with that address, so the address is
+the first thing on the Sync tab rather than buried in documentation.
 
 `pnpm sheets:doctor <spreadsheetId> [tab]` re-runs the full seven-check proof
 against any sheet, including the one that matters: it writes into an unmapped
