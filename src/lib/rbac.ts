@@ -22,6 +22,8 @@ export const CAPABILITIES = [
   "blocker.resolve",
   "review.approve",
   "sheet.configure",
+  "sheets.client.manage",
+  "sheets.admin",
   "team.manage",
   "deadline.viewClient",
   "proposal.create",
@@ -65,6 +67,8 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.resolve",
     "review.approve",
     "sheet.configure",
+    "sheets.client.manage",
+    "sheets.admin",
     "deadline.viewClient",
     "proposal.create",
     "proposal.viewAll",
@@ -123,6 +127,47 @@ export function assertCan(role: GlobalRole, capability: Capability): void {
  * just advertises that a second date exists.
  */
 export const ORG_WIDE_ROLES: readonly GlobalRole[] = ["admin", "head"];
+
+/**
+ * Capabilities granted by a PROJECT role, on that project only.
+ *
+ * Until now authorisation was global-role only. Releasing held client
+ * corrections has to sit with whoever runs that particular project, which is a
+ * project role — so a person can be a plain `developer` globally and still
+ * manage sheets on the one project where they are the PM.
+ *
+ * Never hardcode a person: this is keyed on the role, not on a user id.
+ */
+const PROJECT_ROLE_CAPABILITIES: Record<ProjectRole, readonly Capability[]> = {
+  pm: ["sheets.client.manage", "sheet.configure", "deadline.viewClient"],
+  tech_lead: ["sheets.client.manage", "sheet.configure", "deadline.viewClient"],
+  sales_owner: ["deadline.viewClient"],
+  qa: [],
+  developer: [],
+  observer: [],
+};
+
+const PROJECT_CAPABILITY_SETS = Object.fromEntries(
+  Object.entries(PROJECT_ROLE_CAPABILITIES).map(([role, caps]) => [
+    role,
+    new Set<Capability>(caps),
+  ]),
+) as Record<ProjectRole, Set<Capability>>;
+
+/**
+ * Whether the actor holds a capability on a specific project — by global role,
+ * or by the role they hold on that project. Use this for anything scoped to one
+ * project; `can()` alone answers only the org-wide question.
+ */
+export function canInProject(
+  globalRole: GlobalRole,
+  projectRole: ProjectRole | null,
+  capability: Capability,
+): boolean {
+  if (can(globalRole, capability)) return true;
+  if (!projectRole) return false;
+  return PROJECT_CAPABILITY_SETS[projectRole]?.has(capability) ?? false;
+}
 
 export function seesAllProjects(role: GlobalRole): boolean {
   return ORG_WIDE_ROLES.includes(role);

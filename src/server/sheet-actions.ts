@@ -314,7 +314,7 @@ export async function retryFailedSyncs(formData: FormData) {
 
   await db
     .update(syncJobs)
-    .set({ status: "pending", attempts: 0, nextAttemptAt: new Date() })
+    .set({ status: "queued", attempts: 0, nextAttemptAt: new Date() })
     .where(eq(syncJobs.mappingId, mapping.id));
   revalidatePath(`/projects/${projectId}`);
 }

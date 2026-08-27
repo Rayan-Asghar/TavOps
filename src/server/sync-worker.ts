@@ -38,7 +38,7 @@ async function claimJobs(limit: number): Promise<ClaimedJob[]> {
        SET status = 'running', attempts = attempts + 1
      WHERE id IN (
        SELECT id FROM sync_jobs
-        WHERE status = 'pending'
+        WHERE status = 'queued'
           AND next_attempt_at <= now()
         ORDER BY next_attempt_at
         LIMIT ${limit}
@@ -54,7 +54,7 @@ async function markSuccess(jobId: string, mappingId: string) {
   await db.transaction(async (tx) => {
     await tx
       .update(syncJobs)
-      .set({ status: "success", completedAt: new Date(), lastError: null })
+      .set({ status: "done", completedAt: new Date(), lastError: null })
       .where(eq(syncJobs.id, jobId));
     await tx
       .update(sheetMappings)
@@ -72,7 +72,7 @@ async function markFailure(job: ClaimedJob, err: unknown) {
     await db
       .update(syncJobs)
       .set({
-        status: "pending",
+        status: "queued",
         lastError: message,
         nextAttemptAt: new Date(Date.now() + backoffMs(job.attempts)),
       })
@@ -121,7 +121,7 @@ export async function runSyncWorker(limit = BATCH_SIZE) {
         await db
           .update(syncJobs)
           .set({
-            status: "success",
+            status: "done",
             completedAt: new Date(),
             lastError: "Mapping removed or disabled; skipped.",
           })
