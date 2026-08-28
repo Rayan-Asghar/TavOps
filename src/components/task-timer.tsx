@@ -241,7 +241,7 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
       <form action={finishAction} className="space-y-2 border-t border-border pt-4">
         <input type="hidden" name="sessionId" value={session.id} />
         <label className="label" htmlFor="finish-note">
-          What you finished
+          What you finished <span className="text-fg-subtle">(internal)</span>
         </label>
         <textarea
           id="finish-note"
@@ -251,6 +251,19 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           className="field"
           placeholder="Hero completed for desktop/mobile. Ready for QA."
         />
+
+        {/* Same split as the manual form: only this line can reach a client. */}
+        <label className="label" htmlFor="finish-client">
+          Line for the client <span className="text-fg-subtle">(optional)</span>
+        </label>
+        <input
+          id="finish-client"
+          name="clientUpdate"
+          maxLength={300}
+          className="field"
+          placeholder="Homepage complete and in review."
+        />
+
         <label className="label" htmlFor="finish-status">
           Move task to
         </label>

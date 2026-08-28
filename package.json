@@ -16,7 +16,9 @@
     "sheets:doctor": "tsx --env-file=.env.local scripts/sheets-doctor.ts",
     "sheets:attach": "tsx --env-file=.env.local scripts/attach-sheet.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

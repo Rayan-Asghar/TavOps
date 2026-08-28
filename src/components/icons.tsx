@@ -110,3 +110,12 @@ export function ReviewIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function LogIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  );
+}

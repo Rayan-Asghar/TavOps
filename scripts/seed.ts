@@ -160,9 +160,9 @@ async function main() {
   const pdp = taskRows.find((t) => t.title === "PDP template")!;
 
   await db.insert(workLogs).values([
-    { projectId: shopify.id, taskId: homepage.id, userId: by("Ayan").id, hours: "6.00", notes: "Hero + featured collection sections, desktop and mobile.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 3 * 864e5) },
-    { projectId: shopify.id, taskId: pdp.id, userId: by("Ayan").id, hours: "4.50", notes: "Variant picker and gallery scaffolding.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 2 * 864e5) },
-    { projectId: shopify.id, taskId: null, userId: by("Hammad").id, hours: "1.00", notes: "Client call: scope walkthrough for Klaviyo migration.", workDate: new Date(Date.now() - 2 * 864e5) },
+    { projectId: shopify.id, taskId: homepage.id, userId: by("Ayan").id, hours: "6.00", internalNotes: "Hero + featured collection sections, desktop and mobile.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 3 * 864e5) },
+    { projectId: shopify.id, taskId: pdp.id, userId: by("Ayan").id, hours: "4.50", internalNotes: "Variant picker and gallery scaffolding.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 2 * 864e5) },
+    { projectId: shopify.id, taskId: null, userId: by("Hammad").id, hours: "1.00", internalNotes: "Client call: scope walkthrough for Klaviyo migration.", workDate: new Date(Date.now() - 2 * 864e5) },
   ]);
 
   // One internal blocker already past SLA, and one client dependency that must

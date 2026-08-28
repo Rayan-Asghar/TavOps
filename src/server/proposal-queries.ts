@@ -1,6 +1,6 @@
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, proposals, users } from "@/db/schema";
+import { clients, projects, proposals, users, workLogs } from "@/db/schema";
 
 /**
  * Read side of the BD pipeline.
@@ -126,13 +126,39 @@ export async function listProposals(
     .limit(60);
 }
 
+export type CategoryRow = {
+  category: string;
+  sent: number;
+  responded: number;
+  won: number;
+  wonValue: number;
+  /** Hours actually spent delivering the won jobs in this category. */
+  deliveredHours: number;
+  /** Effective rate: what the won work in this category really paid per hour. */
+  perHour: number | null;
+};
+
 /**
- * Response rate per category — the number that actually changes behaviour.
- * Volume says a rep is busy; this says which niches are worth bidding on.
+ * Category performance, both legs of the deal.
+ *
+ * Response rate says which niches are worth bidding on at all. But on
+ * fixed-price marketplace work that is only half the question — a category can
+ * convert brilliantly and still lose money, and until now nothing ever reported
+ * back what a won job actually cost. `proposals.wonProjectId` already points at
+ * the project a bid became, so the hours are one join away.
+ *
+ * `perHour` is the number that should change the next bid: winning $2,000 of
+ * Shopify migrations that take 90 hours is a worse business than winning $900
+ * of automation work that takes 12.
  */
-export async function conversionByCategory(actorId: string, seesAll: boolean) {
+export async function conversionByCategory(
+  actorId: string,
+  seesAll: boolean,
+): Promise<CategoryRow[]> {
   const scope = ownerFilter(actorId, seesAll);
-  return db
+  const bucket = sql`coalesce(${proposals.category}, 'Uncategorised')`;
+
+  const pipeline = await db
     .select({
       category: sql<string>`coalesce(${proposals.category}, 'Uncategorised')`,
       sent: sql<number>`count(*)::int`,
@@ -142,9 +168,35 @@ export async function conversionByCategory(actorId: string, seesAll: boolean) {
     })
     .from(proposals)
     .where(scope)
-    .groupBy(sql`coalesce(${proposals.category}, 'Uncategorised')`)
+    .groupBy(bucket)
     .orderBy(sql`count(*) desc`)
     .limit(12);
+
+  // Separate query, merged in JS: joining work_logs into the query above would
+  // multiply the proposal rows and inflate every count in it.
+  const delivered = await db
+    .select({
+      category: sql<string>`coalesce(${proposals.category}, 'Uncategorised')`,
+      hours: sql<number>`coalesce(sum(${workLogs.hours}), 0)::float`,
+    })
+    .from(proposals)
+    .innerJoin(projects, eq(proposals.wonProjectId, projects.id))
+    .innerJoin(workLogs, eq(workLogs.projectId, projects.id))
+    .where(and(scope, isNull(workLogs.deletedAt)))
+    .groupBy(bucket);
+
+  const hoursByCategory = new Map(delivered.map((r) => [r.category, r.hours]));
+
+  return pipeline.map((r) => {
+    const deliveredHours = hoursByCategory.get(r.category) ?? 0;
+    return {
+      ...r,
+      deliveredHours,
+      // Null rather than zero when nothing has been delivered yet: "no data"
+      // and "earns nothing per hour" must not look the same on a screen.
+      perHour: deliveredHours > 0 ? r.wonValue / deliveredHours : null,
+    };
+  });
 }
 
 /** Options the handoff form needs: existing clients and assignable leads. */

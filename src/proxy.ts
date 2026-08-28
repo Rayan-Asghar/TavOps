@@ -10,5 +10,10 @@ export const { auth: middleware } = NextAuth(authConfig);
 export default middleware;
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  // The manifest must stay public: a browser fetches it before anyone has
+  // signed in, and behind the session gate it comes back as a login redirect,
+  // which silently kills the "add to home screen" prompt.
+  matcher: [
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.png$).*)",
+  ],
 };

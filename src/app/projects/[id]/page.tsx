@@ -169,7 +169,7 @@ export default async function ProjectPage({
         .select({
           id: workLogs.id,
           hours: workLogs.hours,
-          notes: workLogs.notes,
+          notes: workLogs.internalNotes,
           workDate: workLogs.workDate,
           userName: users.name,
           taskTitle: tasks.title,

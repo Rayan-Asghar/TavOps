@@ -5,6 +5,7 @@ import {
   inspectSheet,
   inspectTab,
   saveSheetMapping,
+  applyClientTemplate,
   testSheetConnection,
   toggleSheetSync,
   retryFailedSyncs,
@@ -54,12 +55,17 @@ export function SheetConfig({
   const [inspectState, inspectAction, inspecting] = useActionState(inspectSheet, initial);
   const [tabState, tabAction, switchingTab] = useActionState(inspectTab, initial);
   const [saveState, saveAction, saving] = useActionState(saveSheetMapping, initial);
+  const [tplState, tplAction, applyingTpl] = useActionState(applyClientTemplate, initial);
   const [testState, testAction, testing] = useActionState(testSheetConnection, initial);
   const [reconfiguring, setReconfiguring] = useState(false);
 
   // The newer of the two inspections wins, so switching tabs refreshes headers.
   const inspection = tabState.inspection ?? inspectState.inspection;
-  const connected = status.mapping && !reconfiguring;
+  const conn = status.connection;
+  // Archived reads as disconnected: the record is kept for the audit trail, but
+  // the project needs setting up again before anything reaches the client.
+  const connected = conn && conn.status !== "archived" && !reconfiguring;
+  const syncing = conn?.status === "active";
 
   if (!serviceAccountEmail) {
     return (
@@ -92,16 +98,16 @@ export function SheetConfig({
               <div>
                 <p className="eyebrow">CONNECTED</p>
                 <h3 className="m-0 text-[16px] tracking-[-.03em]">
-                  {status.mapping!.sheetName}
+                  {conn!.tabName}
                 </h3>
               </div>
               <div className="flex items-center gap-2">
-                {status.mapping!.isEnabled ? (
+                {syncing ? (
                   <Badge tone="green">Syncing</Badge>
                 ) : (
                   <Badge tone="neutral">Paused</Badge>
                 )}
-                <Badge tone="blue">{status.mapping!.mode}</Badge>
+                <Badge tone="blue">{conn!.mode}</Badge>
               </div>
             </div>
 
@@ -112,8 +118,8 @@ export function SheetConfig({
                 ["Failed", String(status.failed)],
                 [
                   "Last sync",
-                  status.mapping!.lastSyncedAt
-                    ? status.mapping!.lastSyncedAt.toLocaleDateString("en-US", {
+                  conn!.lastSyncAt
+                    ? conn!.lastSyncAt.toLocaleDateString("en-US", {
                         month: "short",
                         day: "2-digit",
                       })
@@ -134,6 +140,17 @@ export function SheetConfig({
                 </div>
               ))}
             </div>
+
+            {conn!.status === "error" && conn!.errorMessage && (
+              <div className="border-b border-border bg-danger-soft px-5 py-3">
+                <p className="m-0 text-[11px] font-bold text-danger">
+                  This sheet is not accepting updates
+                </p>
+                <p className="m-0 mt-1 font-mono text-[10px] text-danger">
+                  {conn!.errorMessage}
+                </p>
+              </div>
+            )}
 
             {status.failed > 0 && status.lastError && (
               <div className="border-b border-border bg-danger-soft px-5 py-3">
@@ -157,7 +174,7 @@ export function SheetConfig({
               <p className="eyebrow m-0">COLUMN MAPPING</p>
               <ul className="mt-2 grid gap-1 sm:grid-cols-2">
                 {SHEET_FIELDS.map((f) => {
-                  const col = status.mapping!.columnMap[f.key];
+                  const col = conn!.columnMap[f.key];
                   return (
                     <li key={f.key} className="flex items-center gap-2 text-[11px]">
                       <span className="w-[70px] text-fg-muted">{f.label}</span>
@@ -192,10 +209,10 @@ export function SheetConfig({
                 <input
                   type="hidden"
                   name="enabled"
-                  value={status.mapping!.isEnabled ? "false" : "true"}
+                  value={syncing ? "false" : "true"}
                 />
                 <button type="submit" className="btn-secondary py-2 text-[12px]">
-                  {status.mapping!.isEnabled ? "Pause syncing" : "Resume syncing"}
+                  {syncing ? "Pause syncing" : "Resume syncing"}
                 </button>
               </form>
               <form action={disconnectSheet} className="ml-auto">
@@ -218,8 +235,43 @@ export function SheetConfig({
         </>
       ) : (
         <>
+          {/* The common case first. Most clients take the sheet we give them,
+              so hand-mapping columns is a step that usually need not exist. */}
           <section className="panel p-5">
-            <p className="eyebrow m-0">STEP 2 — PASTE THE LINK</p>
+            <p className="eyebrow m-0">STEP 2 — USE THE TAVREN TEMPLATE</p>
+            <p className="m-0 mb-3 mt-1 text-[12px] text-fg-muted">
+              For a blank sheet. Writes the standard header row and connects it
+              in one step — no column mapping. If the client sent their own
+              layout, skip this and map the columns below instead.
+            </p>
+            <form action={tplAction} className="space-y-3">
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="sheetName" value="Sheet1" />
+              <div>
+                <label className="sr-only" htmlFor="tplUrl">
+                  Google Sheet link
+                </label>
+                <input
+                  id="tplUrl"
+                  name="sheetUrl"
+                  required
+                  className="field"
+                  placeholder="https://docs.google.com/spreadsheets/d/…"
+                />
+              </div>
+              <Msg state={tplState} />
+              <button
+                type="submit"
+                disabled={applyingTpl}
+                className="btn-primary py-2 text-[12px]"
+              >
+                {applyingTpl ? "Writing…" : "Set up with the template"}
+              </button>
+            </form>
+          </section>
+
+          <section className="panel p-5">
+            <p className="eyebrow m-0">OR — MAP THE CLIENT&rsquo;S OWN SHEET</p>
             <form action={inspectAction} className="mt-2 space-y-3">
               <input type="hidden" name="projectId" value={projectId} />
               <div>
@@ -233,8 +285,8 @@ export function SheetConfig({
                   className="field"
                   placeholder="https://docs.google.com/spreadsheets/d/…"
                   defaultValue={
-                    status.mapping
-                      ? `https://docs.google.com/spreadsheets/d/${status.mapping.spreadsheetId}/edit`
+                    conn
+                      ? `https://docs.google.com/spreadsheets/d/${conn.spreadsheetId}/edit`
                       : ""
                   }
                 />
@@ -330,6 +382,25 @@ export function SheetConfig({
                     Leave a field blank to never write that column. Anything not
                     listed here is never touched, so the client&rsquo;s own
                     columns are safe.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="label" htmlFor="clientOwned">
+                    Columns the client maintains
+                  </label>
+                  <input
+                    id="clientOwned"
+                    name="clientOwnedColumns"
+                    className="field font-mono uppercase"
+                    placeholder="e.g. G, H"
+                    pattern="[A-Za-z, ]*"
+                  />
+                  <p className="mt-1 text-[10px] text-fg-muted">
+                    Optional belt-and-braces. Columns listed here are refused by
+                    the sync worker even if something later maps a field onto
+                    them, so a client&rsquo;s approvals or comments cannot be
+                    overwritten by a mistake in this form.
                   </p>
                 </div>
 

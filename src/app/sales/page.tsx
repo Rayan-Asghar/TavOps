@@ -256,8 +256,12 @@ export default async function SalesPage() {
                 <div>
                   <p className="eyebrow">WHERE TO KEEP BIDDING</p>
                   <h3 className="m-0 text-[18px] tracking-[-.035em]">
-                    Response rate by category
+                    Category performance
                   </h3>
+                  <p className="m-0 mt-1 text-[11px] text-fg-muted">
+                    Response rate says what is worth bidding on. The rate per
+                    hour says whether winning it was worth it.
+                  </p>
                 </div>
               </div>
               <div className="p-5">
@@ -265,11 +269,25 @@ export default async function SalesPage() {
                   const rate = c.sent ? (c.responded / c.sent) * 100 : 0;
                   return (
                     <div key={c.category} className="mb-4 last:mb-0">
-                      <div className="flex items-baseline justify-between text-[11px]">
+                      <div className="flex items-baseline justify-between gap-3 text-[11px]">
                         <span className="font-bold">{c.category}</span>
-                        <span className="text-fg-muted">
+                        <span className="text-right text-fg-muted">
                           {c.responded}/{c.sent} replied · {c.won} won
                           {c.wonValue > 0 && ` · $${c.wonValue.toLocaleString()}`}
+                          {/* The return leg: what the won work actually cost.
+                              On fixed-price bidding this is the number that
+                              should change the next bid. */}
+                          {c.perHour !== null && (
+                            <span
+                              className={
+                                c.perHour < 15 ? "font-bold text-danger" : "font-bold"
+                              }
+                            >
+                              {" "}
+                              · ${c.perHour.toFixed(0)}/h over{" "}
+                              {c.deliveredHours.toFixed(0)}h
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="mt-2 h-[5px] bg-surface-2">

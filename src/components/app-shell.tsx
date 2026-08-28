@@ -42,13 +42,21 @@ export function AppShell({
     { href: "/projects", label: "Projects", icon: "projects" },
   ];
 
-  if (can(role, "review.approve")) {
-    main.push({ href: "/review", label: "Review", icon: "review" });
+  // Second slot, above Projects in importance if not position: every other
+  // signal in this system is downstream of hours actually being entered.
+  if (can(role, "worklog.create")) {
+    main.splice(1, 0, { href: "/log", label: "Log work", icon: "log" });
   }
 
   if (can(role, "proposal.create") || can(role, "feasibility.answer")) {
     main.push({ href: "/sales", label: "Sales", icon: "sales" });
   }
+
+  // Review is deliberately NOT a top-level destination. Every item in the queue
+  // already arrives as a `task_needs_review` inbox item, and those link
+  // straight to /review — so the queue is one click from where people already
+  // look, without holding a permanent slot that reads as unfinished work even
+  // when it is empty. A standing nav entry for an empty queue is noise.
 
   // Only surface what is actually built. A nav full of dead links reads as a
   // broken product rather than a roadmap.
@@ -56,9 +64,8 @@ export function AppShell({
   if (can(role, "user.manage")) {
     management.push({ href: "/admin/users", label: "People", icon: "people" });
   }
-  if (can(role, "team.manage")) {
-    management.push({ href: "/admin/teams", label: "Teams", icon: "people" });
-  }
+  // Teams no longer drive blocker routing, so there is nothing they change from
+  // day to day. The tables and the page remain; the nav slot does not.
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[248px_minmax(0,1fr)]">

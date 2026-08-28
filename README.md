@@ -10,12 +10,19 @@ The design brief and full backlog live in [docs/tavOps.md](docs/tavOps.md).
 One developer submission fans out to everything else:
 
 ```
-Log work  ->  work_logs row
+Log work  ->  work_logs row (internal note + optional client line)
+          ->  worklog_revisions v1, so every entry has an origin
           ->  task status + freshness clock
           ->  reviewer notification
-          ->  queued Google Sheets row
+          ->  queued Google Sheets row  [only if a client line was written]
           ->  clears the "you owe an update" inbox item
 ```
+
+**Internal notes never reach a client sheet.** A work log carries two separate
+fields: `internal_notes`, which the team and reviewers read, and `client_update`,
+a single optional line that is the only thing a spreadsheet can ever receive.
+Leave the client line blank and no row is queued at all — which is the right
+default for most entries.
 
 Everything commits in one transaction. The Sheets API call happens out of band
 in a worker, so a slow Google response never sits between a developer and their
@@ -23,7 +30,7 @@ submit button.
 
 | Module | State |
 | --- | --- |
-| Auth + roles (7 roles, see below) | Working |
+| Auth + roles (5 roles, see below) | Working |
 | Admin UI for creating / deactivating people | Working |
 | Projects, scoped per user | Working |
 | Tasks: create, assign, estimate, due dates | Working |
@@ -38,8 +45,14 @@ submit button.
 | BD pipeline: proposals, feasibility routing, conversion by category | Working |
 | Won proposal → draft project handoff | Working |
 | Sheets sync queue, retry/backoff, failure alerting | Working |
+| Stuck-job reaper, idempotent writes, held corrections | Working |
+| One-click standard client sheet template | Working |
+| Phone-first log screen (`/log`) + installable PWA | Working |
+| Daily digest pushed to Discord / Slack webhooks | Working |
+| Estimate-overrun detection | Working |
+| Effective rate per bid category | Working |
 | Live Google Sheets write | Needs credentials — see below |
-| Sales pipeline, QA checklists, change requests, dashboards | Not in v1 |
+| QA checklists, change requests, client-facing view | Not in v1 |
 
 ## Running it
 
@@ -66,6 +79,9 @@ real accounts through **People** in the nav.
 | `AUTH_SECRET` | `openssl rand -base64 32` |
 | `CRON_SECRET` | Guards `/api/cron/*`. `openssl rand -hex 24` |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_PRIVATE_KEY` | Sheets sync |
+| `DIGEST_WEBHOOK_URLS` | Comma-separated Discord/Slack incoming webhooks. Blank disables delivery. |
+| `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error`. Structured JSON on stdout. |
+| `APP_DB_PASSWORD` | Optional. Pins the `tavren_app` password across `pnpm db:reset`. |
 
 ### Google Sheets setup
 
@@ -74,8 +90,10 @@ real accounts through **People** in the nav.
 3. Put `client_email` and `private_key` into `.env.local` (keep the `\n`
    escapes in the key).
 4. Share each client spreadsheet with the service-account address as **Editor**.
-5. Add a row to `sheet_mappings` for the project, mapping Tavren fields to
-   column letters.
+5. Open the project's **Sync** tab. For a blank sheet, *Set up with the
+   template* writes the standard header row and connects it in one step. For a
+   sheet the client designed, map the columns manually and list any columns
+   they maintain so the worker refuses to write them.
 
 Sheets API quota is 300 writes/minute per project and costs nothing, which is
 far beyond what a dozen developers generate. The failure mode to plan for is a
@@ -88,8 +106,12 @@ Two endpoints, both requiring `Authorization: Bearer $CRON_SECRET`:
 
 | Endpoint | Cadence | Does |
 | --- | --- | --- |
-| `POST /api/cron/sync` | every 2–5 min | Drains the Sheets sync queue |
-| `POST /api/cron/sweeps` | hourly | Escalates blockers, flags stale tasks, recomputes project health |
+| `POST /api/cron/sync` | every 2–5 min | Drains the Sheets sync queue, reclaims stranded jobs |
+| `POST /api/cron/sweeps` | hourly | Escalates blockers, flags stale tasks and estimate overruns, recomputes project health |
+| `POST /api/cron/digest` | daily, ~13:00 UTC | Builds the status digest and posts it to every configured webhook |
+
+Add `?dry=1` to the digest endpoint to render it without sending — useful for
+checking the wording without putting a test message in front of the team.
 
 Note that Vercel's Hobby tier only runs cron **once per day** and forbids
 commercial use, which makes it a poor fit. Use a cheap VPS, Cloudflare Workers
@@ -117,13 +139,15 @@ inference.
 
 ## Teams
 
-Teams are **many-to-many on purpose**: a developer sits in several, and a lead
-runs more than one person. Ayan is in Shopify (led by Hozefa) and Automation
-(led by Hammad), so "who is Ayan's lead" has no single answer — it is resolved
-per blocker, preferring the lead who is also attached to that project.
+Teams are **reference only**. They once decided who a blocker escalated to,
+resolved per-blocker by preferring the lead who was also on the project. That
+machinery was removed: for a team of ten whose partners speak daily, it encoded
+a hierarchy that does not exist and cost maintenance forever.
 
-Managed at **/admin/teams**. The page flags anyone in no team at all, because a
-blocker they raise has no lead to fall back to.
+Blockers now route by **project role** — the sales owner, PM or delivery lead
+named on that project. Editing a team changes nothing about routing, SLAs or
+notifications. The tables remain and `/admin/teams` still works; it just has no
+effect on behaviour, and the page says so.
 
 "Activity" means the work-log feed — who logged which hours. A developer sees
 only their own entries; the section is titled *Your activity* rather than
@@ -131,9 +155,9 @@ silently showing a partial list. Task status and blockers stay visible to
 everyone on the project, so a delivery lead can still run reviews without
 seeing the whole timesheet.
 
-`sales_head` exists because Muzammil (Sales Manager / BD) and the reps
-(Saqlain, Shahab) need different visibility — the head answers for the whole
-pipeline, a rep only for their own deals.
+Muzammil (Sales Manager / BD) holds `head`, so he sees the whole pipeline; the
+reps (Saqlain, Shahab) hold `sales` and see only their own deals. There is no
+separate `sales_head` role — the distinction is `head` vs `sales`.
 
 ## Managing people
 
@@ -176,14 +200,20 @@ against a table owner; not handing out connection strings does.
 ## Layout
 
 ```
-src/db/schema.ts        13 tables, the whole data model
+src/db/schema.ts        21 tables, the whole data model
 src/lib/rbac.ts         capabilities per role
 src/lib/access.ts       project scoping / IDOR defence
 src/lib/business-time.ts SLA clocks that skip nights and weekends
 src/server/work-logs.ts the fan-out described above
 src/server/blockers.ts  routing + client clock-stop
 src/server/sweeps.ts    escalation, stale detection, health
-src/server/sync-worker.ts queue drain with backoff
+src/server/sync-worker.ts queue drain, backoff, stuck-job reaper
+src/server/digest.ts    the daily status roll-up (queries)
+src/lib/digest-format.ts how that roll-up reads (pure, tested)
+src/server/webhooks.ts  delivery to Discord / Slack
+src/server/capacity.ts  who is already booked, used at handoff
+src/lib/logger.ts       structured JSON logging
+src/app/log/page.tsx    the phone-first log screen
 drizzle/                migrations, including the RLS backstop
 ```
 
@@ -203,41 +233,58 @@ falls out of the same data.
 ## Blocker routing
 
 Blockers are **routed by rule, not broadcast**. The matrix lives in
-[src/lib/blocker-routing.ts](src/lib/blocker-routing.ts) as a pure function
-over a resolved context — no database, no auth, no clock — because it is the
-part most likely to be argued about and changed, and it should be testable
-without a server. Run `npx tsx scripts/routing-matrix.mjs` to print the whole
-table.
+[src/lib/blocker-routing.ts](src/lib/blocker-routing.ts) as a pure function over
+a resolved context — no database, no auth, no clock — because it is the part
+most likely to be argued about, and it should be testable without a server. Run
+`npx tsx scripts/routing-matrix.mjs` to print the whole table.
+
+Every category lands on exactly one of three owners:
 
 | Blocker | Owner | Copied |
 | --- | --- | --- |
-| Missing access / asset / client approval | Client communication owner | PM |
+| Missing access / asset / client approval / waiting on client | Sales owner | PM |
+| Sales promised out of scope | Sales owner | PM |
 | Requirement unclear, conflict, decision | PM | Delivery lead |
-| Sales promised out of scope | Deal owner | PM |
-| Technical implementation | Technical overseer | PM |
-| QA / review issue | Project QA reviewer | Delivery lead |
-| Waiting on another developer | That developer | Their lead |
-| Production incident | Delivery lead | PM, immediately |
-| Anything else | **The reporter's team lead** | Project PM |
+| Technical, QA, production incident, anything else | Delivery lead | PM |
+| Waiting on another developer | That developer | PM |
 
-**The reporter's team lead is always at least copied**, whatever the category.
-A lead should never learn second-hand that one of their people is stuck. When
-the project has no specialist for a category, the team lead becomes the owner
-rather than merely a watcher.
+A **project role beats the project default**: a project with its own tech lead
+routes technical work to them rather than the standing delivery lead.
 
 Two distinctions the model depends on:
 
-- **Owner vs watcher.** Exactly one person owns a blocker and the SLA clock
-  sits on them; watchers are told and marked non-actionable. "Notify every
-  manager" produces an inbox nobody reads.
-- **Project role beats project default.** A project with its own technical
-  overseer or QA reviewer routes to them, not to the standing delivery lead.
+- **Owner vs watcher.** Exactly one person owns a blocker and the SLA clock sits
+  on them. Exactly one person is copied — normally the PM, or the delivery lead
+  when the PM is already the owner, so somebody always has visibility without
+  producing an inbox nobody reads.
+- **Client-owned blockers stop the developer's clock.** `missing_access`,
+  `missing_asset`, `client_approval` and `waiting_on_client` are the client's to
+  answer; the stale-task sweep skips any task with an open blocker.
 
-Severity sets the response window — low 16h, normal 8h, high 4h, critical 1h —
-and a production incident is forced to critical no matter what was ticked. The
-rule that fired is stored on the blocker, so "why did this come to me" is
-answerable without re-deriving anything, and the reporter is shown where it
-will go *before* they submit.
+Severity sets the response window — low 16h, normal 8h, high 4h, critical 1h,
+all in **business hours** — and a production incident is forced to critical no
+matter what was ticked. The rule that fired is stored on the blocker, so "why
+did this come to me" is answerable without re-deriving anything, and the
+reporter is shown where it will go *before* they submit.
+
+## Business hours
+
+The team works **18:00–02:00 PKT** to overlap US client hours, which is
+**13:00–21:00 UTC**. Every SLA clock, escalation step and staleness cutoff runs
+on those hours — a blocker raised at the end of Friday's shift is not "24 hours
+overdue" on Saturday evening, and escalating on raw elapsed time is the fastest
+way to train people to ignore alerts.
+
+The window is defined in [src/lib/business-time.ts](src/lib/business-time.ts) as
+two UTC constants, and that simplicity is not incidental: 18:00–02:00 PKT does
+**not** cross a UTC midnight, so a plain `getUTCDay()` weekend check lines up
+exactly with Monday–Friday night shifts, and a whole shift's work logs land on
+one `work_date`. If the shift ever moves such that it straddles 00:00 UTC, the
+file has to become timezone-aware.
+
+One shift is 8 hours, and "one working day without an update" is derived from
+that rather than hard-coded, so changing the hours moves every dependent
+threshold with it.
 
 ## Deadlines
 
@@ -264,6 +311,20 @@ This is load-bearing in two places, not cosmetic:
 
 Someone with open tasks on a project cannot be removed from it — that would
 orphan the work silently. Reassign first.
+
+## Logging work
+
+**/log** is the front door for anyone doing the work: one screen listing every
+open task assigned to you, plus every active project for the calls and meetings
+that belong to no task. Tap a row, put in hours and a line about what you did.
+It is installable to a phone home screen and opens straight here, because the
+hours get entered at 2am at the end of a shift and "find the laptop" is the step
+that actually stops it happening.
+
+Each entry takes an internal note and an optional one-line client update. Only
+the client line can ever reach a spreadsheet.
+
+`/` stays the partner view — the exception inbox.
 
 ## Time tracking
 

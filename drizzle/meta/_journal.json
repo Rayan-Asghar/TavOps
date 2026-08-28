@@ -57,6 +57,13 @@
       "when": 1787858153395,
       "tag": "0007_sheets_layer_additive",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787866114394,
+      "tag": "0008_drop_deprecated_sheets",
+      "breakpoints": true
     }
   ]
 }

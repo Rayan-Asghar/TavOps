@@ -1,19 +1,14 @@
 "use server";
 
-import { z } from "zod";
 import { logWork } from "./work-logs";
 import { reportBlocker } from "./blockers";
 import { resolveBlocker } from "./blockers";
+import { safeErrorMessage } from "./action-errors";
 
 export type FormState = { ok?: boolean; error?: string; message?: string };
 
-/** Turns thrown validation/authorization errors into something renderable. */
-function toState(err: unknown): FormState {
-  if (err instanceof z.ZodError) {
-    return { error: err.issues[0]?.message ?? "Check the form and try again." };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return { error: message };
+function toState(err: unknown, action: string): FormState {
+  return { error: safeErrorMessage(err, action) };
 }
 
 export async function logWorkFormAction(
@@ -28,7 +23,8 @@ export async function logWorkFormAction(
       projectId: String(formData.get("projectId") ?? ""),
       taskId: taskId === "" ? null : taskId,
       hours: Number(formData.get("hours") ?? 0),
-      notes: String(formData.get("notes") ?? ""),
+      internalNotes: String(formData.get("internalNotes") ?? ""),
+      clientUpdate: String(formData.get("clientUpdate") ?? ""),
       resultingStatus: status === "" ? null : (status as never),
     });
 
@@ -39,7 +35,7 @@ export async function logWorkFormAction(
         : "Logged.",
     };
   } catch (err) {
-    return toState(err);
+    return toState(err, "logWork");
   }
 }
 
@@ -60,7 +56,7 @@ export async function reportBlockerFormAction(
     });
     return { ok: true, message: "Reported and routed to the right person." };
   } catch (err) {
-    return toState(err);
+    return toState(err, "reportBlocker");
   }
 }
 
@@ -75,6 +71,6 @@ export async function resolveBlockerFormAction(
     });
     return { ok: true, message: "Resolved." };
   } catch (err) {
-    return toState(err);
+    return toState(err, "resolveBlocker");
   }
 }

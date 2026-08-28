@@ -160,14 +160,27 @@ export default async function InboxPage() {
                   </div>
                   <div className="col-start-2 flex flex-wrap items-center gap-3 sm:col-start-auto sm:shrink-0 sm:justify-end">
                     <Badge tone={meta.tone}>{meta.label}</Badge>
-                    {n.projectId && (
+                    {/* Review items open the queue rather than the project:
+                        the queue is where the approve / send-back decision is
+                        actually made, and it carries the revision round. */}
+                    {n.kind === "task_needs_review" ? (
                       <Link
-                        href={`/projects/${n.projectId}`}
+                        href="/review"
                         className="btn-text"
-                        aria-label={`Open project for: ${n.title}`}
+                        aria-label={`Open review queue for: ${n.title}`}
                       >
-                        Open <ArrowRightIcon />
+                        Review <ArrowRightIcon />
                       </Link>
+                    ) : (
+                      n.projectId && (
+                        <Link
+                          href={`/projects/${n.projectId}`}
+                          className="btn-text"
+                          aria-label={`Open project for: ${n.title}`}
+                        >
+                          Open <ArrowRightIcon />
+                        </Link>
+                      )
                     )}
                     <form action={dismissNotification}>
                       <input type="hidden" name="id" value={n.id} />

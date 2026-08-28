@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"${CLAUDE_PROJECT_DIR:-.}/HANDOFF.md\"",
+            "timeout": 10,
+            "statusMessage": "Loading HANDOFF.md"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"[continuity] Context is about to be compacted. Save durable state to HANDOFF.md (goal, current state, files touched, failed approaches, next steps) before it is lost.\" >&2",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

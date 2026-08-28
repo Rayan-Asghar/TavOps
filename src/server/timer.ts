@@ -14,12 +14,12 @@ import {
   finishTimerSchema,
   startTimerSchema,
 } from "./timer-schemas";
+import { safeErrorMessage } from "./action-errors";
 
 export type TimerState = { error?: string; ok?: boolean; message?: string };
 
 function fail(err: unknown): TimerState {
-  const message = err instanceof Error ? err.message : String(err);
-  return { error: message };
+  return { error: safeErrorMessage(err, "timer") };
 }
 
 /** The one session a person may have open. Null when nothing is being timed. */
@@ -217,7 +217,8 @@ export async function finishTimer(
         taskId: session.taskId,
         userId: actor.id,
         hours,
-        notes: data.note,
+        internalNotes: data.note,
+        clientUpdate: data.clientUpdate ?? null,
         resultingStatus: data.resultingStatus,
       });
 

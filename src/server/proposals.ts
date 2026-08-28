@@ -13,6 +13,7 @@ import {
   createProposalSchema,
   feasibilityAnswerSchema,
 } from "./proposal-schemas";
+import { safeErrorMessage } from "./action-errors";
 
 export type ProposalState = {
   ok?: boolean;
@@ -30,7 +31,7 @@ function toState(err: unknown): ProposalState {
     }
     return { error: "Check the highlighted fields.", fieldErrors };
   }
-  return { error: err instanceof Error ? err.message : String(err) };
+  return { error: safeErrorMessage(err, "proposal") };
 }
 
 export async function createProposal(

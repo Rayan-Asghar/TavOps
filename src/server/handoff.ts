@@ -17,6 +17,8 @@ import { assertCan } from "@/lib/rbac";
 import { notify } from "./notifications";
 import { convertProposalSchema } from "./handoff-schemas";
 import { nextProjectCode } from "./project-code";
+import { commitmentsFor, overCommitted } from "./capacity";
+import { safeErrorMessage } from "./action-errors";
 
 export type HandoffState = {
   ok?: boolean;
@@ -35,7 +37,7 @@ function toState(err: unknown): HandoffState {
     }
     return { error: "Check the highlighted fields.", fieldErrors };
   }
-  return { error: err instanceof Error ? err.message : String(err) };
+  return { error: safeErrorMessage(err, "handoff") };
 }
 
 /**
@@ -190,9 +192,25 @@ export async function convertProposalToProject(
 
     revalidatePath("/sales");
     revalidatePath("/projects");
+
+    // Advisory, never blocking: taking a job while the team is booked is a
+    // legitimate call, but it should be a call somebody makes knowingly rather
+    // than discovers a week in. The project is already created at this point.
+    const booked = overCommitted(
+      await commitmentsFor(
+        [data.pmId, data.deliveryLeadId].filter(Boolean) as string[],
+      ),
+    );
+    const warning =
+      booked.length > 0
+        ? ` Heads up: ${booked
+            .map((b) => `${b.name} is ${b.weeksBooked.toFixed(1)} weeks booked`)
+            .join(", ")}.`
+        : "";
+
     return {
       ok: true,
-      message: `Created ${created.project.code} as a draft.`,
+      message: `Created ${created.project.code} as a draft.${warning}`,
       projectId: created.project.id,
     };
   } catch (err) {

@@ -3,14 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import {
-  blockers,
-  projectMembers,
-  projects,
-  tasks,
-  teamMembers,
-  teams,
-} from "@/db/schema";
+import { blockers, projectMembers, projects, tasks } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
@@ -27,6 +20,7 @@ import {
   type ReportBlockerInput,
   type ResolveBlockerInput,
 } from "./schemas";
+import { UserFacingError } from "@/lib/errors";
 
 
 /**
@@ -52,7 +46,7 @@ export async function reportBlocker(input: ReportBlockerInput) {
       .from(projects)
       .where(eq(projects.id, data.projectId))
       .limit(1);
-    if (!project) throw new Error("Project not found.");
+    if (!project) throw new UserFacingError("Project not found.");
 
     if (data.taskId) {
       const [task] = await tx
@@ -60,7 +54,8 @@ export async function reportBlocker(input: ReportBlockerInput) {
         .from(tasks)
         .where(and(eq(tasks.id, data.taskId), eq(tasks.projectId, data.projectId)))
         .limit(1);
-      if (!task) throw new Error("Task does not belong to that project.");
+      if (!task)
+        throw new UserFacingError("Task does not belong to that project.");
     }
 
     // Project-scoped role holders outrank the project-level defaults, so a
@@ -72,22 +67,6 @@ export async function reportBlocker(input: ReportBlockerInput) {
 
     const byRole: Record<string, string | null> = {};
     for (const m of members) if (!byRole[m.role]) byRole[m.role] = m.userId;
-
-    // Teams overlap, so the reporter can have several leads; the routing engine
-    // breaks the tie by preferring one who is also on this project.
-    const leadRows = await tx
-      .select({ leadId: teams.leadId })
-      .from(teamMembers)
-      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-      .where(eq(teamMembers.userId, actor.id));
-
-    const reporterTeamLeadIds = [
-      ...new Set(
-        leadRows
-          .map((r) => r.leadId)
-          .filter((id): id is string => !!id && id !== actor.id),
-      ),
-    ];
 
     const routing = resolveBlockerRouting({
       category: data.category as BlockerCategory,
@@ -104,9 +83,7 @@ export async function reportBlocker(input: ReportBlockerInput) {
         sales_owner: byRole.sales_owner,
         pm: byRole.pm,
       },
-      reporterTeamLeadIds,
       blockedOnUserId: data.blockedOnUserId ?? null,
-      blockedOnUserLeadId: project.deliveryLeadId,
     });
 
     const [blocker] = await tx
@@ -188,7 +165,7 @@ export async function resolveBlocker(input: ResolveBlockerInput) {
       .from(blockers)
       .where(eq(blockers.id, data.blockerId))
       .limit(1);
-    if (!blocker) throw new Error("Blocker not found.");
+    if (!blocker) throw new UserFacingError("Blocker not found.");
 
     // The assignee can always clear their own item even without the global
     // capability — otherwise a sales rep could never unblock what was routed

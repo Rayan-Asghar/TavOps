@@ -26,7 +26,8 @@ export async function logWork(input: LogWorkInput) {
       taskId: data.taskId ?? null,
       userId: actor.id,
       hours: data.hours,
-      notes: data.notes,
+      internalNotes: data.internalNotes,
+      clientUpdate: data.clientUpdate ?? null,
       resultingStatus: data.resultingStatus ?? null,
     }),
   );

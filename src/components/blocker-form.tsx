@@ -34,15 +34,15 @@ const ROUTE_HINT: Record<BlockerCategory, string> = {
   missing_asset: "Goes to whoever owns client communication. Stops your clock.",
   client_approval: "Goes to whoever owns client communication. Stops your clock.",
   waiting_on_client: "Goes to whoever owns client communication. Stops your clock.",
-  unclear_requirement: "Goes to the PM, delivery lead copied.",
-  scope_conflict: "Goes to the PM, delivery lead copied.",
-  needs_decision: "Goes to the PM, delivery lead copied.",
   commercial_scope: "Goes to the deal owner, PM copied.",
-  technical: "Goes to the project's technical overseer.",
-  qa_issue: "Goes to the project's reviewer.",
-  dependency_dev: "Goes to that developer, their lead copied.",
-  production_incident: "Goes to the delivery lead and PM immediately. Always critical.",
-  other: "Goes to the delivery lead.",
+  unclear_requirement: "Goes to the PM.",
+  scope_conflict: "Goes to the PM.",
+  needs_decision: "Goes to the PM.",
+  technical: "Goes to the delivery lead, PM copied.",
+  qa_issue: "Goes to the delivery lead, PM copied.",
+  dependency_dev: "Goes to that developer, PM copied.",
+  production_incident: "Goes to the delivery lead immediately. Always critical.",
+  other: "Goes to the delivery lead, PM copied.",
 };
 
 export function BlockerForm({

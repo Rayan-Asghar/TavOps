@@ -1,19 +1,29 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { sheetMappings, syncJobs } from "@/db/schema";
+import { sheetConnections, syncJobs } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { readHeaderRow, sheetsClient, a1Range } from "./sheets";
 import {
+  applyTemplateSchema,
+  CLIENT_TEMPLATE_COLUMNS,
   inspectSheetSchema,
   parseSpreadsheetId,
   saveMappingSchema,
+  templateColumnMap,
 } from "./sheet-schemas";
+
+/** The one client connection for a project. */
+const clientConnection = (projectId: string) =>
+  and(
+    eq(sheetConnections.projectId, projectId),
+    eq(sheetConnections.audience, "client"),
+  );
 
 export type SheetState = {
   ok?: boolean;
@@ -198,7 +208,14 @@ export async function saveSheetMapping(
       if (value) columnMap[k.slice(4)] = value;
     }
 
+    // "G, H" from the form becomes ["G","H"]; blank becomes [].
+    const clientOwnedColumns = String(formData.get("clientOwnedColumns") ?? "")
+      .split(",")
+      .map((c) => c.trim().toUpperCase())
+      .filter(Boolean);
+
     const data = saveMappingSchema.parse({
+      clientOwnedColumns,
       projectId: String(formData.get("projectId") ?? ""),
       spreadsheetId: String(formData.get("spreadsheetId") ?? ""),
       sheetName: String(formData.get("sheetName") ?? ""),
@@ -208,16 +225,41 @@ export async function saveSheetMapping(
     });
     await assertProjectAccess(actor, data.projectId);
 
-    await db
-      .insert(sheetMappings)
-      .values({ ...data, isEnabled: true })
-      .onConflictDoUpdate({
-        target: sheetMappings.projectId,
-        set: { ...data, isEnabled: true },
-      });
+    const [existing] = await db
+      .select({ id: sheetConnections.id })
+      .from(sheetConnections)
+      .where(clientConnection(data.projectId))
+      .limit(1);
+
+    const values = {
+      projectId: data.projectId,
+      audience: "client" as const,
+      spreadsheetId: data.spreadsheetId,
+      tabName: data.sheetName,
+      mode: data.mode,
+      columnMap: data.columnMap,
+      headerRow: data.headerRow,
+      clientOwnedColumns: data.clientOwnedColumns,
+      status: "active" as const,
+      errorMessage: null,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(sheetConnections)
+        .set(values)
+        .where(eq(sheetConnections.id, existing.id));
+    } else {
+      await db.insert(sheetConnections).values(values);
+    }
 
     revalidatePath(`/projects/${data.projectId}`);
-    return { ok: true, message: "Sheet connected. New work logs will sync." };
+    return {
+      ok: true,
+      message:
+        "Sheet connected. Work logs that carry a client update will sync to it.",
+    };
   } catch (err) {
     if (err instanceof z.ZodError) {
       return { error: err.issues[0]?.message ?? "Check the mapping." };
@@ -240,36 +282,37 @@ export async function testSheetConnection(
     const projectId = String(formData.get("projectId") ?? "");
     await assertProjectAccess(actor, projectId);
 
-    const [mapping] = await db
+    const [connection] = await db
       .select()
-      .from(sheetMappings)
-      .where(eq(sheetMappings.projectId, projectId))
+      .from(sheetConnections)
+      .where(clientConnection(projectId))
       .limit(1);
-    if (!mapping) return { error: "No sheet is connected yet." };
+    if (!connection) return { error: "No sheet is connected yet." };
 
     const sheets = sheetsClient();
     const marker = `TavrenOPS test ${new Date().toISOString().slice(11, 19)}`;
-    const cols = Object.values(mapping.columnMap as Record<string, string>);
+    const cols = Object.values(connection.columnMap as Record<string, string>)
+      .filter((c) => !connection.clientOwnedColumns.includes(c));
     const firstCol = cols.sort()[0] ?? "A";
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: mapping.spreadsheetId,
-      range: a1Range(mapping.sheetName, `${firstCol}:${firstCol}`),
+      spreadsheetId: connection.spreadsheetId,
+      range: a1Range(connection.tabName, `${firstCol}:${firstCol}`),
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [[marker]] },
     });
 
     const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: mapping.spreadsheetId,
-      range: a1Range(mapping.sheetName, `${firstCol}:${firstCol}`),
+      spreadsheetId: connection.spreadsheetId,
+      range: a1Range(connection.tabName, `${firstCol}:${firstCol}`),
     });
     const rows = res.data.values ?? [];
     const at = rows.findIndex((r) => (r ?? [])[0] === marker) + 1;
     if (at > 0) {
       await sheets.spreadsheets.values.clear({
-        spreadsheetId: mapping.spreadsheetId,
-        range: a1Range(mapping.sheetName, `${firstCol}${at}`),
+        spreadsheetId: connection.spreadsheetId,
+        range: a1Range(connection.tabName, `${firstCol}${at}`),
       });
     }
 
@@ -291,9 +334,9 @@ export async function toggleSheetSync(formData: FormData) {
   await assertProjectAccess(actor, projectId);
 
   await db
-    .update(sheetMappings)
-    .set({ isEnabled: enabled })
-    .where(eq(sheetMappings.projectId, projectId));
+    .update(sheetConnections)
+    .set({ status: enabled ? "active" : "paused", updatedAt: new Date() })
+    .where(clientConnection(projectId));
   revalidatePath(`/projects/${projectId}`);
 }
 
@@ -305,17 +348,30 @@ export async function retryFailedSyncs(formData: FormData) {
   if (!projectId) return;
   await assertProjectAccess(actor, projectId);
 
-  const [mapping] = await db
-    .select({ id: sheetMappings.id })
-    .from(sheetMappings)
-    .where(eq(sheetMappings.projectId, projectId))
+  const [connection] = await db
+    .select({ id: sheetConnections.id })
+    .from(sheetConnections)
+    .where(clientConnection(projectId))
     .limit(1);
-  if (!mapping) return;
+  if (!connection) return;
 
-  await db
-    .update(syncJobs)
-    .set({ status: "queued", attempts: 0, nextAttemptAt: new Date() })
-    .where(eq(syncJobs.mappingId, mapping.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(syncJobs)
+      .set({ status: "queued", attempts: 0, runAfter: new Date() })
+      .where(
+        and(
+          eq(syncJobs.connectionId, connection.id),
+          eq(syncJobs.status, "failed"),
+        ),
+      );
+    // Retrying implies the underlying problem was fixed, so the connection
+    // stops advertising an error it no longer has.
+    await tx
+      .update(sheetConnections)
+      .set({ status: "active", errorMessage: null, updatedAt: new Date() })
+      .where(eq(sheetConnections.id, connection.id));
+  });
   revalidatePath(`/projects/${projectId}`);
 }
 
@@ -326,6 +382,114 @@ export async function disconnectSheet(formData: FormData) {
   if (!projectId) return;
   await assertProjectAccess(actor, projectId);
 
-  await db.delete(sheetMappings).where(eq(sheetMappings.projectId, projectId));
+  // Archived, not deleted: sync_jobs and sheet_row_links cascade off this row,
+  // and destroying the record of what was already sent to a client loses the
+  // only evidence of what they were told.
+  await db
+    .update(sheetConnections)
+    .set({ status: "archived", updatedAt: new Date() })
+    .where(clientConnection(projectId));
   revalidatePath(`/projects/${projectId}`);
+}
+
+/**
+ * Sets a shared blank sheet up with the standard Tavren layout.
+ *
+ * Most client sheets are ours to design, so hand-mapping columns is a step that
+ * usually does not need to exist. The head still creates the spreadsheet and
+ * shares it — deliberately, because a sheet the service account creates itself
+ * has no human owner, lives in a service account's Drive, and becomes
+ * unreachable the day those credentials are rotated.
+ *
+ * Refuses to write over an existing header row: a sheet with data in it is
+ * probably the client's own layout, which is what the manual flow is for.
+ */
+export async function applyClientTemplate(
+  _prev: SheetState,
+  formData: FormData,
+): Promise<SheetState> {
+  try {
+    const actor = await requireActor();
+    assertCan(actor.globalRole, "sheet.configure");
+
+    const data = applyTemplateSchema.parse({
+      projectId: String(formData.get("projectId") ?? ""),
+      sheetUrl: String(formData.get("sheetUrl") ?? ""),
+      sheetName: String(formData.get("sheetName") || "Sheet1"),
+    });
+    await assertProjectAccess(actor, data.projectId);
+
+    const spreadsheetId = parseSpreadsheetId(data.sheetUrl);
+    if (!spreadsheetId) {
+      return {
+        error:
+          "That does not look like a Google Sheets link. Copy the whole URL from the address bar.",
+      };
+    }
+
+    const sheets = sheetsClient();
+
+    const existing = await readHeaderRow({
+      spreadsheetId,
+      sheetName: data.sheetName,
+      headerRow: 1,
+    });
+    if (existing.some((h) => h.label.trim() !== "")) {
+      return {
+        error:
+          "That tab already has a header row. Use “Map columns manually” so nothing of the client's is overwritten.",
+      };
+    }
+
+    const headers = CLIENT_TEMPLATE_COLUMNS.map((c) => c.header);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: a1Range(data.sheetName, `A1:${String.fromCharCode(64 + headers.length)}1`),
+      valueInputOption: "RAW",
+      requestBody: { values: [headers] },
+    });
+
+    const columnMap = templateColumnMap();
+
+    const [current] = await db
+      .select({ id: sheetConnections.id })
+      .from(sheetConnections)
+      .where(clientConnection(data.projectId))
+      .limit(1);
+
+    const values = {
+      projectId: data.projectId,
+      audience: "client" as const,
+      spreadsheetId,
+      tabName: data.sheetName,
+      mode: "append" as const,
+      columnMap,
+      headerRow: 1,
+      clientOwnedColumns: [],
+      templateVersion: 1,
+      status: "active" as const,
+      errorMessage: null,
+      updatedAt: new Date(),
+    };
+
+    if (current) {
+      await db
+        .update(sheetConnections)
+        .set(values)
+        .where(eq(sheetConnections.id, current.id));
+    } else {
+      await db.insert(sheetConnections).values(values);
+    }
+
+    revalidatePath(`/projects/${data.projectId}`);
+    return {
+      ok: true,
+      message: `Template written and connected. ${headers.length} columns, ready for the client.`,
+    };
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return { error: err.issues[0]?.message ?? "Check the link." };
+    }
+    return { error: explain(err) };
+  }
 }

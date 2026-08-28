@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { auditLog, teamMembers, teams } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertCan } from "@/lib/rbac";
+import { safeErrorMessage } from "./action-errors";
 
 export type TeamState = {
   ok?: boolean;
@@ -30,12 +31,13 @@ function toState(err: unknown): TeamState {
     }
     return { error: "Check the highlighted fields.", fieldErrors };
   }
-  const msg = err instanceof Error ? err.message : String(err);
-  // Surface the unique-name collision as something a person can act on.
-  if (msg.includes("teams_name_unique")) {
+  // Translate the unique-name collision into something a person can act on,
+  // before the generic handler reduces it to a reference number.
+  const raw = err instanceof Error ? err.message : String(err);
+  if (raw.includes("teams_name_unique")) {
     return { error: "A team with that name already exists." };
   }
-  return { error: msg };
+  return { error: safeErrorMessage(err, "team") };
 }
 
 export async function createTeam(

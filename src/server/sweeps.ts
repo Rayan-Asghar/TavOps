@@ -1,12 +1,47 @@
-import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db } from "@/db";
-import { blockers, projects, proposals, tasks, timeSessions } from "@/db/schema";
-import { addBusinessHours, businessHoursBetween } from "@/lib/business-time";
+import {
+  blockers,
+  projects,
+  proposals,
+  tasks,
+  timeSessions,
+  workLogs,
+} from "@/db/schema";
+import {
+  addBusinessHours,
+  businessHoursBetween,
+  HOURS_PER_DAY,
+} from "@/lib/business-time";
 import { elapsedSeconds, RUNAWAY_TIMER_HOURS } from "@/lib/timer-utils";
 import { notify } from "./notifications";
 
-const ESCALATION_STEP_HOURS = 8;
-const STALE_TASK_HOURS = 9; // roughly one working day without a word
+/** Level 2 waits a further full shift after the level 1 breach. */
+const ESCALATION_STEP_HOURS = HOURS_PER_DAY;
+/** One shift without a word. Derived, so it tracks the shift if hours change. */
+const STALE_TASK_HOURS = HOURS_PER_DAY;
+
+/**
+ * How far past its estimate a task goes before anyone is told.
+ *
+ * 25% is slack for a normal misjudgement; beyond that it is a signal. On
+ * fixed-price work an overrun is not a margin curiosity, it is the earliest
+ * evidence that the delivery date is at risk — and unlike every other slip
+ * detector here it needs nobody to report anything, because the hours are
+ * already being logged to feed the client sheet.
+ */
+const OVERRUN_FACTOR = 1.25;
 
 /**
  * Escalates blockers that have blown their SLA.
@@ -113,7 +148,7 @@ export async function flagStaleTasks() {
   const blockedTaskIds = await db
     .select({ taskId: blockers.taskId })
     .from(blockers)
-    .where(and(ne(blockers.status, "resolved"), sql`${blockers.taskId} is not null`));
+    .where(and(ne(blockers.status, "resolved"), isNotNull(blockers.taskId)));
 
   const excluded = blockedTaskIds
     .map((r) => r.taskId)
@@ -134,11 +169,13 @@ export async function flagStaleTasks() {
       and(
         eq(tasks.status, "in_progress"),
         eq(projects.lifecycle, "active"),
-        sql`${tasks.assigneeId} is not null`,
+        isNotNull(tasks.assigneeId),
         or(isNull(tasks.lastUpdateAt), lt(tasks.lastUpdateAt, cutoff)),
-        excluded.length > 0
-          ? sql`${tasks.id} <> ALL(${sql.raw(`ARRAY[${excluded.map((id) => `'${id}'::uuid`).join(",")}]`)})`
-          : sql`true`,
+        // Parameterised, not concatenated. The previous version built an
+        // ARRAY['<uuid>'::uuid, ...] literal by hand, which grew without bound
+        // as open blockers accumulated. `and()` drops an undefined term, so an
+        // empty exclusion list needs no special case in the SQL.
+        excluded.length > 0 ? notInArray(tasks.id, excluded) : undefined,
       ),
     );
 
@@ -168,59 +205,111 @@ export async function recomputeProjectHealth() {
   const now = new Date();
 
   const active = await db
-    .select({ id: projects.id, health: projects.health, pmId: projects.pmId, name: projects.name, internalDueDate: projects.internalDueDate })
+    .select({
+      id: projects.id,
+      health: projects.health,
+      pmId: projects.pmId,
+      name: projects.name,
+    })
     .from(projects)
     .where(eq(projects.lifecycle, "active"));
+
+  if (active.length === 0) return { checked: 0, changed: 0 };
+  const ids = active.map((p) => p.id);
+
+  // Three grouped queries instead of two per project. At fifteen projects
+  // sharing a 60s cron budget with four other sweeps, the loop was the wrong
+  // shape; it also made health cost more the healthier the company got.
+  const blockerAgg = await db
+    .select({
+      projectId: blockers.projectId,
+      total: sql<number>`count(*)::int`,
+      breached: sql<number>`count(*) filter (where ${blockers.slaDueAt} < now())::int`,
+    })
+    .from(blockers)
+    .where(and(inArray(blockers.projectId, ids), ne(blockers.status, "resolved")))
+    .groupBy(blockers.projectId);
+
+  const overdueAgg = await db
+    .select({
+      projectId: tasks.projectId,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(tasks)
+    .where(
+      and(
+        inArray(tasks.projectId, ids),
+        ne(tasks.status, "done"),
+        lt(tasks.dueDate, now),
+      ),
+    )
+    .groupBy(tasks.projectId);
+
+  // Unfinished work already past its estimate. Included because every other
+  // input to health depends on somebody reporting something; this one does not.
+  const overrunAgg = await db
+    .select({
+      projectId: tasks.projectId,
+      n: sql<number>`count(distinct ${tasks.id})::int`,
+    })
+    .from(tasks)
+    .innerJoin(workLogs, eq(workLogs.taskId, tasks.id))
+    .where(
+      and(
+        inArray(tasks.projectId, ids),
+        ne(tasks.status, "done"),
+        isNull(workLogs.deletedAt),
+        isNotNull(tasks.estimatedHours),
+      ),
+    )
+    .groupBy(tasks.projectId, tasks.id, tasks.estimatedHours)
+    .having(
+      sql`sum(${workLogs.hours}) > ${tasks.estimatedHours} * ${OVERRUN_FACTOR}`,
+    );
+
+  const byBlocker = new Map(blockerAgg.map((r) => [r.projectId, r]));
+  const byOverdue = new Map(overdueAgg.map((r) => [r.projectId, r.n]));
+  const overrunCount = new Map<string, number>();
+  for (const r of overrunAgg) {
+    overrunCount.set(r.projectId, (overrunCount.get(r.projectId) ?? 0) + 1);
+  }
 
   let changed = 0;
 
   for (const p of active) {
-    const [openBlockers] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        breached: sql<number>`count(*) filter (where ${blockers.slaDueAt} < now())::int`,
-      })
-      .from(blockers)
-      .where(and(eq(blockers.projectId, p.id), ne(blockers.status, "resolved")));
-
-    const [overdue] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.projectId, p.id),
-          ne(tasks.status, "done"),
-          lt(tasks.dueDate, now),
-        ),
-      );
+    const b = byBlocker.get(p.id);
+    const overdue = byOverdue.get(p.id) ?? 0;
+    const overruns = overrunCount.get(p.id) ?? 0;
 
     let health: "on_track" | "at_risk" | "blocked" = "on_track";
-    if ((openBlockers?.breached ?? 0) > 0) health = "blocked";
-    else if ((overdue?.n ?? 0) > 0 || (openBlockers?.total ?? 0) > 1) {
+    if ((b?.breached ?? 0) > 0) health = "blocked";
+    else if (overdue > 0 || (b?.total ?? 0) > 1 || overruns > 0) {
       health = "at_risk";
     }
 
-    if (health !== p.health) {
-      await db
-        .update(projects)
-        .set({ health, updatedAt: new Date() })
-        .where(eq(projects.id, p.id));
-      changed++;
+    if (health === p.health) continue;
 
-      if (health !== "on_track" && p.pmId) {
-        await notify({
-          userId: p.pmId,
-          kind: "project_at_risk",
-          title: `${p.name} is now ${health.replace("_", " ")}`,
-          body:
-            health === "blocked"
-              ? "A blocker has been sitting past its SLA."
+    await db
+      .update(projects)
+      .set({ health, updatedAt: new Date() })
+      .where(eq(projects.id, p.id));
+    changed++;
+
+    if (health !== "on_track" && p.pmId) {
+      await notify({
+        userId: p.pmId,
+        kind: "project_at_risk",
+        title: `${p.name} is now ${health.replace("_", " ")}`,
+        body:
+          health === "blocked"
+            ? "A blocker has been sitting past its SLA."
+            : overruns > 0 && overdue === 0
+              ? `${overruns} task${overruns === 1 ? " is" : "s are"} past estimate and unfinished.`
               : "Overdue tasks or multiple open blockers.",
-          projectId: p.id,
-          isActionable: true,
-          dedupeKey: `health:${p.id}:${health}`,
-        });
-      }
+        projectId: p.id,
+        isActionable: true,
+        dedupeKey: `health:${p.id}:${health}`,
+      });
     }
   }
 
@@ -303,11 +392,80 @@ export async function flagDueFollowUps() {
   return { due: due.length };
 }
 
+/**
+ * Flags work that has burned well past its estimate and is still not done.
+ *
+ * Goes to the person doing it and the project's PM — not as blame, but because
+ * the earlier somebody knows a fixed-price job is running long, the more
+ * options they still have.
+ */
+export async function flagEstimateOverruns() {
+  const rows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      projectId: tasks.projectId,
+      assigneeId: tasks.assigneeId,
+      estimated: tasks.estimatedHours,
+      logged: sql<string>`sum(${workLogs.hours})`,
+      projectName: projects.name,
+      pmId: projects.pmId,
+    })
+    .from(tasks)
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .innerJoin(workLogs, eq(workLogs.taskId, tasks.id))
+    .where(
+      and(
+        ne(tasks.status, "done"),
+        eq(projects.lifecycle, "active"),
+        isNull(workLogs.deletedAt),
+        isNotNull(tasks.estimatedHours),
+      ),
+    )
+    .groupBy(tasks.id, projects.name, projects.pmId)
+    .having(
+      sql`sum(${workLogs.hours}) > ${tasks.estimatedHours} * ${OVERRUN_FACTOR}`,
+    );
+
+  let flagged = 0;
+  for (const t of rows) {
+    const logged = Number(t.logged ?? 0);
+    const estimated = Number(t.estimated ?? 0);
+    if (estimated <= 0) continue;
+
+    const over = Math.round((logged / estimated - 1) * 100);
+    const body = `${t.projectName} — ${logged.toFixed(1)}h logged against a ${estimated.toFixed(1)}h estimate (${over}% over) and not finished. If the scope grew, say so now rather than at the deadline.`;
+
+    // Both are told once, and only once, per task.
+    const recipients = new Set<string>();
+    if (t.assigneeId) recipients.add(t.assigneeId);
+    if (t.pmId) recipients.add(t.pmId);
+
+    for (const userId of recipients) {
+      await notify({
+        userId,
+        kind: "task_stalled",
+        title: `Over estimate: ${t.title}`,
+        body,
+        projectId: t.projectId,
+        taskId: t.id,
+        isActionable: true,
+        dedupeKey: `overrun:${t.id}`,
+      });
+    }
+    flagged++;
+  }
+
+  return { flagged };
+}
+
 export async function runAllSweeps() {
   const escalation = await escalateBlockers();
   const stale = await flagStaleTasks();
+  // Overruns run before health so the recompute sees them in the same pass.
+  const overruns = await flagEstimateOverruns();
   const health = await recomputeProjectHealth();
   const timers = await flagRunawayTimers();
   const followUps = await flagDueFollowUps();
-  return { escalation, stale, health, timers, followUps };
+  return { escalation, stale, overruns, health, timers, followUps };
 }

@@ -6,9 +6,9 @@
  * Guesses the column mapping from the sheet's own header row and prints it for
  * confirmation. Re-running replaces the existing mapping for that project.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../src/db";
-import { projects, sheetMappings } from "../src/db/schema";
+import { projects, sheetConnections } from "../src/db/schema";
 import { readHeaderRow } from "../src/server/sheets";
 
 /** Header text -> Tavren field. Matched loosely because client sheets say
@@ -18,7 +18,7 @@ const GUESSES: [RegExp, string][] = [
   [/task|item|deliverable|description of work/i, "taskTitle"],
   [/dev|who|resource|assignee|name/i, "developer"],
   [/hour|hrs|time/i, "hours"],
-  [/note|comment|detail|remark/i, "notes"],
+  [/update|note|comment|detail|remark/i, "notes"],
   [/status|state|progress/i, "status"],
 ];
 
@@ -62,13 +62,37 @@ async function main() {
     console.log("No headers matched — falling back to the default A–F layout.");
   }
 
-  await db
-    .insert(sheetMappings)
-    .values({ projectId: project.id, spreadsheetId, sheetName, mode, columnMap })
-    .onConflictDoUpdate({
-      target: sheetMappings.projectId,
-      set: { spreadsheetId, sheetName, mode, columnMap, isEnabled: true },
-    });
+  const [existing] = await db
+    .select({ id: sheetConnections.id })
+    .from(sheetConnections)
+    .where(
+      and(
+        eq(sheetConnections.projectId, project.id),
+        eq(sheetConnections.audience, "client"),
+      ),
+    )
+    .limit(1);
+
+  const values = {
+    projectId: project.id,
+    audience: "client" as const,
+    spreadsheetId,
+    tabName: sheetName,
+    mode,
+    columnMap,
+    status: "active" as const,
+    errorMessage: null,
+    updatedAt: new Date(),
+  };
+
+  if (existing) {
+    await db
+      .update(sheetConnections)
+      .set(values)
+      .where(eq(sheetConnections.id, existing.id));
+  } else {
+    await db.insert(sheetConnections).values(values);
+  }
 
   console.log(`\nAttached to ${project.name} (${code.toUpperCase()})`);
   console.log(`  tab:  ${sheetName}`);
@@ -78,7 +102,10 @@ async function main() {
     const label = headers.find((h) => h.column === col)?.label ?? "(no header)";
     console.log(`    ${field.padEnd(10)} -> ${col}  "${label}"`);
   }
-  console.log("\nCheck the mapping above. Fix it with SQL if a column is wrong.\n");
+  console.log(
+    "\nCheck the mapping above. Only the client update line is ever written\n" +
+      "to this sheet — internal notes never leave Tavren.\n",
+  );
   process.exit(0);
 }
 

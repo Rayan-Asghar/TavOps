@@ -55,7 +55,7 @@ export type ColumnMap = Record<string, string>;
 /** Values keyed by Tavren field name, e.g. { hours: "6", notes: "Hero done" }. */
 export type RowValues = Record<string, string>;
 
-function columnToIndex(col: string): number {
+export function columnToIndex(col: string): number {
   // A mapping of "1" instead of "A" would otherwise produce a negative index,
   // and the value would vanish into a stray array property rather than error.
   if (!/^[A-Za-z]+$/.test(col)) {
@@ -105,13 +105,31 @@ export async function appendRow(opts: {
   // misplaces the row whenever column A has gaps.
   const lastCol = indexToColumn(width - 1);
 
-  await sheets.spreadsheets.values.append({
+  const res = await sheets.spreadsheets.values.append({
     spreadsheetId: opts.spreadsheetId,
     range: a1Range(opts.sheetName, `A:${lastCol}`),
     valueInputOption: "USER_ENTERED",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [row] },
   });
+
+  return { rowNumber: rowNumberFromRange(res.data.updates?.updatedRange) };
+}
+
+/**
+ * Pulls the row number back out of an append response.
+ *
+ * Google answers with the range it actually wrote, e.g. `'Time Log'!A7:F7`.
+ * Capturing it is what lets a later correction update that row in place
+ * instead of appending a second, contradictory one. Returns null rather than
+ * guessing if the shape is unfamiliar — a wrong row number would overwrite
+ * somebody else's data.
+ */
+export function rowNumberFromRange(range: string | null | undefined): number | null {
+  if (!range) return null;
+  const m = range.match(/![A-Z]+(\d+):/i) ?? range.match(/![A-Z]+(\d+)$/i);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 /**

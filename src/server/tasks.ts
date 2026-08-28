@@ -10,6 +10,7 @@ import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { notify, resolveByDedupeKey } from "./notifications";
 import { createTaskSchema, reviewSchema, updateTaskSchema } from "./task-schemas";
+import { safeErrorMessage } from "./action-errors";
 
 export type TaskState = {
   ok?: boolean;
@@ -27,7 +28,7 @@ function toState(err: unknown): TaskState {
     }
     return { error: "Check the highlighted fields.", fieldErrors };
   }
-  return { error: err instanceof Error ? err.message : String(err) };
+  return { error: safeErrorMessage(err, "task") };
 }
 
 export async function createTask(

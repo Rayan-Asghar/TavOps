@@ -1,14 +1,26 @@
 /**
  * Blocker routing.
  *
- * Deliberately a pure function over a resolved context: no database, no auth,
- * no clock. The routing matrix is the part most likely to be argued about and
- * changed, so it has to be readable in one screen and testable without a
- * server. The caller resolves who holds which role and passes it in.
+ * A pure function over a resolved context: no database, no auth, no clock. The
+ * caller resolves who holds which role and passes it in, so this is testable
+ * without a server and readable in one screen.
  *
  * The output distinguishes the **assignee** — one person, the SLA clock sits on
  * them — from **watchers**, who are told but not accountable. "Notify everyone"
  * produces an inbox nobody reads; one owner plus context does not.
+ *
+ * ## Why this is smaller than it was
+ *
+ * This used to be a thirteen-branch matrix with a four-deep role cascade per
+ * branch and cross-team lead resolution that broke ties by checking which of a
+ * reporter's leads was also on the project. That is the right design for a
+ * company with enough people that nobody knows who owns what. Tavren is ten
+ * people whose partners speak daily, so the matrix encoded a hierarchy that
+ * does not exist and cost a maintenance burden forever.
+ *
+ * What survives is the part that actually earns its keep: every category lands
+ * on exactly one of three owners, one person is copied, and client-owned
+ * categories stop the developer's clock.
  */
 
 export type BlockerCategory =
@@ -38,23 +50,17 @@ export type RoutingContext = {
     deliveryLeadId: string | null;
     salesOwnerId: string | null;
   };
-  /** Holders of project-scoped roles, which override the project owners when
-   *  present — a project's own technical overseer beats the default lead. */
+  /** Holders of project-scoped roles, which outrank the project defaults — a
+   *  project with its own technical overseer routes to them, not the standing
+   *  delivery lead. */
   projectRoles: {
     tech_lead?: string | null;
     qa?: string | null;
     sales_owner?: string | null;
     pm?: string | null;
   };
-  /**
-   * Leads of every team the reporter belongs to. Teams overlap, so this is a
-   * list rather than a single id — the tie is broken by preferring the lead who
-   * is also on this project.
-   */
-  reporterTeamLeadIds?: string[];
-  /** dependency_dev only: whose work this is waiting on, and their lead. */
+  /** dependency_dev only: whose work this is waiting on. */
   blockedOnUserId?: string | null;
-  blockedOnUserLeadId?: string | null;
 };
 
 export type RoutingResult = {
@@ -68,12 +74,46 @@ export type RoutingResult = {
   explanation: string;
 };
 
-/** Business hours to first response, by severity. */
+/**
+ * Business hours to first response.
+ *
+ * Kept per-severity rather than collapsed to one window: it is a four-entry
+ * lookup, and "everything is stopped" genuinely does deserve a faster clock
+ * than "I have other work". This is not where the complexity was.
+ */
 const SLA_HOURS: Record<BlockerSeverity, number> = {
   critical: 1,
   high: 4,
   normal: 8,
   low: 16,
+};
+
+/**
+ * Who answers for each category.
+ *
+ * - `client` — whoever talks to the client, i.e. the sales owner.
+ * - `pm` — scope and requirement questions.
+ * - `delivery` — anything that is ours to build or fix.
+ */
+type OwnerKind = "client" | "pm" | "delivery";
+
+const CATEGORY_OWNER: Record<BlockerCategory, OwnerKind> = {
+  missing_access: "client",
+  missing_asset: "client",
+  client_approval: "client",
+  waiting_on_client: "client",
+  // Something sales promised. Not the client's fault, but the rep answers.
+  commercial_scope: "client",
+
+  unclear_requirement: "pm",
+  scope_conflict: "pm",
+  needs_decision: "pm",
+
+  technical: "delivery",
+  qa_issue: "delivery",
+  dependency_dev: "delivery",
+  production_incident: "delivery",
+  other: "delivery",
 };
 
 /** Categories the client owns. These pause the delivery clock. */
@@ -84,163 +124,67 @@ const CLIENT_OWNED: BlockerCategory[] = [
   "waiting_on_client",
 ];
 
+const EXPLANATION: Record<OwnerKind, string> = {
+  client:
+    "Routed to whoever owns client communication on this project, with the PM copied.",
+  pm: "Scope or requirement question, routed to the PM.",
+  delivery: "Routed to the project's delivery lead, with the PM copied.",
+};
+
 function firstOf(...ids: (string | null | undefined)[]): string | null {
   for (const id of ids) if (id) return id;
   return null;
 }
 
-/** Drops empty values, duplicates, and the assignee — nobody is their own
- *  watcher — and never notifies the reporter about their own report. */
-function cleanWatchers(
-  candidates: (string | null | undefined)[],
-  assigneeId: string | null,
-  reporterId: string,
-): string[] {
-  const out = new Set<string>();
-  for (const c of candidates) {
-    if (!c) continue;
-    if (c === assigneeId) continue;
-    if (c === reporterId) continue;
-    out.add(c);
+/** A project role holder wins over the project-level default. */
+function ownerFor(kind: OwnerKind, ctx: RoutingContext): string | null {
+  const { project: p, projectRoles: r } = ctx;
+  switch (kind) {
+    case "client":
+      return firstOf(r.sales_owner, p.salesOwnerId, r.pm, p.pmId, p.deliveryLeadId);
+    case "pm":
+      return firstOf(r.pm, p.pmId, p.deliveryLeadId);
+    case "delivery":
+      return firstOf(r.tech_lead, p.deliveryLeadId, p.pmId);
   }
-  return [...out];
-}
-
-/**
- * Picks one lead when the reporter sits in several teams.
- *
- * Prefers a lead who is also attached to this project: if Ayan is in both the
- * Shopify and Automation teams, a blocker on a Shopify project should reach the
- * lead who is actually on it rather than whichever team was created first.
- */
-function preferredTeamLead(
-  teamLeadIds: string[],
-  projectPeople: (string | null | undefined)[],
-): string | null {
-  if (teamLeadIds.length === 0) return null;
-  const onProject = new Set(projectPeople.filter(Boolean) as string[]);
-  return teamLeadIds.find((id) => onProject.has(id)) ?? teamLeadIds[0];
 }
 
 export function resolveBlockerRouting(ctx: RoutingContext): RoutingResult {
   const { project: p, projectRoles: r } = ctx;
+  const kind = CATEGORY_OWNER[ctx.category];
 
-  const teamLead = preferredTeamLead(ctx.reporterTeamLeadIds ?? [], [
-    p.pmId,
-    p.deliveryLeadId,
-    p.salesOwnerId,
-    r.tech_lead,
-    r.qa,
-    r.pm,
-    r.sales_owner,
-  ]);
+  // Waiting on a named colleague is the one case where the person who can
+  // actually unblock it is neither a lead nor an owner.
+  const assigneeId =
+    ctx.category === "dependency_dev"
+      ? firstOf(ctx.blockedOnUserId, ownerFor("delivery", ctx))
+      : ownerFor(kind, ctx);
 
-  // Order of preference: a role holder on this project, then the reporter's own
-  // team lead, then the project-level default.
-  const techOwner = firstOf(r.tech_lead, teamLead, p.deliveryLeadId, p.pmId);
-  const qaOwner = firstOf(r.qa, r.tech_lead, teamLead, p.deliveryLeadId, p.pmId);
-  const clientOwner = firstOf(r.sales_owner, p.salesOwnerId, p.pmId, teamLead);
-  const pmOwner = firstOf(r.pm, p.pmId, teamLead, p.deliveryLeadId);
+  // Exactly one person is copied. Normally the PM; when the PM is already the
+  // assignee, the delivery lead instead, so somebody always has visibility.
+  const pm = firstOf(r.pm, p.pmId);
+  const watcher = pm && pm !== assigneeId ? pm : firstOf(p.deliveryLeadId, r.tech_lead);
 
-  let assigneeId: string | null = null;
-  let watchers: (string | null | undefined)[] = [];
-  let rule = "default";
-  let explanation = "";
-
-  switch (ctx.category) {
-    case "missing_access":
-    case "missing_asset":
-    case "client_approval":
-    case "waiting_on_client":
-      // Whoever talks to the client chases the client. The developer has done
-      // their job by reporting it.
-      assigneeId = clientOwner;
-      watchers = [pmOwner];
-      rule = "client_dependency";
-      explanation =
-        "Client-owned dependency, routed to whoever owns client communication on this project.";
-      break;
-
-    case "technical":
-      assigneeId = techOwner;
-      watchers = [p.pmId];
-      rule = "technical";
-      explanation =
-        "Technical implementation issue, routed to the project's technical overseer.";
-      break;
-
-    case "qa_issue":
-      assigneeId = qaOwner;
-      watchers = [p.deliveryLeadId];
-      rule = "qa";
-      explanation = "QA issue, routed to the project's reviewer.";
-      break;
-
-    case "dependency_dev":
-      // The person who can actually unblock it is the other developer; their
-      // lead is told so it does not stall silently between two peers.
-      assigneeId = firstOf(ctx.blockedOnUserId, techOwner);
-      watchers = [ctx.blockedOnUserLeadId, teamLead, p.deliveryLeadId];
-      rule = "dependency_dev";
-      explanation =
-        "Waiting on another developer's work, routed to them with their lead copied.";
-      break;
-
-    case "unclear_requirement":
-    case "scope_conflict":
-    case "needs_decision":
-      assigneeId = pmOwner;
-      watchers = [p.deliveryLeadId];
-      rule = "scope";
-      explanation =
-        "Scope or requirement question, routed to the PM with the delivery lead copied.";
-      break;
-
-    case "commercial_scope":
-      // Something sales promised. The rep answers; the PM needs to know because
-      // it usually means a change request.
-      assigneeId = clientOwner;
-      watchers = [pmOwner];
-      rule = "commercial";
-      explanation =
-        "Commercial or sales-promise issue, routed to the deal owner with the PM copied.";
-      break;
-
-    case "production_incident":
-      assigneeId = firstOf(p.deliveryLeadId, r.tech_lead, teamLead, p.pmId);
-      watchers = [p.pmId, r.tech_lead];
-      rule = "incident";
-      explanation =
-        "Production incident, routed to the delivery lead with the PM notified immediately.";
-      break;
-
-    default:
-      // Nothing specific matched, so it goes to the reporter's own lead — the
-      // person who knows what they are working on.
-      assigneeId = firstOf(teamLead, p.deliveryLeadId, p.pmId);
-      watchers = [p.pmId];
-      rule = teamLead ? "team_lead" : "default";
-      explanation = teamLead
-        ? "No specialist rule matched, routed to the reporter's team lead."
-        : "No specific rule matched, routed to the project lead.";
-  }
-
-  // The reporter's lead is always at least copied, whatever the category. A
-  // lead should never find out second-hand that one of their people is stuck.
-  if (teamLead && teamLead !== assigneeId) watchers.push(teamLead);
+  const watcherIds =
+    watcher && watcher !== assigneeId && watcher !== ctx.reporterId
+      ? [watcher]
+      : [];
 
   // A production incident is critical regardless of what was ticked.
   const severity: BlockerSeverity =
-    ctx.category === "production_incident" && ctx.severity !== "critical"
-      ? "critical"
-      : ctx.severity;
+    ctx.category === "production_incident" ? "critical" : ctx.severity;
+
+  const explanation =
+    ctx.category === "dependency_dev" && ctx.blockedOnUserId
+      ? "Waiting on another developer's work, routed to them with the PM copied."
+      : EXPLANATION[kind];
 
   return {
     assigneeId,
-    watcherIds: cleanWatchers(watchers, assigneeId, ctx.reporterId),
+    watcherIds,
     ownerSide: CLIENT_OWNED.includes(ctx.category) ? "client" : "internal",
     slaHours: SLA_HOURS[severity],
-    rule,
+    rule: ctx.category === "dependency_dev" ? "dependency_dev" : kind,
     explanation,
   };
 }

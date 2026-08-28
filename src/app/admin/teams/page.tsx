@@ -63,12 +63,6 @@ export default async function TeamsPage() {
     (s) => s.role === "head" || s.role === "admin",
   );
 
-  // Anyone in no team at all: their blockers have no lead to fall back to.
-  const inATeam = new Set(memberRows.map((m) => m.id));
-  const unassigned = staff.filter(
-    (s) => !inATeam.has(s.id) && s.role !== "admin",
-  );
-
   return (
     <AppShell
       userName={me?.name ?? ""}
@@ -77,21 +71,20 @@ export default async function TeamsPage() {
       title="Teams"
     >
       <SectionIntro
-        eyebrow="SECURITY & GOVERNANCE"
+        eyebrow="REFERENCE"
         title="Teams"
-        description="Who reports to whom. Teams overlap on purpose — a person can sit in several, and a lead runs more than one person."
+        description="Who works with whom. Kept as a record only — nothing in the system behaves differently because of it."
       />
 
-      {unassigned.length > 0 && (
-        <div className="mb-4 panel border-l-[3px] border-l-warn p-4">
-          <p className="eyebrow m-0">NO TEAM</p>
-          <p className="m-0 mt-1 text-[12px] text-fg-muted">
-            {unassigned.map((u) => u.name).join(", ")} —{" "}
-            {unassigned.length === 1 ? "is" : "are"} in no team, so a blocker
-            with no project specialist has no lead to fall back to.
-          </p>
-        </div>
-      )}
+      <div className="mb-4 panel border-l-[3px] border-l-border-strong p-4">
+        <p className="eyebrow m-0">FOR REFERENCE ONLY</p>
+        <p className="m-0 mt-1 text-[12px] text-fg-muted">
+          Teams used to decide who a blocker escalated to. Blockers now route by
+          project role — the sales owner, PM or delivery lead named on the
+          project — so nothing here changes what anyone is sent. Editing these is
+          safe and has no effect on routing, SLAs or notifications.
+        </p>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">

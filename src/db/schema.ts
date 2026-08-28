@@ -453,12 +453,11 @@ export const workLogs = pgTable(
       .defaultNow()
       .notNull(),
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
-    /** DEPRECATED — dropped in the next migration once backfilled. */
-    notes: text("notes").notNull(),
-    /** Never leaves Tavren. Was `notes`, which was being written to client
-     *  sheets — the split exists so that cannot happen again. */
-    internalNotes: text("internal_notes"),
-    /** The only note field a client may ever see. */
+    /** Never leaves Tavren. This was once called `notes` and was written
+     *  straight into client spreadsheets; the split is what stops that. */
+    internalNotes: text("internal_notes").notNull(),
+    /** The ONLY note field a client may ever see. Null means this entry has
+     *  nothing to say to the client, and no sheet row is written for it. */
     clientUpdate: text("client_update"),
     /** Status the developer moved the task to with this entry, if any. */
     resultingStatus: taskStatus("resulting_status"),
@@ -656,32 +655,6 @@ export const notifications = pgTable(
  * Google Sheets sync
  * ------------------------------------------------------------------ */
 
-/** DEPRECATED — superseded by sheet_connections. Kept for one migration so
- *  its single live row can be copied across; dropped in the next migration. */
-export const sheetMappings = pgTable(
-  "sheet_mappings",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    spreadsheetId: varchar("spreadsheet_id", { length: 120 }).notNull(),
-    sheetName: varchar("sheet_name", { length: 120 }).default("Sheet1").notNull(),
-    mode: syncMode("mode").default("append").notNull(),
-    /** Tavren field -> column letter, e.g. { taskTitle: "B", hours: "D" } */
-    columnMap: jsonb("column_map").$type<Record<string, string>>().notNull(),
-    headerRow: integer("header_row").default(1).notNull(),
-    /** Tavren is authoritative for mapped columns; anything else in the sheet
-     *  is left untouched so a client's own notes are never overwritten. */
-    isEnabled: boolean("is_enabled").default(true).notNull(),
-    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => [uniqueIndex("sheet_mappings_project_unique").on(t.projectId)],
-);
-
 /**
  * One spreadsheet attached to one project for one audience.
  *
@@ -756,11 +729,9 @@ export const sheetRowLinks = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     entityType: sheetLinkEntity("entity_type").notNull(),
     entityId: uuid("entity_id").notNull(),
-    /** DEPRECATED — dropped next migration. */
-    mappingId: uuid("mapping_id"),
-    connectionId: uuid("connection_id").references(() => sheetConnections.id, {
-      onDelete: "cascade",
-    }),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => sheetConnections.id, { onDelete: "cascade" }),
     rowKey: text("row_key").notNull(),
     lastWrittenHash: text("last_written_hash"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -804,11 +775,9 @@ export const syncJobs = pgTable(
   "sync_jobs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    /** DEPRECATED — dropped next migration. */
-    mappingId: uuid("mapping_id"),
-    connectionId: uuid("connection_id").references(() => sheetConnections.id, {
-      onDelete: "cascade",
-    }),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => sheetConnections.id, { onDelete: "cascade" }),
     jobType: syncJobType("job_type").default("append").notNull(),
     workLogId: uuid("work_log_id").references(() => workLogs.id, {
       onDelete: "cascade",
@@ -817,16 +786,15 @@ export const syncJobs = pgTable(
       onDelete: "cascade",
     }),
     payload: jsonb("payload").$type<Record<string, unknown>>(),
-    /** Makes a retry after a timeout a no-op rather than a duplicate row. */
-    idempotencyKey: text("idempotency_key"),
+    /**
+     * Makes a retry after a timeout a no-op rather than a duplicate row in a
+     * client's spreadsheet. Required, because the unique index it backs treats
+     * NULLs as distinct — a nullable key is a guarantee that does not hold.
+     */
+    idempotencyKey: text("idempotency_key").notNull(),
     status: syncStatus("status").default("queued").notNull(),
     attempts: integer("attempts").default(0).notNull(),
     lastError: text("last_error"),
-    /** DEPRECATED pair — dropped next migration. */
-    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
     runAfter: timestamp("run_after", { withTimezone: true })
       .defaultNow()
       .notNull(),

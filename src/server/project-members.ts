@@ -9,6 +9,7 @@ import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { notify } from "./notifications";
+import { safeErrorMessage } from "./action-errors";
 
 export type MemberState = { ok?: boolean; error?: string; message?: string };
 
@@ -27,7 +28,7 @@ function fail(err: unknown): MemberState {
   if (err instanceof z.ZodError) {
     return { error: err.issues[0]?.message ?? "Check the form." };
   }
-  return { error: err instanceof Error ? err.message : String(err) };
+  return { error: safeErrorMessage(err, "projectMember") };
 }
 
 export async function addProjectMember(

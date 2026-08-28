@@ -62,7 +62,7 @@ export default async function ReviewPage() {
               select coalesce(sum(${workLogs.hours}),0)::text from ${workLogs}
                where ${workLogs.taskId} = ${tasks.id})`,
             lastNote: sql<string | null>`(
-              select ${workLogs.notes} from ${workLogs}
+              select ${workLogs.internalNotes} from ${workLogs}
                where ${workLogs.taskId} = ${tasks.id}
                order by ${workLogs.workDate} desc limit 1)`,
           })

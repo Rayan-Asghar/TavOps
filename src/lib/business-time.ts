@@ -1,14 +1,36 @@
 /**
  * SLA clocks run on business hours, not wall-clock hours.
  *
- * A blocker reported at 5pm Friday is not "24 hours overdue" on Saturday
- * evening. Escalating on raw elapsed time is the fastest way to train people
- * to ignore the alerts, so every deadline in the system is computed here.
+ * A blocker reported at the end of Friday's shift is not "24 hours overdue" on
+ * Saturday evening. Escalating on raw elapsed time is the fastest way to train
+ * people to ignore the alerts, so every deadline in the system is computed here.
+ *
+ * ## Why these hours are in UTC, and why that works
+ *
+ * Tavren works 18:00–02:00 PKT (UTC+5) to overlap US client hours, which is
+ * 13:00–21:00 UTC. That window is the reason this file can stay on plain UTC
+ * arithmetic instead of needing a timezone library:
+ *
+ *   - The shift does NOT cross a UTC midnight, even though it crosses a
+ *     Pakistani one. Monday's shift is 13:00–21:00 UTC on Monday, full stop.
+ *   - So `getUTCDay()` weekend detection lines up exactly with Monday–Friday
+ *     night shifts. A shift that ends 02:00 Saturday PKT is still Friday in UTC
+ *     and is correctly treated as a working day.
+ *   - And every work log from one shift lands on a single UTC calendar date,
+ *     so `work_date` groups a night's work the way a person would expect.
+ *
+ * If the shift ever moves such that it straddles 00:00 UTC, this whole file
+ * has to become timezone-aware — the day-boundary assumption above is what
+ * keeps it simple, and it is not incidental.
  */
 
-const WORK_START_HOUR = 9;
-const WORK_END_HOUR = 18;
-const HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR;
+/** 18:00 PKT. */
+const WORK_START_HOUR = 13;
+/** 02:00 PKT the following morning — still the same UTC day. */
+const WORK_END_HOUR = 21;
+
+/** Length of one shift. Exported so "one working day" has a single definition. */
+export const HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR;
 
 function isWeekend(d: Date): boolean {
   const day = d.getUTCDay();

@@ -7,6 +7,13 @@ export const startTimerSchema = z.object({
 export const finishTimerSchema = z.object({
   sessionId: z.string().uuid(),
   note: z.string().trim().min(3, "Add a short note on what you finished."),
+  /** Optional, and the only part a client ever sees. See logWorkSchema. */
+  clientUpdate: z
+    .string()
+    .trim()
+    .max(300, "Keep the client line to one sentence.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   resultingStatus: z.enum(["in_progress", "in_review", "done"]).default("in_review"),
 });
 

@@ -9,6 +9,7 @@ import { assertCan } from "@/lib/rbac";
 import { createProjectSchema } from "./task-schemas";
 import { nextProjectCode } from "./project-code";
 import { eq } from "drizzle-orm";
+import { safeErrorMessage } from "./action-errors";
 
 export type ProjectState = {
   ok?: boolean;
@@ -26,7 +27,7 @@ function toState(err: unknown): ProjectState {
     }
     return { error: "Check the highlighted fields.", fieldErrors };
   }
-  return { error: err instanceof Error ? err.message : String(err) };
+  return { error: safeErrorMessage(err, "project") };
 }
 
 /**
