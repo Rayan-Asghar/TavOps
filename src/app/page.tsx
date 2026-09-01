@@ -6,7 +6,7 @@ import { blockers, tasks, users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { inboxFor, unresolvedCount } from "@/server/notifications";
-import { dismissNotification } from "@/server/inbox-actions";
+import { DismissButton } from "@/components/dismiss-button";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
 import { ArrowRightIcon } from "@/components/icons";
@@ -159,15 +159,7 @@ export default async function InboxPage() {
                         </Link>
                       )
                     )}
-                    <form action={dismissNotification}>
-                      <input type="hidden" name="id" value={n.id} />
-                      <button
-                        type="submit"
-                        className="btn-ghost btn-sm btn-ghost-danger"
-                      >
-                        Dismiss
-                      </button>
-                    </form>
+                    <DismissButton id={n.id} title={n.title} />
                   </div>
                 </li>
               );

@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { createTask, type TaskState } from "@/server/tasks";
-import { FormError, FormSuccess } from "@/components/ui";
+import { FormError, FormSuccess, useResetKey } from "@/components/ui";
 
 const initial: TaskState = {};
 
@@ -14,11 +14,12 @@ export function TaskForm({
   members: { id: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState(createTask, initial);
+  const formKey = useResetKey(state);
   const err = state.fieldErrors ?? {};
 
   return (
     <form
-      key={state.ok ? "created" : "new"}
+      key={formKey}
       action={action}
       noValidate
       className="panel p-5"

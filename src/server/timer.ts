@@ -17,7 +17,13 @@ import {
 import { safeErrorMessage } from "./action-errors";
 import { writeAudit } from "./audit";
 
-export type TimerState = { error?: string; ok?: boolean; message?: string };
+export type TimerState = {
+  error?: string;
+  ok?: boolean;
+  message?: string;
+  /** Serialised session, so a discard can be put back. */
+  undoToken?: string;
+};
 
 function fail(err: unknown): TimerState {
   return { error: safeErrorMessage(err, "timer") };
@@ -305,9 +311,70 @@ export async function discardTimer(formData: FormData): Promise<TimerState> {
     );
     if (!session) return { error: "Timer not found." };
 
+    // A hard delete of accumulated time on one click, with no confirmation and
+    // no way back. Rather than add a soft-delete column for a row nothing else
+    // references, the values go out with the result so an undo can re-insert.
+    const restore = JSON.stringify({
+      taskId: session.taskId,
+      projectId: session.projectId,
+      status: session.status,
+      startedAt: session.startedAt.toISOString(),
+      resumedAt: session.resumedAt ? session.resumedAt.toISOString() : null,
+      accumulatedSeconds: session.accumulatedSeconds,
+    });
+
     await db.delete(timeSessions).where(eq(timeSessions.id, session.id));
     revalidatePath(`/projects/${session.projectId}`);
-    return { ok: true, message: "Timer discarded. Nothing was logged." };
+    return {
+      ok: true,
+      message: "Timer discarded. Nothing was logged.",
+      undoToken: restore,
+    };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Puts back a timer that was just discarded.
+ *
+ * Re-inserted rather than undeleted: nothing references a time session until it
+ * becomes a work log, so a fresh id is harmless and this needs no extra column.
+ * Refuses if the person has since started timing something else, because the
+ * one-open-session rule still holds.
+ */
+export async function restoreTimer(formData: FormData): Promise<TimerState> {
+  try {
+    const actor = await requireActor();
+    const raw = String(formData.get("undoToken") ?? "");
+    if (!raw) return { error: "Nothing to restore." };
+
+    const open = await activeSessionFor(actor.id);
+    if (open) {
+      return { error: "You have another timer running. Finish that one first." };
+    }
+
+    const v = JSON.parse(raw) as {
+      taskId: string;
+      projectId: string;
+      status: "running" | "paused";
+      startedAt: string;
+      resumedAt: string | null;
+      accumulatedSeconds: number;
+    };
+
+    await db.insert(timeSessions).values({
+      taskId: v.taskId,
+      projectId: v.projectId,
+      userId: actor.id,
+      status: v.status,
+      startedAt: new Date(v.startedAt),
+      resumedAt: v.resumedAt ? new Date(v.resumedAt) : null,
+      accumulatedSeconds: v.accumulatedSeconds,
+    });
+
+    revalidatePath(`/projects/${v.projectId}`);
+    return { ok: true, message: "Timer restored." };
   } catch (err) {
     return fail(err);
   }

@@ -11,6 +11,7 @@ import type { ProjectMember } from "@/server/member-queries";
 import { FormError, FormSuccess } from "@/components/ui";
 
 import { PROJECT_ROLE_TONE } from "@/lib/tone";
+import { ActionButton } from "./ui";
 const initial: MemberState = {};
 
 const PROJECT_ROLES = [
@@ -88,22 +89,15 @@ export function ProjectTeam({
                 </Badge>
               )}
               {canManage && (
-                <form action={removeProjectMember}>
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <input type="hidden" name="userId" value={m.id} />
-                  <button
-                    type="submit"
-                    disabled={m.openTasks > 0}
-                    title={
-                      m.openTasks > 0
-                        ? "Reassign their open tasks first"
-                        : `Remove ${m.name}`
-                    }
-                    className="btn-ghost btn-sm btn-ghost-danger"
-                  >
-                    Remove
-                  </button>
-                </form>
+                <ActionButton
+                  action={removeProjectMember}
+                  fields={{ projectId, userId: m.id }}
+                  className="btn-ghost btn-sm btn-ghost-danger"
+                  pendingLabel="Removing…"
+                  title={`Remove ${m.name}`}
+                >
+                  Remove
+                </ActionButton>
               )}
             </li>
           );

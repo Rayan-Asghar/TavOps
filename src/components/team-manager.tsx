@@ -9,8 +9,9 @@ import {
   type TeamState,
 } from "@/server/team-actions";
 import { Badge } from "./badges";
-import { FormError, FormSuccess } from "@/components/ui";
+import { FormError, FormSuccess, useResetKey } from "@/components/ui";
 
+import { ActionButton, useActionToast } from "./ui";
 const initial: TeamState = {};
 
 export type Person = { id: string; name: string; role: string };
@@ -25,11 +26,12 @@ export type TeamView = {
 
 export function CreateTeamForm({ heads }: { heads: Person[] }) {
   const [state, action, pending] = useActionState(createTeam, initial);
+  const formKey = useResetKey(state);
   const err = state.fieldErrors ?? {};
 
   return (
     <form
-      key={state.ok ? "made" : "new"}
+      key={formKey}
       action={action}
       noValidate
       className="panel p-5"
@@ -92,6 +94,18 @@ export function TeamCard({
   heads: Person[];
 }) {
   const [adding, setAdding] = useState(false);
+  const [leadState, leadAction, settingLead] = useActionState(
+    setTeamLead,
+    initial,
+  );
+  const [addState, addAction, addingMember] = useActionState(
+    addTeamMember,
+    initial,
+  );
+  // A select and a button on one row has nowhere to put a message, which is
+  // why these two reported nothing at all before.
+  useActionToast(leadState);
+  useActionToast(addState);
   const memberIds = new Set(team.members.map((m) => m.id));
   const addable = everyone.filter((p) => !memberIds.has(p.id));
 
@@ -109,7 +123,7 @@ export function TeamCard({
           </p>
         </div>
 
-        <form action={setTeamLead} className="flex items-center gap-2">
+        <form action={leadAction} className="flex items-center gap-2">
           <input type="hidden" name="teamId" value={team.id} />
           <label className="sr-only" htmlFor={`lead-${team.id}`}>Change lead</label>
           <select
@@ -122,8 +136,8 @@ export function TeamCard({
               <option key={h.id} value={h.id}>{h.name}</option>
             ))}
           </select>
-          <button type="submit" className="btn-dark btn-xs">
-            Set lead
+          <button type="submit" disabled={settingLead} className="btn-dark btn-xs">
+            {settingLead ? "…" : "Set lead"}
           </button>
         </form>
       </div>
@@ -140,17 +154,15 @@ export function TeamCard({
                 Lead
               </span>
             ) : (
-              <form action={removeTeamMember}>
-                <input type="hidden" name="teamId" value={team.id} />
-                <input type="hidden" name="userId" value={m.id} />
-                <button
-                  type="submit"
-                  aria-label={`Remove ${m.name} from ${team.name}`}
-                  className="px-1 text-fg-subtle hover:text-danger"
-                >
-                  ×
-                </button>
-              </form>
+              <ActionButton
+                action={removeTeamMember}
+                fields={{ teamId: team.id, userId: m.id }}
+                className="px-1 text-fg-subtle hover:text-danger"
+                pendingLabel="·"
+                title={`Remove ${m.name} from ${team.name}`}
+              >
+                ×
+              </ActionButton>
             )}
           </li>
         ))}
@@ -166,7 +178,7 @@ export function TeamCard({
             + Add member
           </button>
         ) : (
-          <form action={addTeamMember} className="flex flex-wrap gap-2">
+          <form action={addAction} className="flex flex-wrap gap-2">
             <input type="hidden" name="teamId" value={team.id} />
             <label className="sr-only" htmlFor={`add-${team.id}`}>Add member</label>
             <select
@@ -181,7 +193,9 @@ export function TeamCard({
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <button type="submit" className="btn-secondary btn-sm">Add</button>
+            <button type="submit" disabled={addingMember} className="btn-secondary btn-sm">
+              {addingMember ? "Adding…" : "Add"}
+            </button>
             <button
               type="button"
               onClick={() => setAdding(false)}

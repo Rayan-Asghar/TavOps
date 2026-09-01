@@ -2,17 +2,18 @@
 
 import { useActionState } from "react";
 import { createProposal, type ProposalState } from "@/server/proposals";
-import { FormError, FormSuccess } from "@/components/ui";
+import { FormError, FormSuccess, useResetKey } from "@/components/ui";
 
 const initial: ProposalState = {};
 
 export function ProposalForm() {
   const [state, action, pending] = useActionState(createProposal, initial);
+  const formKey = useResetKey(state);
   const err = state.fieldErrors ?? {};
 
   return (
     <form
-      key={state.ok ? "sent" : "new"}
+      key={formKey}
       action={action}
       noValidate
       className="panel p-5"

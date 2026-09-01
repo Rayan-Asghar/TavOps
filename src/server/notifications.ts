@@ -90,3 +90,16 @@ export async function resolveByDedupeKey(
       ),
     );
 }
+
+/**
+ * Clears the resolved mark, putting an item back in the inbox.
+ *
+ * `seenAt` is deliberately left alone: it was seen, and undoing a dismissal
+ * does not make that untrue.
+ */
+export async function restoreNotification(id: string, userId: string) {
+  await db
+    .update(notifications)
+    .set({ resolvedAt: null })
+    .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+}

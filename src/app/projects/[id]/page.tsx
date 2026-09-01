@@ -26,7 +26,7 @@ import { renderClientBrief, type ClientBrief } from "@/lib/client-brief";
 
 
 import { fmtDate } from "@/lib/format";
-import { DataTable, EmptyRow, Th } from "@/components/ui";
+import { ActionButton, DataTable, EmptyRow, Th } from "@/components/ui";
 
 /**
  * The one route where a dynamic tab title earns its keep — people keep several
@@ -191,12 +191,14 @@ export default async function ProjectPage({
               clock.
             </p>
           </div>
-          <form action={activateProject}>
-            <input type="hidden" name="projectId" value={project.id} />
-            <button type="submit" className="btn-primary btn-sm">
-              Set active
-            </button>
-          </form>
+          <ActionButton
+            action={activateProject}
+            fields={{ projectId: project.id }}
+            className="btn-primary btn-sm"
+            pendingLabel="Activating…"
+          >
+            Set active
+          </ActionButton>
         </div>
       )}
 
@@ -528,6 +530,7 @@ export default async function ProjectPage({
                                   <StartTimerButton
                                     taskId={t.id}
                                     disabled={!!session}
+                                    blockedReason="Finish your running timer first"
                                     label={
                                       t.assigneeId === null ? "Pick up" : "Start"
                                     }

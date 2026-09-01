@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { LinkPending } from "./ui";
 
 export type TabKey = "overview" | "tasks" | "team" | "activity";
 
@@ -52,6 +53,7 @@ export function ProjectTabs({
                 }`}
             >
               {t.label}
+              <LinkPending />
               {typeof t.count === "number" && t.count > 0 && (
                 <span
                   className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-black

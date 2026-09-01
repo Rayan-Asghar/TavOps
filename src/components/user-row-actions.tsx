@@ -8,6 +8,7 @@ import {
 } from "@/server/user-actions";
 import { CopyField } from "./copy-field";
 
+import { ActionButton } from "./ui";
 const initial: UserFormState = {};
 
 export function UserRowActions({
@@ -27,9 +28,8 @@ export function UserRowActions({
     resetPasswordAction,
     initial,
   );
-  // Two-step inline confirm rather than a modal: deactivation is reversible,
-  // so it needs a speed bump, not a ceremony.
-  const [confirming, setConfirming] = useState(false);
+
+  const [resetConfirming, setResetConfirming] = useState(false);
 
   const blocked = isSelf || (isLastAdmin && isActive);
   const blockedReason = isSelf
@@ -39,58 +39,60 @@ export function UserRowActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap justify-end gap-2">
-        <form action={resetAction}>
-          <input type="hidden" name="userId" value={userId} />
-          <button
-            type="submit"
-            disabled={resetting}
-            className="btn-secondary btn-sm"
-          >
-            {resetting ? "Resetting…" : "Reset password"}
-          </button>
-        </form>
-
-        {isActive ? (
-          confirming ? (
-            <form action={setUserActiveAction} className="flex gap-2">
-              <input type="hidden" name="userId" value={userId} />
-              <input type="hidden" name="makeActive" value="false" />
-              <button
-                type="submit"
-                className="btn-danger btn-sm"
-              >
-                Confirm
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="btn-secondary btn-sm"
-              >
-                Cancel
-              </button>
-            </form>
-          ) : (
+        {/* One click used to invalidate someone's current password with no
+            confirmation. Same two-step speed bump as deactivation. */}
+        {resetConfirming ? (
+          <form action={resetAction} className="flex gap-2">
+            <input type="hidden" name="userId" value={userId} />
+            <button
+              type="submit"
+              disabled={resetting}
+              className="btn-danger btn-sm"
+            >
+              {resetting ? "Resetting…" : "Confirm reset"}
+            </button>
             <button
               type="button"
-              disabled={blocked}
-              onClick={() => setConfirming(true)}
-              className="btn-secondary btn-sm"
+              onClick={() => setResetConfirming(false)}
+              className="btn-ghost btn-sm"
             >
-              Deactivate
-            </button>
-          )
-        ) : (
-          <form action={setUserActiveAction}>
-            <input type="hidden" name="userId" value={userId} />
-            <input type="hidden" name="makeActive" value="true" />
-            <button type="submit" className="btn-secondary btn-sm">
-              Reactivate
+              Cancel
             </button>
           </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setResetConfirming(true)}
+            className="btn-secondary btn-sm"
+          >
+            Reset password
+          </button>
+        )}
+
+        {isActive ? (
+          <ActionButton
+            action={setUserActiveAction}
+            fields={{ userId, makeActive: "false" }}
+            className="btn-secondary btn-sm"
+            confirm="Confirm"
+            disabled={blocked}
+            pendingLabel="Deactivating…"
+          >
+            Deactivate
+          </ActionButton>
+        ) : (
+          <ActionButton
+            action={setUserActiveAction}
+            fields={{ userId, makeActive: "true" }}
+            className="btn-secondary btn-sm"
+            pendingLabel="Reactivating…"
+          >
+            Reactivate
+          </ActionButton>
         )}
       </div>
 
-      {blocked && isActive && !confirming && (
+      {blocked && isActive && (
         <p className="text-right text-xs text-fg-subtle">{blockedReason}</p>
       )}
 

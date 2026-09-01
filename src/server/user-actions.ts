@@ -12,6 +12,9 @@ import { assertCan } from "@/lib/rbac";
 import { createUserSchema } from "./user-schemas";
 import { writeAudit } from "./audit";
 
+import type { ActionState } from "@/lib/action-state";
+import { UserFacingError } from "@/lib/errors";
+import { safeErrorMessage } from "./action-errors";
 export type UserFormState = {
   ok?: boolean;
   error?: string;
@@ -108,17 +111,23 @@ export async function createUserAction(
   return { ok: true, tempPassword, createdName: created.name };
 }
 
-export async function setUserActiveAction(formData: FormData) {
+export async function setUserActiveAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+ try {
   const actor = await requireActor();
   assertCan(actor.globalRole, "user.manage");
 
   const userId = String(formData.get("userId") ?? "");
   const makeActive = formData.get("makeActive") === "true";
-  if (!userId) return;
+  if (!userId) throw new UserFacingError("No account given.");
 
   // An admin deactivating themselves can lock the whole team out of user
-  // management, so the action refuses rather than relying on care.
-  if (userId === actor.id && !makeActive) return;
+  // management. The refusal is now said out loud rather than being a `return;`.
+  if (userId === actor.id && !makeActive) {
+    throw new UserFacingError("You cannot deactivate your own account.");
+  }
 
   if (!makeActive) {
     const [{ n }] = await db
@@ -137,7 +146,11 @@ export async function setUserActiveAction(formData: FormData) {
       .where(eq(users.id, userId))
       .limit(1);
     // Never let the last active admin be switched off.
-    if (target?.globalRole === "admin" && n === 0) return;
+    if (target?.globalRole === "admin" && n === 0) {
+      throw new UserFacingError(
+        "This is the last active admin. Promote someone else first.",
+      );
+    }
   }
 
   await db.transaction(async (tx) => {
@@ -156,6 +169,13 @@ export async function setUserActiveAction(formData: FormData) {
   });
 
   revalidatePath("/admin/users");
+  return {
+    ok: true,
+    message: makeActive ? "Account reactivated." : "Account deactivated.",
+  };
+ } catch (err) {
+  return { error: safeErrorMessage(err, "setUserActive") };
+ }
 }
 
 export async function resetPasswordAction(

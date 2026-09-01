@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
   startTimer,
   pauseTimer,
@@ -8,10 +8,16 @@ import {
   finishTimer,
   adjustTimer,
   discardTimer,
+  restoreTimer,
   type TimerState,
 } from "@/server/timer";
 import { elapsedSeconds, formatClock, secondsToHours } from "@/lib/timer-utils";
-import { FormError, FormSuccess } from "@/components/ui";
+import {
+  FormError,
+  FormSuccess,
+  useActionToast,
+  useToast,
+} from "@/components/ui";
 
 const initial: TimerState = {};
 
@@ -65,60 +71,115 @@ function Clock({ session }: { session: ActiveSession }) {
   );
 }
 
-/** Wraps a TimerState-returning action so a plain <form action> can use it and
- *  still surface the error instead of swallowing it. */
+/**
+ * Pause / Resume / Discard.
+ *
+ * Awaits inside a transition rather than using useActionState, because a
+ * successful discard unmounts this whole panel during revalidation — the
+ * result would be handed to a component that no longer exists, which is why
+ * these actions' messages were never seen. The toast lives up in the shell.
+ *
+ * Discard deletes accumulated time outright on one click. The action returns
+ * everything needed to re-insert it, so undo is a replay.
+ */
 function TimerActionButton({
   action,
   sessionId,
   label,
   className,
+  undoWith,
 }: {
   action: (fd: FormData) => Promise<TimerState>;
   sessionId: string;
   label: string;
   className: string;
+  /** Given the result's undoToken, the action that puts it back. */
+  undoWith?: (fd: FormData) => Promise<TimerState>;
 }) {
-  const [state, formAction, pending] = useActionState(
-    async (_p: TimerState, fd: FormData) => action(fd),
-    initial,
-  );
+  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+
+  const run = () => {
+    const fd = new FormData();
+    fd.set("sessionId", sessionId);
+
+    startTransition(async () => {
+      const state = await action(fd);
+
+      if (state.error) {
+        toast({ message: state.error, tone: "error" });
+        return;
+      }
+      if (!state.ok) return;
+
+      const token = state.undoToken;
+      toast({
+        message: state.message ?? "Done.",
+        undo:
+          undoWith && token
+            ? {
+                run: async () => {
+                  const undoData = new FormData();
+                  undoData.set("undoToken", token);
+                  const r = await undoWith(undoData);
+                  if (r.error) toast({ message: r.error, tone: "error" });
+                },
+              }
+            : undefined,
+      });
+    });
+  };
+
   return (
-    <form action={formAction} className="inline-flex flex-col">
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <button type="submit" disabled={pending} className={className}>
-        {pending ? "…" : label}
-      </button>
-      {state.error && (
-        <span role="alert" className="mt-1 text-2xs text-danger">
-          {state.error}
-        </span>
-      )}
-    </form>
+    <button
+      type="button"
+      onClick={run}
+      disabled={pending}
+      className={className}
+    >
+      {pending ? "…" : label}
+    </button>
   );
 }
 
-/** Start button for a task with no timer running. */
+/**
+ * Start button for a task with no timer running.
+ *
+ * Transition rather than useActionState for the same reason as the panel: on
+ * success the row re-renders as "TIMING" and this button is gone, so anything
+ * watching the returned state never sees it.
+ */
 export function StartTimerButton({
   taskId,
   disabled,
   label = "Start",
+  blockedReason,
 }: {
   taskId: string;
   disabled?: boolean;
   label?: string;
+  /** Why the button is off. Shown, not just put in a title= nobody can reach. */
+  blockedReason?: string;
 }) {
-  const [state, action, pending] = useActionState(
-    async (_p: TimerState, fd: FormData) => startTimer(fd),
-    initial,
-  );
+  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+
+  const run = () => {
+    const fd = new FormData();
+    fd.set("taskId", taskId);
+    startTransition(async () => {
+      const state = await startTimer(fd);
+      if (state.error) toast({ message: state.error, tone: "error" });
+      else if (state.ok) toast({ message: state.message ?? "Timer started." });
+    });
+  };
 
   return (
-    <form action={action} className="inline-flex flex-col items-end gap-1">
-      <input type="hidden" name="taskId" value={taskId} />
+    <span className="inline-flex flex-col items-end gap-1">
       <button
-        type="submit"
+        type="button"
+        onClick={run}
         disabled={pending || disabled}
-        title={disabled ? "Finish your running timer first" : undefined}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5
                    text-xs font-bold transition-colors hover:border-border-strong
                    disabled:cursor-not-allowed disabled:opacity-40"
@@ -126,12 +187,12 @@ export function StartTimerButton({
         <span className="h-[7px] w-[7px] rounded-full bg-brand" aria-hidden />
         {pending ? "…" : label}
       </button>
-      {state.error && (
-        <span role="alert" className="max-w-[220px] text-right text-2xs text-danger">
-          {state.error}
+      {disabled && blockedReason && (
+        <span className="max-w-[220px] text-right text-2xs text-fg-muted">
+          {blockedReason}
         </span>
       )}
-    </form>
+    </span>
   );
 }
 
@@ -193,6 +254,7 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           sessionId={session.id}
           label="Discard"
           className="btn-ghost btn-sm btn-ghost-danger"
+          undoWith={restoreTimer}
         />
       </div>
 

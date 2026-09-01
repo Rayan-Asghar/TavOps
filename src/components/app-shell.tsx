@@ -6,6 +6,7 @@ import { can, type GlobalRole } from "@/lib/rbac";
 import { Sidebar, type NavEntry } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { TimerChip } from "./timer-chip";
+import { ToastProvider } from "./ui/toast";
 import { getActor } from "@/lib/auth";
 import { activeSessionFor } from "@/server/timer";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
@@ -82,6 +83,7 @@ export async function AppShell({
   // day to day. The tables and the page remain; the nav slot does not.
 
   return (
+    <ToastProvider>
     <div className="min-h-screen md:grid md:grid-cols-[248px_minmax(0,1fr)]">
       <Sidebar
         main={main}
@@ -150,6 +152,7 @@ export async function AppShell({
         <main className="p-5 md:p-7">{children}</main>
       </div>
     </div>
+    </ToastProvider>
   );
 }
 

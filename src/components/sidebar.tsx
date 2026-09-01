@@ -14,6 +14,7 @@ import {
   CloseIcon,
 } from "./icons";
 
+import { LinkPending } from "./ui";
 export type NavEntry = {
   href: string;
   label: string;
@@ -51,7 +52,10 @@ function NavLink({
                   ${active ? "bg-nav-active text-white" : "text-nav-fg-muted hover:bg-nav-hover hover:text-white"}`}
     >
       <Icon />
-      <span>{entry.label}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        {entry.label}
+        <LinkPending />
+      </span>
       {typeof entry.count === "number" && entry.count > 0 && (
         <span
           className={`grid h-5 min-w-[22px] place-items-center rounded-full px-1.5 text-xs font-extrabold

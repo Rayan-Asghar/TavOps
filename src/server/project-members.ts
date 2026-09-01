@@ -11,6 +11,8 @@ import { assertCan } from "@/lib/rbac";
 import { notify } from "./notifications";
 import { safeErrorMessage } from "./action-errors";
 
+import type { ActionState } from "@/lib/action-state";
+import { UserFacingError } from "@/lib/errors";
 export type MemberState = { ok?: boolean; error?: string; message?: string };
 
 const addMemberSchema = z.object({
@@ -110,13 +112,17 @@ export async function addProjectMember(
   }
 }
 
-export async function removeProjectMember(formData: FormData) {
+export async function removeProjectMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+ try {
   const actor = await requireActor();
   assertCan(actor.globalRole, "project.manageMembers");
 
   const projectId = String(formData.get("projectId") ?? "");
   const userId = String(formData.get("userId") ?? "");
-  if (!projectId || !userId) return;
+  if (!projectId || !userId) throw new UserFacingError("Pick someone to remove.");
   await assertProjectAccess(actor, projectId);
 
   // Removing someone who still has open work orphans it silently, so the
@@ -131,7 +137,14 @@ export async function removeProjectMember(formData: FormData) {
         ne(tasks.status, "done"),
       ),
     );
-  if (open > 0) return;
+  // This used to `return;`, so the button did nothing and the reason lived
+  // only in a title= tooltip on a disabled button — unreachable by keyboard
+  // and invisible on touch.
+  if (open > 0) {
+    throw new UserFacingError(
+      `They still have ${open} open task${open === 1 ? "" : "s"} here. Reassign those first.`,
+    );
+  }
 
   await db
     .delete(projectMembers)
@@ -143,4 +156,8 @@ export async function removeProjectMember(formData: FormData) {
     );
 
   revalidatePath(`/projects/${projectId}`);
+  return { ok: true, message: "Removed from the project." };
+ } catch (err) {
+  return { error: safeErrorMessage(err, "removeProjectMember") };
+ }
 }

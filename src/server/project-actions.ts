@@ -12,6 +12,8 @@ import { eq } from "drizzle-orm";
 import { safeErrorMessage } from "./action-errors";
 import { writeAudit } from "./audit";
 
+import type { ActionState } from "@/lib/action-state";
+import { UserFacingError } from "@/lib/errors";
 export type ProjectState = {
   ok?: boolean;
   error?: string;
@@ -145,11 +147,15 @@ export async function createProject(
 }
 
 /** Draft -> active, once assets, scope and team are confirmed. */
-export async function activateProject(formData: FormData) {
+export async function activateProject(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+ try {
   const actor = await requireActor();
   assertCan(actor.globalRole, "project.edit");
   const projectId = String(formData.get("projectId") ?? "");
-  if (!projectId) return;
+  if (!projectId) throw new UserFacingError("No project given.");
 
   // Wrapped so the audit row cannot commit without the change it records.
   await db.transaction(async (tx) => {
@@ -171,4 +177,8 @@ export async function activateProject(formData: FormData) {
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
+  return { ok: true, message: "Project is now active." };
+ } catch (err) {
+  return { error: safeErrorMessage(err, "activateProject") };
+ }
 }

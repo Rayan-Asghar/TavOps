@@ -10,6 +10,8 @@ import { assertCan } from "@/lib/rbac";
 import { safeErrorMessage } from "./action-errors";
 import { writeAudit } from "./audit";
 
+import { UserFacingError } from "@/lib/errors";
+import type { ActionState } from "@/lib/action-state";
 export type TeamState = {
   ok?: boolean;
   error?: string;
@@ -79,45 +81,74 @@ export async function createTeam(
   }
 }
 
-export async function addTeamMember(formData: FormData) {
-  const actor = await requireActor();
-  assertCan(actor.globalRole, "team.manage");
-  const teamId = String(formData.get("teamId") ?? "");
-  const userId = String(formData.get("userId") ?? "");
-  if (!teamId || !userId) return;
+export async function addTeamMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const actor = await requireActor();
+    assertCan(actor.globalRole, "team.manage");
+    const teamId = String(formData.get("teamId") ?? "");
+    const userId = String(formData.get("userId") ?? "");
+    if (!teamId || !userId) throw new UserFacingError("Pick someone to add.");
 
-  await db.insert(teamMembers).values({ teamId, userId }).onConflictDoNothing();
-  revalidatePath("/admin/teams");
+    await db
+      .insert(teamMembers)
+      .values({ teamId, userId })
+      .onConflictDoNothing();
+    revalidatePath("/admin/teams");
+    return { ok: true, message: "Added to the team." };
+  } catch (err) {
+    return { error: safeErrorMessage(err, "addTeamMember") };
+  }
 }
 
-export async function removeTeamMember(formData: FormData) {
-  const actor = await requireActor();
-  assertCan(actor.globalRole, "team.manage");
-  const teamId = String(formData.get("teamId") ?? "");
-  const userId = String(formData.get("userId") ?? "");
-  if (!teamId || !userId) return;
+export async function removeTeamMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const actor = await requireActor();
+    assertCan(actor.globalRole, "team.manage");
+    const teamId = String(formData.get("teamId") ?? "");
+    const userId = String(formData.get("userId") ?? "");
+    if (!teamId || !userId) throw new UserFacingError("Pick someone to remove.");
 
-  const [team] = await db
-    .select({ leadId: teams.leadId })
-    .from(teams)
-    .where(eq(teams.id, teamId))
-    .limit(1);
-  // Removing the lead from their own team would orphan routing for everyone
-  // else in it, so it is refused rather than silently allowed.
-  if (team?.leadId === userId) return;
+    const [team] = await db
+      .select({ leadId: teams.leadId })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
+    // Removing the lead from their own team would orphan routing for everyone
+    // else in it. This used to `return;`, so the button simply did nothing.
+    if (team?.leadId === userId) {
+      throw new UserFacingError(
+        "They lead this team. Set a different lead before removing them.",
+      );
+    }
 
-  await db
-    .delete(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
-  revalidatePath("/admin/teams");
+    await db
+      .delete(teamMembers)
+      .where(
+        and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)),
+      );
+    revalidatePath("/admin/teams");
+    return { ok: true, message: "Removed from the team." };
+  } catch (err) {
+    return { error: safeErrorMessage(err, "removeTeamMember") };
+  }
 }
 
-export async function setTeamLead(formData: FormData) {
+export async function setTeamLead(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+ try {
   const actor = await requireActor();
   assertCan(actor.globalRole, "team.manage");
   const teamId = String(formData.get("teamId") ?? "");
   const leadId = String(formData.get("leadId") ?? "");
-  if (!teamId || !leadId) return;
+  if (!teamId || !leadId) throw new UserFacingError("Pick a lead.");
 
   // Read the outgoing lead first, so the entry is a change rather than an
   // assertion that somebody is now the lead.
@@ -143,6 +174,10 @@ export async function setTeamLead(formData: FormData) {
     });
   });
   revalidatePath("/admin/teams");
+  return { ok: true, message: "Lead updated." };
+ } catch (err) {
+  return { error: safeErrorMessage(err, "setTeamLead") };
+ }
 }
 
 export async function deleteTeam(formData: FormData) {
