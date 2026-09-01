@@ -82,16 +82,6 @@ export function TaskForm({
           />
         </div>
 
-        <div>
-          <label className="label" htmlFor="t-row">Client sheet row</label>
-          <input
-            id="t-row" name="sheetRowRef" className="field" placeholder="e.g. 4"
-          />
-          <p className="mt-1 text-[9px] text-fg-subtle">
-            Optional. Only used when the client sheet is in update mode.
-          </p>
-        </div>
-
         {state.error && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
             {state.error}

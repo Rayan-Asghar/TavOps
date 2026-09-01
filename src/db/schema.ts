@@ -109,36 +109,13 @@ export const reviewDecision = pgEnum("review_decision", [
   "revision_needed",
 ]);
 
-export const syncMode = pgEnum("sync_mode", ["ingest", "append", "update"]);
-
-/** Only `client` exists today: developers use the app, not sheets, so there is
- *  no ingest side. The enum keeps `dev` so adding one later is not a migration
- *  of every existing row. */
-export const sheetAudience = pgEnum("sheet_audience", ["dev", "client"]);
-
-export const sheetConnectionStatus = pgEnum("sheet_connection_status", [
-  "active",
-  "paused",
-  "error",
-  "archived",
-]);
-
-export const syncJobType = pgEnum("sync_job_type", [
-  "append",
-  "update_row",
-  "write_back",
-  "protect",
-  "create_sheet",
-  "migrate_template",
-]);
-
-export const sheetLinkEntity = pgEnum("sheet_link_entity", [
-  "work_log",
-  "task",
-  "request",
-]);
-
-/** Where a change came from. `sheet` is reserved for a future ingest path. */
+/**
+ * Where a change came from.
+ *
+ * `sheet` is dead — the client-sheet sync it belonged to was removed. Postgres
+ * cannot drop a value from an enum in use, and recreating the type across three
+ * columns costs more than one unused label. Do not write it.
+ */
 export const changeSource = pgEnum("change_source", [
   "sheet",
   "ui",
@@ -146,19 +123,11 @@ export const changeSource = pgEnum("change_source", [
   "system",
 ]);
 
+/** `sync` is dead with the sheet sync; see the note on changeSource. */
 export const auditActorType = pgEnum("audit_actor_type", [
   "user",
   "system",
   "sync",
-]);
-
-export const syncStatus = pgEnum("sync_status", [
-  "queued",
-  "held",
-  "running",
-  "done",
-  "failed",
-  "error",
 ]);
 
 export const notificationKind = pgEnum("notification_kind", [
@@ -169,6 +138,7 @@ export const notificationKind = pgEnum("notification_kind", [
   "task_needs_review",
   "task_stalled",
   "update_missing",
+  // Dead with the sheet sync; see the note on changeSource. Never emitted.
   "sync_failed",
   "project_at_risk",
   "review_approved",
@@ -417,8 +387,6 @@ export const tasks = pgTable(
     orderIndex: integer("order_index").default(0).notNull(),
     /** Drives the "needs update" sweep without scanning work_logs. */
     lastUpdateAt: timestamp("last_update_at", { withTimezone: true }),
-    /** Row in the client's sheet this task maps to, in update-mode syncs. */
-    sheetRowRef: varchar("sheet_row_ref", { length: 60 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -453,12 +421,8 @@ export const workLogs = pgTable(
       .defaultNow()
       .notNull(),
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
-    /** Never leaves Tavren. This was once called `notes` and was written
-     *  straight into client spreadsheets; the split is what stops that. */
+    /** The one note a work log carries. Internal, like everything here. */
     internalNotes: text("internal_notes").notNull(),
-    /** The ONLY note field a client may ever see. Null means this entry has
-     *  nothing to say to the client, and no sheet row is written for it. */
-    clientUpdate: text("client_update"),
     /** Status the developer moved the task to with this entry, if any. */
     resultingStatus: taskStatus("resulting_status"),
     /** When the OS first recorded this entry, as opposed to the day the work
@@ -469,7 +433,7 @@ export const workLogs = pgTable(
     /** Points at the head of the revision chain; these columns mirror it. */
     currentRevisionId: uuid("current_revision_id"),
     source: changeSource("source").default("ui").notNull(),
-    /** Soft delete: a removed log still owes the client sheet a reversal. */
+    /** Soft delete: the row stays for the audit trail and the revision chain. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -487,9 +451,8 @@ export const workLogs = pgTable(
  * Append-only history of every version of a work log.
  *
  * Version 1 is the original. Editing produces vN. Deleting produces a reversal
- * (hours 0, isReversal true). Client sheets are never edited in place — each
- * revision becomes a delta row — so this table is what those deltas are
- * computed from.
+ * (hours 0, isReversal true), so a corrected entry keeps its own history rather
+ * than being overwritten in place.
  */
 export const worklogRevisions = pgTable(
   "worklog_revisions",
@@ -504,7 +467,6 @@ export const worklogRevisions = pgTable(
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
     statusAfter: text("status_after"),
     internalNotes: text("internal_notes"),
-    clientUpdate: text("client_update"),
     isReversal: boolean("is_reversal").default(false).notNull(),
     changedByUserId: uuid("changed_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -514,8 +476,6 @@ export const worklogRevisions = pgTable(
       .notNull(),
     source: changeSource("source").default("ui").notNull(),
     reason: text("reason"),
-    connectionId: uuid("connection_id"),
-    rowHash: text("row_hash"),
   },
   (t) => [
     uniqueIndex("worklog_revisions_version_unique").on(t.workLogId, t.version),
@@ -652,173 +612,6 @@ export const notifications = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
- * Google Sheets sync
- * ------------------------------------------------------------------ */
-
-/**
- * One spreadsheet attached to one project for one audience.
- *
- * Supersedes the old `sheet_mappings`. The extra columns exist because a client
- * sheet is a shared artefact, not a dumb sink: the OS must know which columns
- * the client owns and must never touch, whether the client may type in it at
- * all, and which template version its headers came from.
- */
-export const sheetConnections = pgTable(
-  "sheet_connections",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    audience: sheetAudience("audience").notNull(),
-    /** Dev connections only; null for client sheets. */
-    ownerUserId: uuid("owner_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    spreadsheetId: varchar("spreadsheet_id", { length: 120 }).notNull(),
-    driveFileId: varchar("drive_file_id", { length: 120 }),
-    tabName: varchar("tab_name", { length: 120 }).default("Sheet1").notNull(),
-    mode: syncMode("mode").default("append").notNull(),
-    /** tavren_field -> { column, formatter }. Validated against the audience
-     *  allowlist when saved AND again in the worker before every write. */
-    columnMap: jsonb("mapping").$type<Record<string, string>>().notNull(),
-    headerRow: integer("header_row").default(1).notNull(),
-    clientEditable: boolean("client_editable").default(false).notNull(),
-    /** Columns the client maintains. The OS never reads or writes these. */
-    clientOwnedColumns: text("client_owned_columns")
-      .array()
-      .default([])
-      .notNull(),
-    templateVersion: integer("template_version").default(1).notNull(),
-    /** Detects a client reordering or renaming headers under us. */
-    headerHash: text("header_hash"),
-    status: sheetConnectionStatus("status").default("active").notNull(),
-    errorMessage: text("error_message"),
-    lastPollAt: timestamp("last_poll_at", { withTimezone: true }),
-    lastSuccessfulPollAt: timestamp("last_successful_poll_at", {
-      withTimezone: true,
-    }),
-    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => [
-    index("sheet_connections_project_idx").on(t.projectId, t.audience),
-    index("sheet_connections_status_idx").on(t.status),
-    uniqueIndex("sheet_connections_owner_unique").on(
-      t.projectId,
-      t.audience,
-      t.ownerUserId,
-    ),
-  ],
-);
-
-/**
- * Maps an OS entity to the row that represents it in a sheet.
- *
- * `rowKey` is the id written into the hidden column — never a row index, since
- * a client inserting a row above would silently repoint every link.
- */
-export const sheetRowLinks = pgTable(
-  "sheet_row_links",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    entityType: sheetLinkEntity("entity_type").notNull(),
-    entityId: uuid("entity_id").notNull(),
-    connectionId: uuid("connection_id")
-      .notNull()
-      .references(() => sheetConnections.id, { onDelete: "cascade" }),
-    rowKey: text("row_key").notNull(),
-    lastWrittenHash: text("last_written_hash"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => [
-    uniqueIndex("sheet_row_links_entity_unique").on(
-      t.entityType,
-      t.entityId,
-      t.connectionId,
-    ),
-    uniqueIndex("sheet_row_links_rowkey_unique").on(t.connectionId, t.rowKey),
-  ],
-);
-
-/** Versioned sheet layouts. Migrations are append-only: columns are added, never
- *  removed or reordered, because a client may have built formulas on them. */
-export const sheetTemplates = pgTable(
-  "sheet_templates",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    audience: sheetAudience("audience").notNull(),
-    version: integer("version").notNull(),
-    definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => [uniqueIndex("sheet_templates_unique").on(t.audience, t.version)],
-);
-
-/**
- * The queue. Postgres only — claimed with FOR UPDATE SKIP LOCKED, no broker.
- *
- * Rows are inserted in the same transaction as the change that caused them
- * (outbox), so a revision can never be recorded without its sheet write being
- * queued, and vice versa.
- */
-export const syncJobs = pgTable(
-  "sync_jobs",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    connectionId: uuid("connection_id")
-      .notNull()
-      .references(() => sheetConnections.id, { onDelete: "cascade" }),
-    jobType: syncJobType("job_type").default("append").notNull(),
-    workLogId: uuid("work_log_id").references(() => workLogs.id, {
-      onDelete: "cascade",
-    }),
-    revisionId: uuid("revision_id").references(() => worklogRevisions.id, {
-      onDelete: "cascade",
-    }),
-    payload: jsonb("payload").$type<Record<string, unknown>>(),
-    /**
-     * Makes a retry after a timeout a no-op rather than a duplicate row in a
-     * client's spreadsheet. Required, because the unique index it backs treats
-     * NULLs as distinct — a nullable key is a guarantee that does not hold.
-     */
-    idempotencyKey: text("idempotency_key").notNull(),
-    status: syncStatus("status").default("queued").notNull(),
-    attempts: integer("attempts").default(0).notNull(),
-    lastError: text("last_error"),
-    runAfter: timestamp("run_after", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    /** Corrections are withheld from the client for 24h so a same-day fix does
-     *  not reach them as two confusing rows. Originals are never held. */
-    heldUntil: timestamp("held_until", { withTimezone: true }),
-    releasedByUserId: uuid("released_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    finishedAt: timestamp("finished_at", { withTimezone: true }),
-  },
-  (t) => [
-    uniqueIndex("sync_jobs_idempotency_unique").on(t.idempotencyKey),
-    index("sync_jobs_claim_idx").on(t.status, t.runAfter),
-    index("sync_jobs_connection_idx").on(t.connectionId),
-    index("sync_jobs_held_idx").on(t.heldUntil),
-  ],
-);
-
-/* ------------------------------------------------------------------ *
  * Audit — scoped to the data that actually warrants it
  * ------------------------------------------------------------------ */
 
@@ -940,7 +733,6 @@ export const auditLog = pgTable(
     before: jsonb("before").$type<Record<string, unknown>>(),
     after: jsonb("after").$type<Record<string, unknown>>(),
     source: changeSource("source").default("ui").notNull(),
-    syncJobId: uuid("sync_job_id"),
     requestId: text("request_id"),
   },
   (t) => [
@@ -985,7 +777,6 @@ export const projectsRelations = relations(projects, ({ many, one }) => ({
   workLogs: many(workLogs),
   blockers: many(blockers),
   financials: one(projectFinancials),
-  sheetConnections: many(sheetConnections),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -1037,18 +828,6 @@ export const blockersRelations = relations(blockers, ({ one }) => ({
   }),
 }));
 
-export const sheetConnectionsRelations = relations(
-  sheetConnections,
-  ({ one, many }) => ({
-    project: one(projects, {
-      fields: [sheetConnections.projectId],
-      references: [projects.id],
-    }),
-    jobs: many(syncJobs),
-    rowLinks: many(sheetRowLinks),
-  }),
-);
-
 export const worklogRevisionsRelations = relations(
   worklogRevisions,
   ({ one }) => ({
@@ -1058,17 +837,6 @@ export const worklogRevisionsRelations = relations(
     }),
   }),
 );
-
-export const syncJobsRelations = relations(syncJobs, ({ one }) => ({
-  connection: one(sheetConnections, {
-    fields: [syncJobs.connectionId],
-    references: [sheetConnections.id],
-  }),
-  workLog: one(workLogs, {
-    fields: [syncJobs.workLogId],
-    references: [workLogs.id],
-  }),
-}));
 
 export const timeSessionsRelations = relations(timeSessions, ({ one }) => ({
   task: one(tasks, { fields: [timeSessions.taskId], references: [tasks.id] }),

@@ -66,16 +66,16 @@ describe("global role capabilities", () => {
 describe("canInProject", () => {
   it("grants via the project role when the global role lacks it", () => {
     // The point of the whole mechanism: a plain developer who is PM on one
-    // project manages sheets on that project and nowhere else.
-    expect(can("developer", "sheets.client.manage")).toBe(false);
-    expect(canInProject("developer", "pm", "sheets.client.manage")).toBe(true);
-    expect(canInProject("developer", "tech_lead", "sheet.configure")).toBe(true);
+    // project sees the client deadline there and nowhere else.
+    expect(can("developer", "deadline.viewClient")).toBe(false);
+    expect(canInProject("developer", "pm", "deadline.viewClient")).toBe(true);
+    expect(canInProject("developer", "tech_lead", "deadline.viewClient")).toBe(true);
   });
 
   it("does not leak that grant to other project roles", () => {
-    expect(canInProject("developer", "developer", "sheet.configure")).toBe(false);
-    expect(canInProject("developer", "qa", "sheet.configure")).toBe(false);
-    expect(canInProject("developer", "observer", "sheet.configure")).toBe(false);
+    expect(canInProject("developer", "developer", "deadline.viewClient")).toBe(false);
+    expect(canInProject("developer", "qa", "deadline.viewClient")).toBe(false);
+    expect(canInProject("developer", "observer", "deadline.viewClient")).toBe(false);
   });
 
   it("lets the global role win when it already suffices", () => {
@@ -84,7 +84,7 @@ describe("canInProject", () => {
   });
 
   it("falls back to the global answer with no project role", () => {
-    expect(canInProject("developer", null, "sheet.configure")).toBe(false);
+    expect(canInProject("developer", null, "deadline.viewClient")).toBe(false);
     expect(canInProject("developer", null, "worklog.create")).toBe(true);
   });
 
@@ -96,9 +96,9 @@ describe("canInProject", () => {
     }
   });
 
-  it("gives a sales owner the client deadline but not sheet control", () => {
+  it("gives a sales owner the client deadline but no project management", () => {
     expect(canInProject("developer", "sales_owner", "deadline.viewClient")).toBe(true);
-    expect(canInProject("developer", "sales_owner", "sheet.configure")).toBe(false);
+    expect(canInProject("developer", "sales_owner", "project.manageMembers")).toBe(false);
   });
 });
 

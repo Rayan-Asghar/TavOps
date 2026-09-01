@@ -27,7 +27,6 @@ export async function logWork(input: LogWorkInput) {
       userId: actor.id,
       hours: data.hours,
       internalNotes: data.internalNotes,
-      clientUpdate: data.clientUpdate ?? null,
       resultingStatus: data.resultingStatus ?? null,
     }),
   );

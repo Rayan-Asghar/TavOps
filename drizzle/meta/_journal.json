@@ -64,6 +64,13 @@
       "when": 1787866114394,
       "tag": "0008_drop_deprecated_sheets",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788281137080,
+      "tag": "0009_remove_client_sheets",
+      "breakpoints": true
     }
   ]
 }

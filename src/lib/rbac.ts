@@ -21,9 +21,6 @@ export const CAPABILITIES = [
   "blocker.create",
   "blocker.resolve",
   "review.approve",
-  "sheet.configure",
-  "sheets.client.manage",
-  "sheets.admin",
   "team.manage",
   "deadline.viewClient",
   "proposal.create",
@@ -66,9 +63,6 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "blocker.create",
     "blocker.resolve",
     "review.approve",
-    "sheet.configure",
-    "sheets.client.manage",
-    "sheets.admin",
     "deadline.viewClient",
     "proposal.create",
     "proposal.viewAll",
@@ -131,16 +125,16 @@ export const ORG_WIDE_ROLES: readonly GlobalRole[] = ["admin", "head"];
 /**
  * Capabilities granted by a PROJECT role, on that project only.
  *
- * Until now authorisation was global-role only. Releasing held client
- * corrections has to sit with whoever runs that particular project, which is a
- * project role — so a person can be a plain `developer` globally and still
- * manage sheets on the one project where they are the PM.
+ * Authorisation would otherwise be global-role only, which cannot express
+ * "runs this one project": a person can be a plain `developer` globally and
+ * still be the PM on a single project, and the things that belong to whoever
+ * runs a project have to follow that, not their job title.
  *
  * Never hardcode a person: this is keyed on the role, not on a user id.
  */
 const PROJECT_ROLE_CAPABILITIES: Record<ProjectRole, readonly Capability[]> = {
-  pm: ["sheets.client.manage", "sheet.configure", "deadline.viewClient"],
-  tech_lead: ["sheets.client.manage", "sheet.configure", "deadline.viewClient"],
+  pm: ["deadline.viewClient"],
+  tech_lead: ["deadline.viewClient"],
   sales_owner: ["deadline.viewClient"],
   qa: [],
   developer: [],

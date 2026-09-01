@@ -2,8 +2,6 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   projects,
-  sheetConnections,
-  syncJobs,
   tasks,
   workLogs,
   worklogRevisions,
@@ -20,14 +18,7 @@ export type RecordWorkInput = {
   taskId?: string | null;
   userId: string;
   hours: number;
-  /** Never leaves Tavren. */
   internalNotes: string;
-  /**
-   * The one line the client may see. Optional on purpose: most entries have
-   * nothing worth telling a client, and an empty value means no row is written
-   * to their sheet at all rather than a row full of internal detail.
-   */
-  clientUpdate?: string | null;
   resultingStatus?: TaskStatus | null;
   workDate?: Date;
 };
@@ -36,13 +27,12 @@ export type RecordWorkInput = {
  * The single fan-out for "work happened".
  *
  * Both the manual log form and the timer's finish step call this, so the two
- * paths cannot drift — a change to notification or sync behaviour applies to
- * both by construction. Caller owns the transaction and the authorization
- * check; this function assumes both have already happened.
+ * paths cannot drift — a change to notification behaviour applies to both by
+ * construction. Caller owns the transaction and the authorization check; this
+ * function assumes both have already happened.
  *
- * Everything here is one transaction with the sync job insert (the outbox
- * pattern): a work log can never be recorded without its sheet write being
- * queued, and a sheet write can never be queued for work that was not recorded.
+ * Everything here commits together or not at all: an entry cannot exist without
+ * its revision, and the task status cannot move without the entry that moved it.
  */
 export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
   // A task must belong to the project being logged against, otherwise a
@@ -61,8 +51,6 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     task = found;
   }
 
-  const clientUpdate = input.clientUpdate?.trim() || null;
-
   const [entry] = await tx
     .insert(workLogs)
     .values({
@@ -71,7 +59,6 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       userId: input.userId,
       hours: input.hours.toFixed(2),
       internalNotes: input.internalNotes,
-      clientUpdate,
       resultingStatus: input.resultingStatus ?? null,
       source: "ui",
       ...(input.workDate ? { workDate: input.workDate } : {}),
@@ -91,7 +78,6 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       hours: entry.hours,
       statusAfter: input.resultingStatus ?? null,
       internalNotes: input.internalNotes,
-      clientUpdate,
       changedByUserId: input.userId,
       source: "ui",
     })
@@ -133,7 +119,6 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
             userId: reviewer,
             kind: "task_needs_review",
             title: `Ready for review: ${task.title}`,
-            // The reviewer is internal, so the internal note is the useful one.
             body: `${project?.name ?? "Project"} — ${input.hours.toFixed(2)}h logged. ${input.internalNotes}`,
             projectId: input.projectId,
             taskId: task.id,
@@ -146,48 +131,5 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     }
   }
 
-  // Queue the sheet write. Enqueue only — never call Google here.
-  //
-  // No client update means nothing to tell the client, so no row is queued.
-  // The alternative — writing the internal note, which is what this code used
-  // to do — put private commentary into a shared client spreadsheet.
-  let queuedSync = false;
-  if (clientUpdate) {
-    const [connection] = await tx
-      .select({ id: sheetConnections.id, mode: sheetConnections.mode })
-      .from(sheetConnections)
-      .where(
-        and(
-          eq(sheetConnections.projectId, input.projectId),
-          eq(sheetConnections.audience, "client"),
-          eq(sheetConnections.status, "active"),
-        ),
-      )
-      .limit(1);
-
-    if (connection) {
-      await tx.insert(syncJobs).values({
-        connectionId: connection.id,
-        jobType: "append",
-        workLogId: entry.id,
-        revisionId: revision.id,
-        // Deterministic: the same revision can only ever produce one row, so a
-        // retry after a timeout collides with the unique index and is a no-op
-        // instead of writing the client a duplicate.
-        idempotencyKey: `revision:${revision.id}`,
-        payload: {
-          taskTitle: task?.title ?? "(general project work)",
-          taskId: task?.id ?? null,
-          hours: input.hours,
-          clientUpdate,
-          status: input.resultingStatus ?? task?.status ?? null,
-          workedBy: input.userId,
-          workDate: entry.workDate.toISOString(),
-        },
-      });
-      queuedSync = true;
-    }
-  }
-
-  return { entry, revision, queuedSync };
+  return { entry, revision };
 }

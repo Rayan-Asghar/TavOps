@@ -39,7 +39,7 @@ const STALE_TASK_HOURS = HOURS_PER_DAY;
  * fixed-price work an overrun is not a margin curiosity, it is the earliest
  * evidence that the delivery date is at risk — and unlike every other slip
  * detector here it needs nobody to report anything, because the hours are
- * already being logged to feed the client sheet.
+ * already being logged anyway.
  */
 const OVERRUN_FACTOR = 1.25;
 

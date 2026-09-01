@@ -47,7 +47,6 @@ export async function createTask(
       estimatedHours: formData.get("estimatedHours") || undefined,
       dueDate: formData.get("dueDate") ?? "",
       priority: formData.get("priority") || 3,
-      sheetRowRef: formData.get("sheetRowRef") ?? undefined,
     });
 
     await assertProjectAccess(actor, data.projectId);
@@ -72,7 +71,6 @@ export async function createTask(
           dueDate: data.dueDate,
           priority: data.priority,
           orderIndex: maxOrder + 1,
-          sheetRowRef: data.sheetRowRef,
         })
         .returning();
 

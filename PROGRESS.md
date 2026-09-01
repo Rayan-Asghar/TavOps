@@ -4,6 +4,57 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-01 — Audit, direction change, and Phase 1: the client sheet sync is gone
+
+- **Context:** Direction changed. TavrenOPS is now **strictly internal** —
+  Web App → PostgreSQL (single source of truth) → reporting. No client portals,
+  client-facing sheets, billing or external access. Audited the whole repo first
+  rather than rebuilding; full audit and 5-phase plan at
+  `~/.claude/plans/can-you-explain-to-wiggly-canyon.md`.
+
+- **Audit findings that shaped the plan:**
+  - The app was **already on the target architecture** — no REST API, RSC and
+    server actions straight onto Postgres, only 4 route handlers.
+  - Authorization is the strongest part of the codebase (capability RBAC +
+    project-role overlay + 404-not-403 scoping + RLS backstop). Left untouched.
+  - Exactly one structural divergence: the sheets sync was client-facing *and*
+    wired into the domain write transaction.
+  - Nothing is scheduled — every automation is inert until a host with a
+    scheduler exists. Unchanged by any refactor; it is Phase 0.
+
+- **Shipped (Phase 1):** Removed the client sheet subsystem entirely.
+  **−2,616 / +54 lines of source.** 21 tables → 17. `googleapis` dropped.
+  `drizzle/0009_remove_client_sheets.sql` applied. 94 tests pass (was 108; the
+  14 removed were sheet-helper tests), build green, sweeps and digest verified
+  live over HTTP.
+
+- **Decisions:**
+  - **Removed the helpers and `googleapis` too, not just the sync.** Phase 4 may
+    add a one-way sheet *export*; writing fresh helpers then is cheaper than
+    carrying a dead dependency through every intervening change.
+  - **Dropped `work_logs.client_update` with its data**, backed up first to
+    `~/Desktop/tavrenops-backups/pre-0009-*.sql` outside the repo. The
+    internal/client note split existed only to feed client sheets; keeping a
+    second note field would have preserved the confusing UX with no consumer.
+  - **Kept three dead enum values** (`change_source.'sheet'`,
+    `audit_actor_type.'sync'`, `notification_kind.'sync_failed'`). Postgres
+    cannot drop a value from an enum in use, and recreating the types across
+    their columns costs more than three annotated labels.
+  - **Re-pointed the project-role RBAC tests at `deadline.viewClient`** rather
+    than deleting them — the sheet capabilities were the only thing those tests
+    exercised, and the overlay mechanism still needs cover.
+
+- **Found while auditing, not yet fixed:** work logs cannot be edited or deleted
+  despite the schema being fully built for it (Phase 2); the audit log is
+  written by 4 modules and read by none (Phase 2); `auth.config.ts`'s
+  `authorized` callback never runs because no `middleware.ts` exists (Phase 3).
+
+- **Abandoned:** a plan to add destination guards to the sheets config
+  (duplicate-sheet detection, NULL-distinct index fix, tab-picker bug). Correct
+  work, wrong direction — the whole subsystem was deleted instead.
+
+---
+
 ### 2026-08-28 — Hardening pass: privacy fix, sheets migration, digest, phone logging
 
 - **Shipped:**

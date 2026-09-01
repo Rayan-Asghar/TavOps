@@ -20,8 +20,6 @@ export const createTaskSchema = z.object({
   estimatedHours: z.coerce.number().min(0).max(500).optional(),
   dueDate: optionalDate,
   priority: z.coerce.number().int().min(1).max(5).default(3),
-  /** Row in the client's sheet, for update-mode syncs. */
-  sheetRowRef: z.string().trim().max(60).optional(),
 });
 
 export const updateTaskSchema = z.object({

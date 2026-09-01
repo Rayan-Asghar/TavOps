@@ -1,89 +1,88 @@
 # HANDOFF
 
 > Overwrite this file — never append. Max 100 lines. No pasted code, file:line only.
-> Full pre-2026-08-28 handoff (733 lines) archived at `.claude/handoff-history/2026-08-28_2048.md`.
+> Previous handoff archived at `.claude/handoff-history/2026-09-01_phase1.md`.
 
 ## Goal
 
-Harden TavrenOPS enough for the Tavren team's first real use: fix the client-data
-leak, finish the half-done sheets migration, and make status arrive without asking.
+Turn TavrenOPS into a clean, understandable, **strictly internal**
+Postgres-centred operations system: Web App → PostgreSQL (single source of
+truth) → reporting. No client portals, client sheets, billing or external
+access. Full audit and phased plan:
+`~/.claude/plans/can-you-explain-to-wiggly-canyon.md`.
 
 ## Current State
 
-**All 7 planned phases are complete. 108 tests pass, build is green, app runs.**
-Nothing is committed — 71 files sit uncommitted on `main`.
+**Phase 1 of 5 is complete and committed. 94 tests pass, build green, app runs.**
 
-Working and verified end-to-end by driving the app in a real browser:
-- **Internal notes can no longer reach client sheets.** Split into
-  `internal_notes` / `client_update` at `src/db/schema.ts:452`; only the client
-  line enters the sync payload (`src/server/record-work.ts:170`). Structural, not
-  a filter — `internalNotes` appears nowhere in the sheets path.
-- **Sheets runtime fully on `sheet_connections`**; `sheet_mappings` dropped by
-  `drizzle/0008_drop_deprecated_sheets.sql` (applied; 13 work logs, 13 revisions
-  preserved).
-- **Queue is reliable**: stuck-job reaper `src/server/sync-worker.ts:63`,
-  deterministic idempotency key, `held_until` honoured. All three proven against
-  the live DB.
-- **`/log`** — phone-first log screen (`src/app/log/page.tsx`), installable PWA.
-- **Daily digest** → Discord/Slack webhooks (`src/server/digest.ts`,
-  `src/server/webhooks.ts`, `src/app/api/cron/digest/route.ts`).
-- **Estimate-overrun sweep** `src/server/sweeps.ts:265` — fires, dedupes, notifies
-  assignee + PM.
-- Blocker routing collapsed 13 branches → 3 owners (`src/lib/blocker-routing.ts`).
-- Shift clock moved to 18:00–02:00 PKT = 13:00–21:00 UTC (`src/lib/business-time.ts:31`).
+The client-facing Google Sheets sync is gone — the one subsystem that
+contradicted the target architecture. Source is **−2,616 lines / +54**.
 
-**Stopping point:** everything builds and runs; the app is live on
-`http://localhost:3000`. Nothing committed. Next actor should commit first.
+- **Deleted**: `sheets.ts`, `sheets.test.ts`, `sync-worker.ts`, `sheet-actions.ts`,
+  `sheet-queries.ts`, `sheet-schemas.ts`, `sheet-config.tsx`,
+  `api/cron/sync/route.ts`, `scripts/sheets-doctor.ts`, `scripts/attach-sheet.ts`,
+  and the `googleapis` dependency.
+- **Schema**: 21 tables → **17**. `drizzle/0009_remove_client_sheets.sql` applied.
+  Dropped `sheet_connections`, `sheet_row_links`, `sheet_templates`, `sync_jobs`,
+  `tasks.sheet_row_ref`, `work_logs.client_update`,
+  `worklog_revisions.{client_update,connection_id,row_hash}`,
+  `audit_log.sync_job_id`, and 6 enum types.
+- **`recordWorkInTx`** (`src/server/record-work.ts:47`) is now purely internal
+  bookkeeping: work log + revision v1 + task status + nag clear + reviewer
+  notify. Returns `{entry, revision}`. Verified against the live DB in a
+  rolled-back transaction — v1 written, `current_revision_id` correct.
+- **Work logs carry one note.** The internal/client split existed only to feed
+  the sheets; the second field is gone from all three log surfaces
+  (`log-work-form.tsx`, `quick-log.tsx`, `task-timer.tsx`).
+- **RBAC**: `sheet.configure`, `sheets.client.manage`, `sheets.admin` removed.
+  The project-role overlay survives on `deadline.viewClient` and its tests were
+  re-pointed there, so the mechanism is still covered.
+- Data preserved: 15 work logs, 15 revisions, 7 tasks.
 
-## Files Touched This Session
-
-- **New logic**: `src/lib/logger.ts`, `src/lib/errors.ts`, `src/lib/digest-format.ts`,
-  `src/server/action-errors.ts`, `src/server/digest.ts`, `src/server/webhooks.ts`,
-  `src/server/capacity.ts`
-- **New UI/routes**: `src/app/log/page.tsx`, `src/components/quick-log.tsx`,
-  `src/app/error.tsx`, `src/app/global-error.tsx`, `src/app/not-found.tsx`,
-  `src/app/manifest.ts`, `src/app/api/cron/digest/route.ts`
-- **New tests** (7 files, 108 cases): `src/lib/*.test.ts`, `src/server/*.test.ts`
-- **Rewritten**: `src/server/sync-worker.ts`, `src/server/record-work.ts`,
-  `src/lib/blocker-routing.ts`, `src/server/sheet-queries.ts`
-- **Migration**: `drizzle/0008_drop_deprecated_sheets.sql` (+ snapshot)
-- **Docs/config**: `README.md`, `.env.example`, `package.json`,
-  `scripts/bootstrap.sh`, `vitest.config.mts` (renamed from `.ts`)
-
-## What Failed / Dead Ends
-
-- **Correlated subqueries in the digest silently returned 0.** Drizzle only
-  qualifies column names when the outer query has a join; without one,
-  `${tasks.projectId} = ${projects.id}` renders as `"project_id" = "id"`, which
-  resolves inside the subquery to `tasks.project_id = tasks.id` — never true, no
-  error. Fixed with grouped aggregates (`src/server/digest.ts:64`). **I wrongly
-  called this a pre-existing repo-wide bug first** — every other call site has a
-  join and is fine.
-- **A CDP browser harness reported a fake auth bug.** `document.querySelector(
-  'form button[type=submit]')` grabbed the sidebar's *sign-out* form (earlier in
-  the DOM), so submits logged the user out and landed on `/login`. Scope clicks
-  to `[name=X].closest('form')`. Not an app bug.
-- **Driving server actions via curl** — 404s. Extracting the `$ACTION_ID_` value
-  from HTML doesn't reproduce React's dispatch. Use a real browser instead.
-- **A Stop hook was tried before and reverted** (`62fa8e5` → `9427490`): it
-  *blocked* every turn until HANDOFF.md was updated. Do not reintroduce one.
-- **Did NOT drain the sync queue** — NW-001 points at a real client spreadsheet.
+**Backup before the destructive migration:**
+`/home/rayan/Desktop/tavrenops-backups/pre-0009-20260901-213816.sql` (97K,
+outside the repo). It is the only copy of the dropped `client_update` values.
 
 ## Next Steps
 
-1. **Commit the 71 uncommitted files** — nothing is saved yet.
-2. **Pick a host and schedule cron**: `/api/cron/sync` 2–5 min, `/sweeps` hourly,
-   `/digest` daily. Nothing automatic works until this exists. Vercel Hobby is out.
-3. **Set `DIGEST_WEBHOOK_URLS`** or the digest builds and goes nowhere.
-4. **Prove the live Google write** — drain one job to NW-001 and confirm the row
-   (needs explicit go-ahead: it writes to a real client sheet).
-5. **DB-fixture tests** for the RLS backstop and the 404-not-403 access paths —
-   the only untested high-risk areas.
+1. **Phase 0 — hosting + scheduler (Rayan, blocks everything automatic).**
+   Nothing runs on a timer today. Schedule `/api/cron/sweeps` hourly and
+   `/api/cron/digest` daily with `CRON_SECRET`. Vercel Hobby is out.
+   Set `DIGEST_WEBHOOK_URLS` or the digest builds and goes nowhere.
+2. **Phase 2 — close the internal record loop.** The highest-value remaining
+   work, and what employees will hit in week one:
+   - `editWorkLog` / `deleteWorkLog`. The schema is already built for it —
+     `deleted_at`, `is_reversal`, the version chain, and the
+     `projects.invoiced_through` lock. Today a mistyped 8h is permanent and
+     `worklog_revisions` only ever holds v1.
+   - One `writeAudit` helper wired into work logs, tasks, projects, blockers and
+     reviews. Currently only users/teams/timer/handoff write audit rows and
+     **nothing reads the table**, though `audit.view` exists.
+3. **Phase 3** — schema/dead-code cleanup; delete the dead `authorized` callback
+   in `src/lib/auth.config.ts` (no `middleware.ts` exists, so it never runs);
+   check `notifications_dedupe_unique` for the NULL-distinct trap; split the
+   673-line `src/app/projects/[id]/page.tsx`.
+4. **Phase 4** — `src/server/reports.ts` + `/reports` + CSV export. This is what
+   actually replaces the internal spreadsheets.
+5. **Phase 5** — DB-fixture tests for access control and the RLS backstop.
+
+## What Failed / Dead Ends
+
+- **`pkill -f "next dev"` kills the agent's own shell** (the pattern matches the
+  bash command line). Use `pgrep -af` to check, and a PID.
+- **`tsx` scripts are transformed as CJS** — no top-level await. Wrap in
+  `main()`. They must also live inside the repo for `../src/...` to resolve.
+- **Deleting `.next` breaks `pnpm typecheck`** — `LayoutProps` and friends are
+  generated there. Run `pnpm build` once to regenerate.
+- **Enum values cannot be dropped in Postgres.** `change_source.'sheet'`,
+  `audit_actor_type.'sync'` and `notification_kind.'sync_failed'` survive as
+  dead labels, annotated in `src/db/schema.ts`. Never write them.
+- **Do not re-add a Stop hook** (`62fa8e5` → `9427490`): it blocked every turn.
+- Nine seed accounts still share `tavren123`. Delete once real admins exist.
 
 ## Open Questions / Blockers
 
-- **Hosting decision** — blocks step 2, which blocks everything automatic.
-- **Discord/Slack webhook URL** needed from Rayan — blocks step 3.
-- **Permission to write to the real NW-001 client sheet** — blocks step 4.
-- `update` mode has never run through the worker against a live client template.
-- Nine seed accounts still share `tavren123`; delete once real admins exist.
+- **Hosting decision** — blocks step 1, which blocks everything automatic.
+- **Discord/Slack webhook URL** needed from Rayan.
+- Whether Phase 4 should end in a Google Sheets *export*. `googleapis` was
+  removed; re-add it only if that is wanted, and keep it one-way.

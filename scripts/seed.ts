@@ -147,12 +147,12 @@ async function main() {
   const taskRows = await db
     .insert(tasks)
     .values([
-      { projectId: shopify.id, title: "Homepage build", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "16.00", dueDate: new Date(Date.now() + 3 * 864e5), lastUpdateAt: new Date(Date.now() - 3 * 864e5), sheetRowRef: "2" },
-      { projectId: shopify.id, title: "PDP template", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "20.00", dueDate: new Date(Date.now() - 1 * 864e5), sheetRowRef: "3" },
-      { projectId: shopify.id, title: "Klaviyo setup", assigneeId: by("Ayan").id, status: "todo", estimatedHours: "8.00", sheetRowRef: "4" },
-      { projectId: shopify.id, title: "Collection pages", assigneeId: by("Hozefa").id, status: "in_review", estimatedHours: "10.00", lastUpdateAt: new Date(), sheetRowRef: "5" },
-      { projectId: wp.id, title: "Blog template", assigneeId: by("Abdur Rehman").id, status: "in_progress", estimatedHours: "12.00", lastUpdateAt: new Date(), sheetRowRef: "2" },
-      { projectId: wp.id, title: "Contact form + CRM hook", assigneeId: by("Abdur Rehman").id, status: "todo", estimatedHours: "5.00", sheetRowRef: "3" },
+      { projectId: shopify.id, title: "Homepage build", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "16.00", dueDate: new Date(Date.now() + 3 * 864e5), lastUpdateAt: new Date(Date.now() - 3 * 864e5) },
+      { projectId: shopify.id, title: "PDP template", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "20.00", dueDate: new Date(Date.now() - 1 * 864e5) },
+      { projectId: shopify.id, title: "Klaviyo setup", assigneeId: by("Ayan").id, status: "todo", estimatedHours: "8.00" },
+      { projectId: shopify.id, title: "Collection pages", assigneeId: by("Hozefa").id, status: "in_review", estimatedHours: "10.00", lastUpdateAt: new Date() },
+      { projectId: wp.id, title: "Blog template", assigneeId: by("Abdur Rehman").id, status: "in_progress", estimatedHours: "12.00", lastUpdateAt: new Date() },
+      { projectId: wp.id, title: "Contact form + CRM hook", assigneeId: by("Abdur Rehman").id, status: "todo", estimatedHours: "5.00" },
     ])
     .returning();
 

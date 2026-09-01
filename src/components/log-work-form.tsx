@@ -66,7 +66,7 @@ export function LogWorkForm({
 
         <div>
           <label className="label" htmlFor="internalNotes">
-            What you did <span className="text-fg-subtle">(internal)</span>
+            What you did
           </label>
           <textarea
             id="internalNotes"
@@ -77,26 +77,7 @@ export function LogWorkForm({
             placeholder="Hero section done — desktop and mobile. Nav still flaky on Safari."
           />
           <p className="mt-1 text-[10px] text-fg-subtle">
-            Stays inside Tavren. Write it for your reviewer.
-          </p>
-        </div>
-
-        {/* Separate field, separate destination. The two were one field once,
-            and that one field was being written into client spreadsheets. */}
-        <div>
-          <label className="label" htmlFor="clientUpdate">
-            Line for the client <span className="text-fg-subtle">(optional)</span>
-          </label>
-          <input
-            id="clientUpdate"
-            name="clientUpdate"
-            maxLength={300}
-            className="field"
-            placeholder="Homepage build in progress."
-          />
-          <p className="mt-1 text-[10px] text-fg-subtle">
-            The only thing that reaches their sheet. Leave blank and nothing is
-            sent for this entry.
+            Write it for your reviewer.
           </p>
         </div>
 

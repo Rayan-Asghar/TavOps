@@ -252,18 +252,6 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           placeholder="Hero completed for desktop/mobile. Ready for QA."
         />
 
-        {/* Same split as the manual form: only this line can reach a client. */}
-        <label className="label" htmlFor="finish-client">
-          Line for the client <span className="text-fg-subtle">(optional)</span>
-        </label>
-        <input
-          id="finish-client"
-          name="clientUpdate"
-          maxLength={300}
-          className="field"
-          placeholder="Homepage complete and in review."
-        />
-
         <label className="label" htmlFor="finish-status">
           Move task to
         </label>

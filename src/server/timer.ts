@@ -179,7 +179,7 @@ export async function resumeTimer(formData: FormData): Promise<TimerState> {
 
 /**
  * Ends the session and turns it into a work log through the same fan-out the
- * manual form uses, so the sheet sync and reviewer notification behave
+ * manual form uses, so the revision chain and reviewer notification behave
  * identically whether the hours were typed or measured.
  */
 export async function finishTimer(
@@ -211,14 +211,13 @@ export async function finishTimer(
       };
     }
 
-    const result = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       const recorded = await recordWorkInTx(tx, {
         projectId: session.projectId,
         taskId: session.taskId,
         userId: actor.id,
         hours,
         internalNotes: data.note,
-        clientUpdate: data.clientUpdate ?? null,
         resultingStatus: data.resultingStatus,
       });
 
@@ -233,18 +232,11 @@ export async function finishTimer(
           workLogId: recorded.entry.id,
         })
         .where(eq(timeSessions.id, session.id));
-
-      return recorded;
     });
 
     revalidatePath(`/projects/${session.projectId}`);
     revalidatePath("/");
-    return {
-      ok: true,
-      message: result.queuedSync
-        ? `Logged ${hours.toFixed(2)}h. Client sheet update queued.`
-        : `Logged ${hours.toFixed(2)}h.`,
-    };
+    return { ok: true, message: `Logged ${hours.toFixed(2)}h.` };
   } catch (err) {
     return fail(err);
   }

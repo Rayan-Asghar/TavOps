@@ -31,8 +31,6 @@ import {
 } from "@/components/task-timer";
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
-import { SheetConfig } from "@/components/sheet-config";
-import { sheetStatusFor } from "@/server/sheet-queries";
 
 function fmtDate(d: Date | null): string {
   return d
@@ -65,7 +63,7 @@ function Stat({
   );
 }
 
-const TAB_KEYS: TabKey[] = ["overview", "tasks", "team", "activity", "sync"];
+const TAB_KEYS: TabKey[] = ["overview", "tasks", "team", "activity"];
 
 export default async function ProjectPage({
   params,
@@ -121,13 +119,8 @@ export default async function ProjectPage({
   // naming it "internal" would itself give away that a later date exists.
   const seesClientDeadline = can(role, "deadline.viewClient");
   const canManageMembers = can(role, "project.manageMembers");
-  const canConfigureSheet = can(role, "sheet.configure");
 
-  // Falling back rather than rendering an empty pane: someone who types
-  // ?tab=sync without the capability should land somewhere useful, not on a
-  // blank page that looks broken.
-  const activeTab: TabKey =
-    requestedTab === "sync" && !canConfigureSheet ? "overview" : requestedTab;
+  const activeTab: TabKey = requestedTab;
 
   // Second alias so the reporter and the assignee can be joined in one query.
   const assignee = aliasedTable(users, "assignee");
@@ -188,9 +181,6 @@ export default async function ProjectPage({
       canManageMembers ? assignableStaff(id) : Promise.resolve([]),
       unresolvedCount(actor.id),
     ]);
-
-  // Each project has its own client sheet, connected by whichever head runs it.
-  const sheetStatus = canConfigureSheet ? await sheetStatusFor(id) : null;
 
   // Whole-project total, independent of what this person is allowed to read
   // row-by-row — an hours total is not sensitive, individual entries are.
@@ -339,15 +329,6 @@ export default async function ProjectPage({
           { key: "tasks", label: "Tasks", count: openTasks.length },
           { key: "team", label: "Team", count: teamList.length },
           { key: "activity", label: "Activity" },
-          ...(canConfigureSheet
-            ? [
-                {
-                  key: "sync" as const,
-                  label: "Sync",
-                  count: sheetStatus?.failed ?? 0,
-                },
-              ]
-            : []),
         ]}
       />
 
@@ -560,16 +541,6 @@ export default async function ProjectPage({
                 )}
               </section>
             </>
-          )}
-
-          {activeTab === "sync" && canConfigureSheet && sheetStatus && (
-            <SheetConfig
-              projectId={project.id}
-              status={sheetStatus}
-              serviceAccountEmail={
-                process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null
-              }
-            />
           )}
 
           {activeTab === "team" && (

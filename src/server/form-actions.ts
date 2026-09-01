@@ -19,21 +19,15 @@ export async function logWorkFormAction(
     const taskId = String(formData.get("taskId") ?? "");
     const status = String(formData.get("resultingStatus") ?? "");
 
-    const result = await logWork({
+    await logWork({
       projectId: String(formData.get("projectId") ?? ""),
       taskId: taskId === "" ? null : taskId,
       hours: Number(formData.get("hours") ?? 0),
       internalNotes: String(formData.get("internalNotes") ?? ""),
-      clientUpdate: String(formData.get("clientUpdate") ?? ""),
       resultingStatus: status === "" ? null : (status as never),
     });
 
-    return {
-      ok: true,
-      message: result.queuedSync
-        ? "Logged. Client sheet update queued."
-        : "Logged.",
-    };
+    return { ok: true, message: "Logged." };
   } catch (err) {
     return toState(err, "logWork");
   }

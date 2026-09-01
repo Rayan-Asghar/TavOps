@@ -116,7 +116,7 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
 
           <div>
             <label className="label" htmlFor={`n-${task.taskId ?? task.projectId}`}>
-              What you did <span className="text-fg-subtle">(internal)</span>
+              What you did
             </label>
             <textarea
               id={`n-${task.taskId ?? task.projectId}`}
@@ -125,19 +125,6 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
               required
               className="field text-[16px]"
               placeholder="Variant picker done. Gallery still rough on mobile."
-            />
-          </div>
-
-          <div>
-            <label className="label" htmlFor={`c-${task.taskId ?? task.projectId}`}>
-              Line for the client <span className="text-fg-subtle">(optional)</span>
-            </label>
-            <input
-              id={`c-${task.taskId ?? task.projectId}`}
-              name="clientUpdate"
-              maxLength={300}
-              className="field text-[16px]"
-              placeholder="Product page work under way."
             />
           </div>
 

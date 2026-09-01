@@ -10,19 +10,8 @@ export const logWorkSchema = z.object({
   projectId: z.string().uuid(),
   taskId: z.string().uuid().nullable().optional(),
   hours: z.coerce.number().positive().max(24),
-  /** Internal by default. This is what the team and reviewers read. */
+  /** What the team and reviewers read. The only note a work log carries. */
   internalNotes: z.string().trim().min(3, "Say what you did, even briefly."),
-  /**
-   * Optional, and the ONLY thing that reaches the client's spreadsheet.
-   * Leaving it blank means this entry tells the client nothing and no row is
-   * written for it — which is the right default for most entries.
-   */
-  clientUpdate: z
-    .string()
-    .trim()
-    .max(300, "Keep the client line to one sentence.")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
   resultingStatus: z
     .enum(["todo", "in_progress", "blocked", "in_review", "done"])
     .nullable()

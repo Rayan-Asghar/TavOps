@@ -1,7 +1,8 @@
 # TavrenOPS
 
-Internal operations for Tavren: projects, tasks, work logs, blockers, and
-automatic Google Sheets sync for client-facing timesheets.
+Internal operations for Tavren: projects, tasks, work logs, blockers, timers
+and the automations that chase them. Strictly internal — Postgres is the single
+source of truth, and anything leaving it is a report generated from it.
 
 The design brief and full backlog live in [docs/tavOps.md](docs/tavOps.md).
 
@@ -10,23 +11,15 @@ The design brief and full backlog live in [docs/tavOps.md](docs/tavOps.md).
 One developer submission fans out to everything else:
 
 ```
-Log work  ->  work_logs row (internal note + optional client line)
+Log work  ->  work_logs row
           ->  worklog_revisions v1, so every entry has an origin
           ->  task status + freshness clock
           ->  reviewer notification
-          ->  queued Google Sheets row  [only if a client line was written]
           ->  clears the "you owe an update" inbox item
 ```
 
-**Internal notes never reach a client sheet.** A work log carries two separate
-fields: `internal_notes`, which the team and reviewers read, and `client_update`,
-a single optional line that is the only thing a spreadsheet can ever receive.
-Leave the client line blank and no row is queued at all — which is the right
-default for most entries.
-
-Everything commits in one transaction. The Sheets API call happens out of band
-in a worker, so a slow Google response never sits between a developer and their
-submit button.
+Everything commits in one transaction: an entry cannot exist without its
+revision, and a task status cannot move without the entry that moved it.
 
 | Module | State |
 | --- | --- |
@@ -44,15 +37,13 @@ submit button.
 | Timer correction with mandatory reason + audit entry | Working |
 | BD pipeline: proposals, feasibility routing, conversion by category | Working |
 | Won proposal → draft project handoff | Working |
-| Sheets sync queue, retry/backoff, failure alerting | Working |
-| Stuck-job reaper, idempotent writes, held corrections | Working |
-| One-click standard client sheet template | Working |
 | Phone-first log screen (`/log`) + installable PWA | Working |
 | Daily digest pushed to Discord / Slack webhooks | Working |
 | Estimate-overrun detection | Working |
 | Effective rate per bid category | Working |
-| Live Google Sheets write | Needs credentials — see below |
-| QA checklists, change requests, client-facing view | Not in v1 |
+| Editing or deleting a work log | Not yet — see the plan |
+| Reporting / export out of Postgres | Not yet — see the plan |
+| QA checklists, change requests, anything client-facing | Out of scope |
 
 ## Running it
 
@@ -78,27 +69,9 @@ real accounts through **People** in the nav.
 | `MIGRATION_DATABASE_URL` | Owner role. Used only by drizzle-kit. |
 | `AUTH_SECRET` | `openssl rand -base64 32` |
 | `CRON_SECRET` | Guards `/api/cron/*`. `openssl rand -hex 24` |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_PRIVATE_KEY` | Sheets sync |
 | `DIGEST_WEBHOOK_URLS` | Comma-separated Discord/Slack incoming webhooks. Blank disables delivery. |
 | `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error`. Structured JSON on stdout. |
 | `APP_DB_PASSWORD` | Optional. Pins the `tavren_app` password across `pnpm db:reset`. |
-
-### Google Sheets setup
-
-1. Create a Google Cloud project, enable the **Sheets API**.
-2. Create a **service account**, download the JSON key.
-3. Put `client_email` and `private_key` into `.env.local` (keep the `\n`
-   escapes in the key).
-4. Share each client spreadsheet with the service-account address as **Editor**.
-5. Open the project's **Sync** tab. For a blank sheet, *Set up with the
-   template* writes the standard header row and connects it in one step. For a
-   sheet the client designed, map the columns manually and list any columns
-   they maintain so the worker refuses to write them.
-
-Sheets API quota is 300 writes/minute per project and costs nothing, which is
-far beyond what a dozen developers generate. The failure mode to plan for is a
-revoked share or a renamed tab, not volume — both surface as an actionable
-inbox item for an admin after three failed attempts.
 
 ## Scheduled jobs
 
@@ -106,7 +79,6 @@ Two endpoints, both requiring `Authorization: Bearer $CRON_SECRET`:
 
 | Endpoint | Cadence | Does |
 | --- | --- | --- |
-| `POST /api/cron/sync` | every 2–5 min | Drains the Sheets sync queue, reclaims stranded jobs |
 | `POST /api/cron/sweeps` | hourly | Escalates blockers, flags stale tasks and estimate overruns, recomputes project health |
 | `POST /api/cron/digest` | daily, ~13:00 UTC | Builds the status digest and posts it to every configured webhook |
 
@@ -200,14 +172,13 @@ against a table owner; not handing out connection strings does.
 ## Layout
 
 ```
-src/db/schema.ts        21 tables, the whole data model
+src/db/schema.ts        17 tables, the whole data model
 src/lib/rbac.ts         capabilities per role
 src/lib/access.ts       project scoping / IDOR defence
 src/lib/business-time.ts SLA clocks that skip nights and weekends
 src/server/work-logs.ts the fan-out described above
 src/server/blockers.ts  routing + client clock-stop
 src/server/sweeps.ts    escalation, stale detection, health
-src/server/sync-worker.ts queue drain, backoff, stuck-job reaper
 src/server/digest.ts    the daily status roll-up (queries)
 src/lib/digest-format.ts how that roll-up reads (pure, tested)
 src/server/webhooks.ts  delivery to Discord / Slack
@@ -321,18 +292,14 @@ It is installable to a phone home screen and opens straight here, because the
 hours get entered at 2am at the end of a shift and "find the laptop" is the step
 that actually stops it happening.
 
-Each entry takes an internal note and an optional one-line client update. Only
-the client line can ever reach a spreadsheet.
-
 `/` stays the partner view — the exception inbox.
 
 ## Time tracking
 
 A developer opens a task, hits **Start**, and the hours are measured rather
 than typed. On **Finish** they add a one-line note and the system writes the
-work log, moves the task, notifies the reviewer and queues the client sheet —
-the same fan-out the manual form uses, via `recordWorkInTx`, so the two paths
-cannot drift.
+work log, moves the task and notifies the reviewer — the same fan-out the
+manual form uses, via `recordWorkInTx`, so the two paths cannot drift.
 
 Elapsed time is **never stored as a running total**. `accumulated_seconds`
 banks everything up to the last pause and `resumed_at` marks the current
