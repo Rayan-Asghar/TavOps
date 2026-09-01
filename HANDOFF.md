@@ -12,50 +12,44 @@ portals, client sheets, billing or external access. Full audit and phased plan:
 
 ## Current State
 
-**Phases 1, 2 and 4 complete and committed. 130 tests pass, build green.**
-Phase 3 (cleanup) skipped by choice — it is hygiene, not capability.
+**All five phases complete and committed. 130 unit + 26 fixture tests, build
+green.** The only outstanding work is Phase 0, which is Rayan's.
 
-- **Phase 1** removed the client-facing sheets sync. −2,616 lines, 21 tables →
-  17, `googleapis` dropped.
-- **Phase 2** made work logs correctable: `editWorkLog` / `deleteWorkLog` with a
-  revision chain and reversal, `projects.invoiced_through` enforced for the
-  first time, `writeAudit` wired into the operational tables, `/audit`.
-- **Phase 4** put reporting on top of Postgres — the half that actually replaces
-  the internal spreadsheets:
-  - `src/server/reports.ts` — hours by project (in range, all time, vs estimate,
-    vs budget), hours by person against real capacity, and the timesheet. All
-    grouped aggregates, never correlated subqueries (see the note in
-    `digest.ts` for why that distinction is load-bearing).
-  - **`/reports`** — date range in the URL, so a window is shareable and its
-    export always matches it. Defaults to the current calendar month.
-  - **`/api/reports/timesheet`** — CSV, scoped through the *same* helpers as the
-    page, so an export can never contain a row its requester could not see.
-  - `src/lib/report-range.ts`, `src/lib/csv.ts`, `businessDaysBetween` in
-    `business-time.ts` — pure and tested, 28 new cases.
+- **Phase 1** removed the client-facing sheets sync. −2,616 lines, 21 → 17 tables.
+- **Phase 2** made work logs correctable (revision chain, reversal,
+  `invoiced_through` enforced) and wired `writeAudit` into the operational
+  tables. `/audit`.
+- **Phase 4** put reporting on Postgres: `/reports`, CSV export at
+  `/api/reports/timesheet`, `src/server/reports.ts`.
+- **Phase 3** cleanup: `audit_log.detail` retired (all call sites now go through
+  `writeAudit`; `drizzle/0010_drop_audit_detail.sql` backfills then drops).
+  Project page 660 → 504 lines, queries extracted to
+  `src/server/project-queries.ts`, activity tab to `components/project-activity.tsx`.
+- **Phase 5** fixture tests — `pnpm test:db`, `pnpm verify:all`.
 
-**Verified against the live DB in a real browser, not just by tests.** For
-August 2026 the page, the CSV and direct SQL all agree: 33.05h over 12 entries,
-per-person 20.80 / 8.00 / 3.25 / 1.00, capacity 168.00h (21 weekdays × 40/5).
-Signed in as a developer: no per-person table, no budget column, timesheet and
-CSV both restricted to their own 7 entries summing 20.80.
+### Two audit findings that were WRONG, now corrected
+
+- **`auth.config.ts`'s `authorized` callback is LIVE, not dead.** Next.js 16
+  renamed Middleware to Proxy: the consumer is `src/proxy.ts`, not
+  `middleware.ts`, which is why grepping for the latter found nothing. It gates
+  every matched route by default. Deleting it — as the plan said to — would have
+  left only the per-page `getActor()` checks, so any page missing one would
+  become public. Now documented in the file itself.
+- **`notifications_dedupe_unique` is not the NULL-distinct trap.** `dedupe_key`
+  is nullable and means "do not collapse this one"; NULLs being distinct is what
+  makes every un-keyed notification insert. Making it NULLS NOT DISTINCT would
+  cap a person at one un-keyed notification ever. Documented in the schema.
 
 ## Next Steps
 
-1. **Phase 0 — hosting + scheduler (Rayan). Still blocks everything automatic.**
-   Nothing runs on a timer. Schedule `/api/cron/sweeps` hourly and
-   `/api/cron/digest` daily with `CRON_SECRET`. Vercel Hobby is out.
-   Set `DIGEST_WEBHOOK_URLS` or the digest builds and goes nowhere.
-2. **Phase 3 — cleanup, still outstanding.** Backfill and drop
-   `audit_log.detail` (the older user/team/timer/handoff sites still write it;
-   `writeAudit` writes `before`/`after`). Delete the dead `authorized` callback
-   in `src/lib/auth.config.ts` — no `middleware.ts` exists, so it never runs.
-   Check `notifications_dedupe_unique` for the NULL-distinct trap
-   (`dedupe_key` is nullable). Split the ~700-line
-   `src/app/projects/[id]/page.tsx`.
-3. **Phase 5 — DB-fixture tests** for access control and the RLS backstop. Still
-   the only untested high-risk area.
-4. Possible additions to `/reports` if wanted: blocker counts and SLA breaches
-   by category, review rounds per task. Both are one grouped query each.
+1. **Phase 0 — hosting + scheduler (Rayan). The only thing left, and it blocks
+   everything automatic.** Nothing runs on a timer. Schedule
+   `/api/cron/sweeps` hourly and `/api/cron/digest` daily with `CRON_SECRET`.
+   Vercel Hobby is out. Set `DIGEST_WEBHOOK_URLS` or the digest goes nowhere.
+2. **Delete the nine seed accounts** sharing `tavren123` once real admins exist.
+3. Optional: blocker/SLA and review-round breakdowns on `/reports` (one grouped
+   query each); a one-way Google Sheets *export* if CSV proves insufficient
+   (`googleapis` was removed — re-add only then, and keep it one-way).
 
 ## What Failed / Dead Ends
 
@@ -65,20 +59,24 @@ CSV both restricted to their own 7 entries summing 20.80.
   page's rail has its own log-work form with `hours`/`internalNotes`. Anchor on
   `input[name=workLogId]`, then `.closest('form')`, and query inside it.
 - **`requestSubmit()` silently no-ops on constraint violations.** An hours value
-  of 9.99 fails the field's `step="0.25"`, so nothing posts and no error shows —
-  identical to a broken action. Call `form.checkValidity()` first.
+  of 9.99 fails the field's `step="0.25"` — nothing posts, no error, looks
+  exactly like a broken action. Call `form.checkValidity()` first.
+- **The dev DB owner `tavren` is a SUPERUSER with BYPASSRLS**, so it ignores
+  RLS even with FORCE. A test asserting "FORCE blocks the owner" is wrong. What
+  actually holds the backstop up is the app connecting as `tavren_app`
+  (NOSUPERUSER, NOBYPASSRLS) — asserted in `tests/db/rls.test.ts`.
+- **`vitest.config.mts` collects `tests/**`**, so a new suite there runs in the
+  pure `pnpm test` too. `tests/db` is explicitly excluded.
 - **Deleting `.next` breaks `pnpm typecheck`** (`LayoutProps` is generated
   there). Run `pnpm build` once to regenerate.
 - **Enum values cannot be dropped in Postgres.** `change_source.'sheet'`,
   `audit_actor_type.'sync'`, `notification_kind.'sync_failed'` survive as
   annotated dead labels. Never write them.
 - **Do not re-add a Stop hook** (`62fa8e5` → `9427490`): it blocked every turn.
-- Nine seed accounts still share `tavren123`. Delete once real admins exist.
 
 ## Open Questions / Blockers
 
 - **Hosting decision** — blocks step 1, which blocks everything automatic.
 - **Discord/Slack webhook URL** needed from Rayan.
-- Google Sheets *export* from a report was left unbuilt on purpose. CSV covers
-  what a spreadsheet was for; re-add `googleapis` only if a generated Sheet is
-  genuinely wanted, and keep it one-way.
+- `~/Desktop/tavrenops-backups/pre-0009-*.sql` is the only copy of the
+  `client_update` values dropped in Phase 1. Keep it somewhere safe.

@@ -3,9 +3,18 @@ import type { NextAuthConfig } from "next-auth";
 /**
  * Edge-safe half of the auth setup.
  *
- * Middleware runs on the edge runtime, where bcrypt and the Postgres driver
- * cannot load. Keeping the providers out of this file is what lets middleware
+ * The proxy runs on the edge runtime, where bcrypt and the Postgres driver
+ * cannot load. Keeping the providers out of this file is what lets the proxy
  * import it without dragging Node-only dependencies into the edge bundle.
+ *
+ * ## This file is LIVE. Do not delete `authorized`.
+ *
+ * Next.js 16 renamed Middleware to Proxy, so the file that consumes this is
+ * `src/proxy.ts`, not `middleware.ts`. Searching the repo for `middleware.ts`
+ * finds nothing and makes `authorized` look like dead code — it is not. It runs
+ * on every request matched by the proxy's matcher and is what gates new routes
+ * by default. Removing it would leave only the per-page `getActor()` checks,
+ * so any page that forgot one would become public.
  */
 export const authConfig = {
   pages: {

@@ -4,6 +4,55 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-01 — Phases 3 and 5: cleanup, and tests for the parts that could not be tested
+
+- **Shipped:** `audit_log.detail` retired, the project page split, and a fixture
+  test suite against a real Postgres. 130 unit + 26 fixture tests, build green.
+  `pnpm test:db` and `pnpm verify:all` are new.
+
+- **Two audit findings from this session were WRONG. Both corrected:**
+  - **`auth.config.ts`'s `authorized` callback is live, not dead.** Next.js 16
+    renamed Middleware to Proxy, so the consumer is `src/proxy.ts` — grepping
+    for `middleware.ts` found nothing and made it look like dead code. The plan
+    said to delete it; doing so would have removed the default-deny route gate
+    and left only per-page checks, making any page that forgot one public. The
+    file now says so at the top.
+  - **`notifications_dedupe_unique` is not the NULL-distinct trap** that made
+    `sheet_connections_owner_unique` inert. `dedupe_key` is nullable and means
+    "do not collapse this one"; NULLs being distinct is exactly what lets every
+    un-keyed notification insert. "Fixing" it would have capped a person at one
+    un-keyed notification for life. Documented in the schema.
+
+  Worth recording as a pattern: both were *plan items* generated from a
+  fast read of the codebase, and both would have caused regressions. Verify
+  before deleting, especially when the evidence is an absence.
+
+- **Decisions:**
+  - **The `detail` migration backfills unconditionally**, though on this
+    database the two remaining rows were already copied. A deploy from an older
+    snapshot may not be, and dropping a column with unmigrated data in it is not
+    recoverable.
+  - **Fixture tests are a separate suite, not part of `pnpm verify`.** Keeping
+    `pnpm test` runnable with nothing started is worth more than one command;
+    `pnpm verify:all` runs both. `tests/db` had to be explicitly excluded from
+    the default config, which collects all of `tests/**`.
+  - **The harness refuses to truncate any database not ending in `_test`.**
+    `resetDb` truncates everything, and one mistyped URL would empty the dev
+    database between cases.
+  - **The RLS suite asserts the precondition, not just the behaviour.** The dev
+    owner `tavren` is a superuser with BYPASSRLS and ignores RLS even with
+    FORCE — so "FORCE blocks the owner" is a false assertion (I wrote it, it
+    failed, and it was the test that was wrong). What actually holds the
+    backstop up is the app connecting as `tavren_app`, so the suite checks
+    `rolsuper`/`rolbypassrls` on the live connection. A superuser connection
+    string would otherwise turn the guard off with nothing failing.
+  - **Split the project page only twice** — queries to `project-queries.ts`,
+    activity to a component. 660 → 504 lines. Splitting further would have meant
+    threading a dozen props per tab for a smaller file, which is not the same as
+    simpler code.
+
+---
+
 ### 2026-09-01 — Phase 4: reporting out of Postgres
 
 - **Shipped:** `src/server/reports.ts`, `/reports`, and a CSV export at

@@ -3,7 +3,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { auditLog, tasks, timeSessions, users } from "@/db/schema";
+import { tasks, timeSessions, users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
@@ -15,6 +15,7 @@ import {
   startTimerSchema,
 } from "./timer-schemas";
 import { safeErrorMessage } from "./action-errors";
+import { writeAudit } from "./audit";
 
 export type TimerState = { error?: string; ok?: boolean; message?: string };
 
@@ -276,16 +277,14 @@ export async function adjustTimer(
         })
         .where(eq(timeSessions.id, session.id));
 
-      await tx.insert(auditLog).values({
+      await writeAudit(tx, {
         actorId: actor.id,
-        action: "timer.adjust",
+        projectId: session.projectId,
         entityType: "time_session",
         entityId: session.id,
-        detail: {
-          fromSeconds: elapsedSeconds(session),
-          toSeconds: corrected,
-          reason: data.reason,
-        },
+        action: "timer.adjust",
+        before: { seconds: elapsedSeconds(session) },
+        after: { seconds: corrected, reason: data.reason },
       });
     });
 

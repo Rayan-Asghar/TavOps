@@ -1,22 +1,10 @@
 import { notFound, redirect } from "next/navigation";
-import { aliasedTable, and, desc, eq, isNull, ne, sql } from "drizzle-orm";
-import { db, withFinanceAccess } from "@/db";
-import {
-  blockers,
-  clients,
-  projectFinancials,
-  projects,
-  tasks,
-  users,
-  workLogs,
-} from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { canAccessProject } from "@/lib/access";
 import { can } from "@/lib/rbac";
-import { unresolvedCount } from "@/server/notifications";
 import { activeSessionFor } from "@/server/timer";
+import { loadProjectDetail } from "@/server/project-queries";
 import { activateProject } from "@/server/project-actions";
-import { projectMembersFor, assignableStaff } from "@/server/member-queries";
 import { AppShell } from "@/components/app-shell";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
 import { LogWorkForm } from "@/components/log-work-form";
@@ -30,7 +18,7 @@ import {
   type ActiveSession,
 } from "@/components/task-timer";
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
-import { WorkLogActions } from "@/components/work-log-actions";
+import { ProjectActivity } from "@/components/project-activity";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
 
 function fmtDate(d: Date | null): string {
@@ -87,128 +75,32 @@ export default async function ProjectPage({
     ? (tab as TabKey)
     : "overview";
 
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
+  const data = await loadProjectDetail(actor, id);
+  if (!data) notFound();
 
-  const [project] = await db
-    .select({
-      id: projects.id,
-      code: projects.code,
-      name: projects.name,
-      description: projects.description,
-      health: projects.health,
-      lifecycle: projects.lifecycle,
-      projectType: projects.projectType,
-      internalDueDate: projects.internalDueDate,
-      clientDueDate: projects.clientDueDate,
-      clientName: clients.name,
-    })
-    .from(projects)
-    .leftJoin(clients, eq(projects.clientId, clients.id))
-    .where(eq(projects.id, id))
-    .limit(1);
+  const {
+    me,
+    role,
+    project,
+    taskRows,
+    blockerRows,
+    activityRows,
+    teamList,
+    addableStaff,
+    inboxCount: count,
+    totals,
+    finance,
+    seesAllActivity,
+    canManageMembers,
+  } = data;
 
-  if (!project) notFound();
-
-  const role = me?.globalRole ?? "developer";
-  const seesAllActivity = can(role, "worklog.viewAll");
   // The internal date is the delivery buffer. Anyone who cannot see the
   // client-facing date gets the internal one labelled plainly as "Deadline" —
   // naming it "internal" would itself give away that a later date exists.
   const seesClientDeadline = can(role, "deadline.viewClient");
-  const canManageMembers = can(role, "project.manageMembers");
   // Your own entries are always yours to fix; anyone else's needs the grant.
   const canEditOthersWork = can(role, "worklog.edit");
-
   const activeTab: TabKey = requestedTab;
-
-  // Second alias so the reporter and the assignee can be joined in one query.
-  const assignee = aliasedTable(users, "assignee");
-
-  const [taskRows, blockerRows, activityRows, teamList, addableStaff, count] =
-    await Promise.all([
-      db
-        .select({
-          id: tasks.id,
-          title: tasks.title,
-          status: tasks.status,
-          dueDate: tasks.dueDate,
-          estimatedHours: tasks.estimatedHours,
-          assigneeId: tasks.assigneeId,
-          assigneeName: users.name,
-        })
-        .from(tasks)
-        .leftJoin(users, eq(tasks.assigneeId, users.id))
-        .where(eq(tasks.projectId, id))
-        .orderBy(tasks.orderIndex, tasks.title),
-      db
-        .select({
-          id: blockers.id,
-          description: blockers.description,
-          category: blockers.category,
-          ownerSide: blockers.ownerSide,
-          severity: blockers.severity,
-          escalationLevel: blockers.escalationLevel,
-          createdAt: blockers.createdAt,
-          reportedBy: users.name,
-          assignedToName: assignee.name,
-        })
-        .from(blockers)
-        .leftJoin(users, eq(blockers.reportedById, users.id))
-        .leftJoin(assignee, eq(blockers.assignedToId, assignee.id))
-        .where(and(eq(blockers.projectId, id), ne(blockers.status, "resolved")))
-        .orderBy(desc(blockers.severity), desc(blockers.createdAt)),
-      db
-        .select({
-          id: workLogs.id,
-          hours: workLogs.hours,
-          notes: workLogs.internalNotes,
-          workDate: workLogs.workDate,
-          userId: workLogs.userId,
-          userName: users.name,
-          taskTitle: tasks.title,
-        })
-        .from(workLogs)
-        .leftJoin(users, eq(workLogs.userId, users.id))
-        .leftJoin(tasks, eq(workLogs.taskId, tasks.id))
-        .where(
-          seesAllActivity
-            ? and(eq(workLogs.projectId, id), isNull(workLogs.deletedAt))
-            : and(
-                eq(workLogs.projectId, id),
-                eq(workLogs.userId, actor.id),
-                isNull(workLogs.deletedAt),
-              ),
-        )
-        .orderBy(desc(workLogs.workDate))
-        .limit(40),
-      projectMembersFor(id),
-      canManageMembers ? assignableStaff(id) : Promise.resolve([]),
-      unresolvedCount(actor.id),
-    ]);
-
-  // Whole-project total, independent of what this person is allowed to read
-  // row-by-row — an hours total is not sensitive, individual entries are.
-  const [totals] = await db
-    .select({ hours: sql<string>`coalesce(sum(${workLogs.hours}),0)::text` })
-    .from(workLogs)
-    .where(and(eq(workLogs.projectId, id), isNull(workLogs.deletedAt)));
-
-  // Money is fetched only when the role allows it, and only inside the RLS
-  // opt-in. Without both, the query returns nothing.
-  const finance = can(role, "finance.view")
-    ? await withFinanceAccess(async (tx) => {
-        const [row] = await tx
-          .select()
-          .from(projectFinancials)
-          .where(eq(projectFinancials.projectId, id))
-          .limit(1);
-        return row ?? null;
-      })
-    : null;
 
   const rawSession = await activeSessionFor(actor.id);
   // Dates cross the server/client boundary as ISO strings.
@@ -561,60 +453,12 @@ export default async function ProjectPage({
           )}
 
           {activeTab === "activity" && (
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <p className="eyebrow">
-                    {seesAllActivity
-                      ? "EVERYONE ON THIS PROJECT"
-                      : "ONLY ENTRIES YOU LOGGED"}
-                  </p>
-                  <h3 className="m-0 text-[16px] tracking-[-.03em]">
-                    {seesAllActivity ? "Activity" : "Your activity"}
-                  </h3>
-                </div>
-                <span className="text-[11px] text-fg-muted">
-                  {activityRows.length} entr
-                  {activityRows.length === 1 ? "y" : "ies"}
-                </span>
-              </div>
-              <div className="px-5 py-1">
-                {activityRows.length === 0 ? (
-                  <p className="py-8 text-center text-[12px] text-fg-muted">
-                    {seesAllActivity
-                      ? "Nothing logged yet."
-                      : "You have not logged anything on this project yet."}
-                  </p>
-                ) : (
-                  activityRows.map((l) => (
-                    <div
-                      key={l.id}
-                      className="grid grid-cols-[14px_1fr] gap-2.5 border-b border-border py-3.5 last:border-b-0"
-                    >
-                      <span className="mt-1 h-[7px] w-[7px] rounded-full bg-brand" />
-                      <div className="min-w-0">
-                        <strong className="text-[11px]">{l.notes}</strong>
-                        <p className="m-0 mt-1 text-[10px] text-fg-muted">
-                          {l.taskTitle ?? "General project work"} ·{" "}
-                          {Number(l.hours).toFixed(2)}h
-                        </p>
-                        <small className="text-[9px] text-fg-subtle">
-                          {fmtDate(l.workDate)} · {l.userName}
-                        </small>
-                        {(canEditOthersWork || l.userId === actor.id) && (
-                          <WorkLogActions
-                            workLogId={l.id}
-                            hours={l.hours}
-                            notes={l.notes}
-                            workDate={l.workDate.toISOString().slice(0, 10)}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
+            <ProjectActivity
+              rows={activityRows}
+              seesAllActivity={seesAllActivity}
+              canEditOthersWork={canEditOthersWork}
+              actorId={actor.id}
+            />
           )}
         </div>
 

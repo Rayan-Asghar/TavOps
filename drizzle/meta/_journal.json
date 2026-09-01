@@ -71,6 +71,13 @@
       "when": 1788281137080,
       "tag": "0009_remove_client_sheets",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788284574669,
+      "tag": "0010_drop_audit_detail",
+      "breakpoints": true
     }
   ]
 }

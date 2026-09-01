@@ -62,6 +62,27 @@ Sign in as `hammad@tavren.io` for the PM view or `ayan@tavren.io` for a
 developer's. Delete these before the app touches a real machine and create
 real accounts through **People** in the nav.
 
+### Tests
+
+```bash
+pnpm verify      # typecheck + lint + unit tests. No database needed.
+pnpm test:db     # fixture tests against a real Postgres.
+pnpm verify:all  # both.
+```
+
+`pnpm test:db` builds and migrates a separate `tavren_ops_test` database on the
+same container, deriving both connection strings from `.env.local` with the name
+swapped — there is no second set of credentials to keep in step. The harness
+refuses to truncate any database whose name does not end in `_test`.
+
+It covers the two things unit tests cannot reach: project scoping
+(`canAccessProject` / `accessibleProjectIds`, including expiry and the
+404-not-403 rule) and the finance RLS backstop — that `project_financials` and
+`user_rates` return nothing outside `withFinanceAccess`, that the opt-in dies
+with its transaction, and that the app connects as a role which cannot bypass
+RLS. That last one is the precondition everything else rests on: a superuser
+connection string silently turns the backstop off with nothing failing.
+
 ### Secrets
 
 | Variable | Notes |

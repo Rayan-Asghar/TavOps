@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, withFinanceAccess } from "@/db";
 import {
-  auditLog,
   clients,
   projectFinancials,
   projectMembers,
@@ -19,6 +18,7 @@ import { convertProposalSchema } from "./handoff-schemas";
 import { nextProjectCode } from "./project-code";
 import { commitmentsFor, overCommitted } from "./capacity";
 import { safeErrorMessage } from "./action-errors";
+import { writeAudit } from "./audit";
 
 export type HandoffState = {
   ok?: boolean;
@@ -150,12 +150,13 @@ export async function convertProposalToProject(
         .set({ wonProjectId: project.id, updatedAt: new Date() })
         .where(eq(proposals.id, proposal.id));
 
-      await tx.insert(auditLog).values({
+      await writeAudit(tx, {
         actorId: actor.id,
-        action: "proposal.convert",
+        projectId: project.id,
         entityType: "project",
         entityId: project.id,
-        detail: { proposalId: proposal.id, code },
+        action: "proposal.convert",
+        after: { proposalId: proposal.id, code },
       });
 
       return { project, clientName: clientRow?.name ?? null };

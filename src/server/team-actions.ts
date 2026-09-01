@@ -4,10 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { auditLog, teamMembers, teams } from "@/db/schema";
+import { teamMembers, teams } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertCan } from "@/lib/rbac";
 import { safeErrorMessage } from "./action-errors";
+import { writeAudit } from "./audit";
 
 export type TeamState = {
   ok?: boolean;
@@ -62,12 +63,12 @@ export async function createTeam(
         .insert(teamMembers)
         .values({ teamId: team.id, userId: data.leadId })
         .onConflictDoNothing();
-      await tx.insert(auditLog).values({
+      await writeAudit(tx, {
         actorId: actor.id,
-        action: "team.create",
         entityType: "team",
         entityId: team.id,
-        detail: { name: data.name },
+        action: "team.create",
+        after: { name: data.name, leadId: data.leadId ?? null },
       });
     });
 
@@ -118,18 +119,27 @@ export async function setTeamLead(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
   if (!teamId || !leadId) return;
 
+  // Read the outgoing lead first, so the entry is a change rather than an
+  // assertion that somebody is now the lead.
+  const [previous] = await db
+    .select({ leadId: teams.leadId })
+    .from(teams)
+    .where(eq(teams.id, teamId))
+    .limit(1);
+
   await db.transaction(async (tx) => {
     await tx.update(teams).set({ leadId }).where(eq(teams.id, teamId));
     await tx
       .insert(teamMembers)
       .values({ teamId, userId: leadId })
       .onConflictDoNothing();
-    await tx.insert(auditLog).values({
+    await writeAudit(tx, {
       actorId: actor.id,
-      action: "team.set_lead",
       entityType: "team",
       entityId: teamId,
-      detail: { leadId },
+      action: "team.set_lead",
+      before: { leadId: previous?.leadId ?? null },
+      after: { leadId },
     });
   });
   revalidatePath("/admin/teams");

@@ -607,6 +607,16 @@ export const notifications = pgTable(
   },
   (t) => [
     index("notifications_user_idx").on(t.userId, t.resolvedAt),
+    /**
+     * NULLs are distinct here on purpose — this is not the trap that made
+     * `sheet_connections_owner_unique` inert.
+     *
+     * `dedupe_key` is nullable and means "do not collapse this one". Because
+     * Postgres treats NULLs as distinct, the `onConflictDoNothing` in
+     * `notify()` finds no conflict for those rows and every one is inserted,
+     * which is exactly the wanted behaviour. Making the index NULLS NOT
+     * DISTINCT would cap a person at a single un-keyed notification, ever.
+     */
     uniqueIndex("notifications_dedupe_unique").on(t.userId, t.dedupeKey),
   ],
 );
@@ -725,8 +735,6 @@ export const auditLog = pgTable(
     entityType: varchar("entity_type", { length: 60 }).notNull(),
     entityId: uuid("entity_id"),
     action: varchar("action", { length: 80 }).notNull(),
-    /** DEPRECATED pair — dropped in the next migration once backfilled. */
-    detail: jsonb("detail").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

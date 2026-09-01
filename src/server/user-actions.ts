@@ -6,10 +6,11 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
-import { auditLog, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertCan } from "@/lib/rbac";
 import { createUserSchema } from "./user-schemas";
+import { writeAudit } from "./audit";
 
 export type UserFormState = {
   ok?: boolean;
@@ -89,12 +90,12 @@ export async function createUserAction(
       })
       .returning();
 
-    await tx.insert(auditLog).values({
+    await writeAudit(tx, {
       actorId: actor.id,
-      action: "user.create",
       entityType: "user",
       entityId: row.id,
-      detail: { email: row.email, globalRole: row.globalRole },
+      action: "user.create",
+      after: { email: row.email, globalRole: row.globalRole },
     });
 
     return row;
@@ -144,11 +145,13 @@ export async function setUserActiveAction(formData: FormData) {
       .update(users)
       .set({ isActive: makeActive, updatedAt: new Date() })
       .where(eq(users.id, userId));
-    await tx.insert(auditLog).values({
+    await writeAudit(tx, {
       actorId: actor.id,
-      action: makeActive ? "user.activate" : "user.deactivate",
       entityType: "user",
       entityId: userId,
+      action: makeActive ? "user.activate" : "user.deactivate",
+      before: { isActive: !makeActive },
+      after: { isActive: makeActive },
     });
   });
 
@@ -174,11 +177,13 @@ export async function resetPasswordAction(
       .set({ passwordHash, updatedAt: new Date() })
       .where(eq(users.id, userId))
       .returning({ name: users.name });
-    await tx.insert(auditLog).values({
+    // No before/after: the only thing that changed is a hash, and recording
+    // anything about it is worse than recording that it happened.
+    await writeAudit(tx, {
       actorId: actor.id,
-      action: "user.reset_password",
       entityType: "user",
       entityId: userId,
+      action: "user.reset_password",
     });
     return rows;
   });
