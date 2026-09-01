@@ -3,27 +3,6 @@
 > Overwrite this file — never append. Max 100 lines. No pasted code, file:line only.
 > Previous handoffs in `.claude/handoff-history/`.
 
-## ⚠️ READ FIRST — uncommitted work in this tree is NOT from this handoff
-
-At the time of writing, **a second Claude Code session was working in this repo
-concurrently** and had ~45 files uncommitted (+694 / −1032). That work is
-unrelated to the five phases below and belongs to that session:
-
-- `drizzle/0011_bd_strip_to_sent_and_landed.sql` — cuts the BD pipeline back to
-  "sent" and "landed", dropping feasibility routing and follow-up chasing.
-  **Marked IRREVERSIBLE**: it drops `proposals.feasibility_note`, free text a
-  delivery lead wrote about a bid, recorded nowhere else.
-- New `src/components/ui/` (data-table, empty-state, feedback), plus
-  `src/lib/{client-brief,format,tone}.ts`.
-
-**Do not commit, revert or `git clean` that work without checking with Rayan
-first** — it was mid-flight, not abandoned. Everything described below IS
-committed, in `63b510f`, `bac35be`, `a7bfdd6`, `e58fcea`.
-
-Note also that HANDOFF.md is a single overwrite-only file. Two sessions wrapping
-up in the same repo will clobber each other's version of it; PROGRESS.md and the
-commit messages are the durable record.
-
 ## Goal
 
 A clean, understandable, **strictly internal** Postgres-centred operations
@@ -33,18 +12,20 @@ portals, client sheets, billing or external access. Full audit and phased plan:
 
 ## Current State
 
-**All five phases complete and committed at `e58fcea`. 130 unit + 26 fixture
-tests, build green at that commit.** The only outstanding work is Phase 0, which
-is Rayan's. (The working tree has since moved — see the warning above.)
+**All five phases complete and committed. 130 unit + 26 fixture tests, build
+green.** The only outstanding work is Phase 0, which is Rayan's.
 
-- **1** — client-facing sheets sync removed. −2,616 lines, 21 → 17 tables.
-- **2** — work logs correctable (revision chain, reversal, `invoiced_through`
-  enforced); `writeAudit` wired into the operational tables; `/audit`.
-- **4** — reporting on Postgres: `/reports`, CSV at `/api/reports/timesheet`.
-- **3** — `audit_log.detail` retired; project page 660 → 504 lines.
-- **5** — fixture tests: `pnpm test:db`, `pnpm verify:all`.
-
-Full reasoning for each is in PROGRESS.md and the four commit messages.
+- **Phase 1** removed the client-facing sheets sync. −2,616 lines, 21 → 17 tables.
+- **Phase 2** made work logs correctable (revision chain, reversal,
+  `invoiced_through` enforced) and wired `writeAudit` into the operational
+  tables. `/audit`.
+- **Phase 4** put reporting on Postgres: `/reports`, CSV export at
+  `/api/reports/timesheet`, `src/server/reports.ts`.
+- **Phase 3** cleanup: `audit_log.detail` retired (all call sites now go through
+  `writeAudit`; `drizzle/0010_drop_audit_detail.sql` backfills then drops).
+  Project page 660 → 504 lines, queries extracted to
+  `src/server/project-queries.ts`, activity tab to `components/project-activity.tsx`.
+- **Phase 5** fixture tests — `pnpm test:db`, `pnpm verify:all`.
 
 ### Two audit findings that were WRONG, now corrected
 
@@ -88,8 +69,9 @@ Full reasoning for each is in PROGRESS.md and the four commit messages.
   pure `pnpm test` too. `tests/db` is explicitly excluded.
 - **Deleting `.next` breaks `pnpm typecheck`** (`LayoutProps` is generated
   there). Run `pnpm build` once to regenerate.
-- **Enum values cannot be dropped in Postgres** — several survive as annotated
-  dead labels. Never write them.
+- **Enum values cannot be dropped in Postgres.** `change_source.'sheet'`,
+  `audit_actor_type.'sync'`, `notification_kind.'sync_failed'` survive as
+  annotated dead labels. Never write them.
 - **Do not re-add a Stop hook** (`62fa8e5` → `9427490`): it blocked every turn.
 
 ## Open Questions / Blockers

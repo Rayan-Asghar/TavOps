@@ -4,6 +4,26 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-01 — Session close
+
+Four commits: `63b510f`, `bac35be`, `a7bfdd6`, `e58fcea`. The five phases above
+took the app from "built but not understood, with a client-facing sync that
+contradicted the target" to internal-only, Postgres-centred, with reporting on
+top. Net across `src`/`scripts`/`tests`: +2,877 / −2,823 over 58 files — roughly
+flat in size, having removed a 1,100-line subsystem and added correction,
+auditing, reporting and a fixture suite in its place.
+
+Nothing was rebuilt. The domain model, the capability RBAC, the project scoping
+and the RLS backstop were all sound and were left alone; the work was subtraction
+plus the two things the schema had been prepared for but never got — correcting a
+work log, and reading the hours back out.
+
+**Still outstanding and unchanged since the start: nothing runs on a timer.**
+Sweeps, digest and reports all work; no scheduler calls them. That is Phase 0
+and it needs a hosting decision.
+
+---
+
 ### 2026-09-01 — Phases 3 and 5: cleanup, and tests for the parts that could not be tested
 
 - **Shipped:** `audit_log.detail` retired, the project page split, and a fixture
