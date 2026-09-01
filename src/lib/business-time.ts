@@ -156,3 +156,28 @@ export function businessHoursBetween(start: Date, end: Date): number {
 export function addBusinessDays(from: Date, days: number): Date {
   return addBusinessHours(from, days * HOURS_PER_DAY);
 }
+
+/**
+ * Working days in an inclusive date range, for capacity maths.
+ *
+ * Counts calendar days that are not weekends, so a Mon–Fri range is 5 and a
+ * Sat–Sun range is 0. Inclusive of both ends, because a report "from the 1st to
+ * the 30th" covers work done on the 30th.
+ *
+ * Safe on UTC dates for the same reason the rest of this file is: a Tavren
+ * shift never crosses a UTC midnight, so a calendar date and a working day are
+ * the same thing here.
+ */
+export function businessDaysBetween(start: Date, end: Date): number {
+  if (end < start) return 0;
+  const cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
+  const last = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  let days = 0;
+  while (cursor.getTime() <= last) {
+    if (!isWeekend(cursor)) days++;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}

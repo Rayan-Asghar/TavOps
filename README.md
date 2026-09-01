@@ -41,8 +41,9 @@ revision, and a task status cannot move without the entry that moved it.
 | Daily digest pushed to Discord / Slack webhooks | Working |
 | Estimate-overrun detection | Working |
 | Effective rate per bid category | Working |
-| Editing or deleting a work log | Not yet — see the plan |
-| Reporting / export out of Postgres | Not yet — see the plan |
+| Correcting or removing a work log, with a reversal trail | Working |
+| Audit log written by the operational tables, readable at `/audit` | Working |
+| Reports: hours by project and person, timesheet, CSV export | Working |
 | QA checklists, change requests, anything client-facing | Out of scope |
 
 ## Running it
@@ -179,6 +180,9 @@ src/lib/business-time.ts SLA clocks that skip nights and weekends
 src/server/work-logs.ts the fan-out described above
 src/server/blockers.ts  routing + client clock-stop
 src/server/sweeps.ts    escalation, stale detection, health
+src/server/reports.ts   hours by project and person, timesheet (read-only)
+src/lib/csv.ts          CSV escaping, including formula defusal
+src/server/audit.ts     the one way changes reach the audit trail
 src/server/digest.ts    the daily status roll-up (queries)
 src/lib/digest-format.ts how that roll-up reads (pure, tested)
 src/server/webhooks.ts  delivery to Discord / Slack
@@ -187,6 +191,22 @@ src/lib/logger.ts       structured JSON logging
 src/app/log/page.tsx    the phone-first log screen
 drizzle/                migrations, including the RLS backstop
 ```
+
+## Reporting
+
+**/reports** answers where the hours went, from the work logs themselves —
+nothing on it is maintained by hand. Pick a date range (default: this calendar
+month) and it gives hours by project against estimate, hours by person against
+the capacity they actually had over that window's working days, and the
+line-by-line timesheet. **Download CSV** exports the whole range.
+
+The page narrows by capability rather than being withheld: without
+`worklog.viewAll` you see your own entries and no per-person table, and the
+budget column needs `finance.view`. The export uses the same helpers as the
+page, so a CSV can never contain a row its requester could not see on screen.
+
+CSV cells beginning `=`, `+`, `-` or `@` are prefixed with an apostrophe. Work
+notes are free text, and a spreadsheet treats those as formulas on open.
 
 ## QA review
 

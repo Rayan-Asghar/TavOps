@@ -4,6 +4,54 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-01 — Phase 4: reporting out of Postgres
+
+- **Shipped:** `src/server/reports.ts`, `/reports`, and a CSV export at
+  `/api/reports/timesheet`. 130 tests pass, build green. This is the half of the
+  refactor that actually replaces the internal spreadsheets: the hours are
+  already in Postgres because work is logged in the app, so a timesheet is a
+  query rather than a document somebody maintains.
+
+- **Verified against the live DB in a browser, not only by tests.** For August
+  2026, the page, the CSV and direct SQL agree exactly: 33.05h across 12
+  entries; per person 20.80 / 8.00 / 3.25 / 1.00; capacity 168.00h, which is 21
+  August weekdays at 40/5 a day. As a developer: no per-person table, no budget
+  column, and both the page and the CSV restricted to their own 7 entries
+  summing 20.80.
+
+- **Decisions:**
+  - **CSV before any generated Google Sheet.** It opens in whatever the reader
+    already uses, needs no credentials, no external service and no per-row state
+    to keep in sync — which is the entire reason the sheets sync was removed.
+    `googleapis` stays out until somebody actually asks for a generated Sheet.
+  - **The export shares the page's scoping helpers rather than repeating them.**
+    An export that can contain a row its requester could not see on screen is
+    the obvious way this feature goes wrong, and duplicated scoping logic is how
+    that happens.
+  - **The report page narrows by capability instead of being withheld.** A
+    developer sees their own hours against their own capacity — the question
+    they ask about themselves — rather than a 404.
+  - **The range lives in the URL.** A chosen window is shareable, and the CSV
+    link is built from the same parsed range, so a report and its export cannot
+    disagree about which days they cover.
+  - **Capacity is spread over the window's working days**, from
+    `weekly_capacity_hours`, so a part-time person is not measured against a
+    full week and a fortnight is not compared to one.
+  - **CSV cells beginning `=`, `+`, `-` or `@` are apostrophe-prefixed.** Work
+    notes are free text and a spreadsheet executes those as formulas on open.
+
+- **Corrected while building:** `parseRange` originally kept a valid end and
+  defaulted the malformed one, then swapped them — producing a window matching
+  neither the request nor the default. A report silently covering the wrong days
+  is worse than one obviously covering this month, so a bad value now discards
+  both ends. Caught by a test whose assertion I had written expecting the
+  simpler behaviour.
+
+- **Phase 3 (cleanup) deliberately skipped** in favour of this. It is hygiene;
+  this is the reason for the project. Still outstanding — see HANDOFF.
+
+---
+
 ### 2026-09-01 — Phase 2: work logs can finally be corrected
 
 - **Shipped:** `editWorkLog` / `deleteWorkLog`, the `writeAudit` helper wired

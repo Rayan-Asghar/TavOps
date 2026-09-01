@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addBusinessDays,
   addBusinessHours,
+  businessDaysBetween,
   businessHoursBetween,
   HOURS_PER_DAY,
 } from "./business-time";
@@ -153,5 +154,41 @@ describe("addBusinessDays", () => {
     expect(addBusinessDays(FRI(13), 1)).toEqual(FRI(21));
     // ...and anything beyond it jumps clear of the weekend to Monday.
     expect(addBusinessHours(FRI(13), HOURS_PER_DAY + 2)).toEqual(NEXT_MON(15));
+  });
+});
+
+describe("businessDaysBetween", () => {
+  const d = (s: string) => new Date(`${s}T12:00:00.000Z`);
+
+  it("counts a Monday-to-Friday week as five", () => {
+    // 2026-08-24 is a Monday.
+    expect(businessDaysBetween(d("2026-08-24"), d("2026-08-28"))).toBe(5);
+  });
+
+  it("includes both ends", () => {
+    expect(businessDaysBetween(d("2026-08-24"), d("2026-08-24"))).toBe(1);
+  });
+
+  it("skips the weekend inside a range", () => {
+    // Monday to the following Friday is ten working days, not fourteen.
+    expect(businessDaysBetween(d("2026-08-24"), d("2026-09-04"))).toBe(10);
+  });
+
+  it("is zero across a weekend alone", () => {
+    // 2026-08-29 Saturday, 2026-08-30 Sunday.
+    expect(businessDaysBetween(d("2026-08-29"), d("2026-08-30"))).toBe(0);
+  });
+
+  it("is zero when the range runs backwards", () => {
+    expect(businessDaysBetween(d("2026-08-28"), d("2026-08-24"))).toBe(0);
+  });
+
+  it("ignores the time of day, counting calendar days", () => {
+    expect(
+      businessDaysBetween(
+        new Date("2026-08-24T23:59:00.000Z"),
+        new Date("2026-08-25T00:01:00.000Z"),
+      ),
+    ).toBe(2);
   });
 });

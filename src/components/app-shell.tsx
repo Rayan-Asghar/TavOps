@@ -52,6 +52,11 @@ export function AppShell({
     main.push({ href: "/sales", label: "Sales", icon: "sales" });
   }
 
+  // Everyone gets Reports. A developer sees their own hours against their own
+  // capacity, which is the question they ask about themselves; the page narrows
+  // its content by capability rather than being withheld.
+  main.push({ href: "/reports", label: "Reports", icon: "projects" });
+
   // Review is deliberately NOT a top-level destination. Every item in the queue
   // already arrives as a `task_needs_review` inbox item, and those link
   // straight to /review — so the queue is one click from where people already
