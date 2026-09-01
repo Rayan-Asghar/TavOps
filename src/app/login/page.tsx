@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { loginAction, type LoginState } from "@/server/auth-actions";
+import { FormError } from "@/components/ui";
 
 const initial: LoginState = {};
 
@@ -12,19 +13,19 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-bg px-4 py-10">
       <div className="w-full max-w-[380px]">
         <div className="mb-8 flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center bg-brand text-[20px] font-black text-white">
+          <span className="grid h-11 w-11 place-items-center bg-brand text-2xl font-black text-white">
             T
           </span>
           <span className="flex flex-col gap-1 leading-none">
-            <strong className="text-[16px] tracking-[.08em]">TAVREN</strong>
-            <small className="text-[9px] tracking-[.14em] text-fg-muted">
+            <strong className="text-lg tracking-[.08em]">TAVREN</strong>
+            <small className="text-2xs tracking-[.14em] text-fg-muted">
               INTERNAL OS
             </small>
           </span>
         </div>
 
-        <h1 className="display mb-2 text-[34px]">Sign in</h1>
-        <p className="mb-6 text-[12px] text-fg-muted">
+        <h1 className="display mb-2 text-4xl">Sign in</h1>
+        <p className="mb-6 text-xs text-fg-muted">
           Operations, delivery and reporting in one place.
         </p>
 
@@ -61,12 +62,7 @@ export default function LoginPage() {
           </div>
 
           {state.error && (
-            <p
-              role="alert"
-              className="rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
-            >
-              {state.error}
-            </p>
+            <FormError>{state.error}</FormError>
           )}
 
           <button type="submit" disabled={pending} className="btn-primary w-full">
@@ -74,7 +70,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-[10px] text-fg-subtle">
+        <p className="mt-4 text-xs text-fg-subtle">
           Accounts are created by an admin.
         </p>
       </div>

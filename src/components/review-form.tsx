@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { submitReview, type TaskState } from "@/server/tasks";
+import { FormSuccess } from "@/components/ui";
 
 const initial: TaskState = {};
 
@@ -20,9 +21,7 @@ export function ReviewForm({
 
   if (state.ok && state.message) {
     return (
-      <p className="rounded-lg bg-ok-soft px-3 py-1.5 text-[11px] font-bold text-ok">
-        {state.message}
-      </p>
+      <FormSuccess>{state.message}</FormSuccess>
     );
   }
 
@@ -45,7 +44,7 @@ export function ReviewForm({
             aria-invalid={!!err.comments}
           />
           {err.comments && (
-            <p role="alert" className="mt-1 text-[10px] text-danger">
+            <p role="alert" className="mt-1 text-xs text-danger">
               {err.comments}
             </p>
           )}
@@ -53,7 +52,7 @@ export function ReviewForm({
       )}
 
       {state.error && !err.comments && (
-        <p role="alert" className="text-[10px] text-danger">{state.error}</p>
+        <p role="alert" className="text-xs text-danger">{state.error}</p>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -61,13 +60,13 @@ export function ReviewForm({
           <>
             <button
               type="submit" name="decision" value="approved" disabled={pending}
-              className="min-h-[32px] rounded-md bg-ok px-3 text-[11px] font-bold text-white"
+              className="btn-ok btn-sm"
             >
               {pending ? "…" : "Approve"}
             </button>
             <button
               type="button" onClick={() => setRejecting(true)}
-              className="min-h-[32px] rounded-md border border-border px-3 text-[11px] font-bold text-fg"
+              className="btn-secondary btn-sm"
             >
               Request changes
             </button>
@@ -76,13 +75,13 @@ export function ReviewForm({
           <>
             <button
               type="submit" name="decision" value="revision_needed" disabled={pending}
-              className="min-h-[32px] rounded-md bg-danger px-3 text-[11px] font-bold text-white"
+              className="btn-danger btn-sm"
             >
               {pending ? "…" : "Send back"}
             </button>
             <button
               type="button" onClick={() => setRejecting(false)}
-              className="min-h-[32px] px-2 text-[11px] font-bold text-fg-muted"
+              className="btn-ghost btn-sm"
             >
               Cancel
             </button>

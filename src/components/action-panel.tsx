@@ -42,7 +42,7 @@ export function ActionPanel({
               type="button"
               aria-selected={active === o.key}
               onClick={() => setActive(o.key)}
-              className={`rounded-lg px-3 py-2 text-[11px] font-bold transition-colors ${
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
                 active === o.key
                   ? "bg-surface text-fg shadow-sm"
                   : "text-fg-muted hover:text-fg"
@@ -77,7 +77,7 @@ export function Disclosure({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="btn-secondary py-2 text-[12px]"
+          className="btn-secondary btn-sm"
         >
           {label}
         </button>
@@ -87,7 +87,7 @@ export function Disclosure({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-[11px] font-bold text-fg-muted hover:text-fg"
+              className="btn-ghost btn-sm"
             >
               Close
             </button>

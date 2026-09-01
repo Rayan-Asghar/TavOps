@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createProposal, type ProposalState } from "@/server/proposals";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: ProposalState = {};
 
@@ -16,8 +17,8 @@ export function ProposalForm() {
       noValidate
       className="panel p-5"
     >
-      <h2 className="mb-1 text-[15px] font-bold">Log a proposal</h2>
-      <p className="mb-4 text-[10px] text-fg-muted">
+      <h2 className="mb-1 text-lg font-bold">Log a proposal</h2>
+      <p className="mb-4 text-xs text-fg-muted">
         Takes about ten seconds. Everything downstream is derived from this.
       </p>
 
@@ -29,7 +30,7 @@ export function ProposalForm() {
             placeholder="Shopify store migration"
             aria-invalid={!!err.jobTitle}
           />
-          {err.jobTitle && <p className="mt-1 text-[10px] text-danger">{err.jobTitle}</p>}
+          {err.jobTitle && <p className="mt-1 text-xs text-danger">{err.jobTitle}</p>}
         </div>
 
         <div>
@@ -39,7 +40,7 @@ export function ProposalForm() {
             placeholder="https://upwork.com/jobs/…"
             aria-invalid={!!err.jobUrl}
           />
-          {err.jobUrl && <p className="mt-1 text-[10px] text-danger">{err.jobUrl}</p>}
+          {err.jobUrl && <p className="mt-1 text-xs text-danger">{err.jobUrl}</p>}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -82,25 +83,11 @@ export function ProposalForm() {
             placeholder="Client wants Klaviyo migration too — unclear scope." />
         </div>
 
-        <label className="flex items-start gap-2 text-[11px]">
-          <input type="checkbox" name="needsFeasibility" className="mt-0.5 h-4 w-4" />
-          <span>
-            Needs a technical read before I bid
-            <span className="block text-[9px] text-fg-muted">
-              Routes to a delivery lead and shows in their inbox.
-            </span>
-          </span>
-        </label>
-
         {state.error && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
-            {state.error}
-          </p>
+          <FormError>{state.error}</FormError>
         )}
         {state.ok && state.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-            {state.message}
-          </p>
+          <FormSuccess>{state.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={pending} className="btn-primary w-full">

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createProject, type ProjectState } from "@/server/project-actions";
+import { FormError } from "@/components/ui";
 
 const initial: ProjectState = {};
 
@@ -37,7 +38,7 @@ export function ProjectForm({
             id="name" name="name" required className="field"
             placeholder="Northwind Shopify Rebuild" aria-invalid={!!err.name}
           />
-          {err.name && <p className="mt-1 text-[10px] text-danger">{err.name}</p>}
+          {err.name && <p className="mt-1 text-xs text-danger">{err.name}</p>}
         </div>
 
         <div>
@@ -60,7 +61,7 @@ export function ProjectForm({
               placeholder="Acme Ltd" aria-invalid={!!err.newClientName}
             />
             {err.newClientName && (
-              <p className="mt-1 text-[10px] text-danger">{err.newClientName}</p>
+              <p className="mt-1 text-xs text-danger">{err.newClientName}</p>
             )}
           </div>
         )}
@@ -101,9 +102,9 @@ export function ProjectForm({
             aria-invalid={!!err.internalDueDate}
           />
           {err.internalDueDate ? (
-            <p className="mt-1 text-[10px] text-danger">{err.internalDueDate}</p>
+            <p className="mt-1 text-xs text-danger">{err.internalDueDate}</p>
           ) : (
-            <p className="mt-1 text-[9px] text-fg-subtle">
+            <p className="mt-1 text-2xs text-fg-subtle">
               Your buffer. Developers only ever see this one.
             </p>
           )}
@@ -119,12 +120,12 @@ export function ProjectForm({
               anyone, so this is asked for up front rather than discovered. */}
           <div className="grid gap-1.5 rounded-lg border border-border bg-surface-2 p-3 sm:grid-cols-2">
             {developers.length === 0 && (
-              <p className="m-0 text-[11px] text-fg-muted">
+              <p className="m-0 text-xs text-fg-muted">
                 No developers exist yet. Create accounts under People first.
               </p>
             )}
             {developers.map((d) => (
-              <label key={d.id} className="flex items-center gap-2 text-[12px]">
+              <label key={d.id} className="flex items-center gap-2 text-xs">
                 <input
                   type="checkbox"
                   name="developerIds"
@@ -132,13 +133,13 @@ export function ProjectForm({
                   className="h-4 w-4"
                 />
                 <span>{d.name}</span>
-                <span className="text-[9px] text-fg-subtle">
+                <span className="text-2xs text-fg-subtle">
                   {d.globalRole.replace(/_/g, " ")}
                 </span>
               </label>
             ))}
           </div>
-          <p className="mt-1 text-[9px] text-fg-subtle">
+          <p className="mt-1 text-2xs text-fg-subtle">
             You can add or change people later from the project page.
           </p>
         </div>
@@ -153,16 +154,14 @@ export function ProjectForm({
       </div>
 
       {state.error && (
-        <p role="alert" className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-[12px] font-medium text-danger">
-          {state.error}
-        </p>
+        <FormError>{state.error}</FormError>
       )}
 
       <div className="mt-5 flex items-center gap-3">
         <button type="submit" disabled={pending} className="btn-primary">
           {pending ? "Creating…" : "Create project"}
         </button>
-        <p className="m-0 text-[10px] text-fg-subtle">
+        <p className="m-0 text-xs text-fg-subtle">
           Created as a draft until you set it active.
         </p>
       </div>

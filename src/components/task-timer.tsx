@@ -11,6 +11,7 @@ import {
   type TimerState,
 } from "@/server/timer";
 import { elapsedSeconds, formatClock, secondsToHours } from "@/lib/timer-utils";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: TimerState = {};
 
@@ -57,7 +58,7 @@ function Clock({ session }: { session: ActiveSession }) {
       >
         {formatClock(seconds)}
       </span>
-      <span suppressHydrationWarning className="text-[10px] text-fg-muted">
+      <span suppressHydrationWarning className="text-xs text-fg-muted">
         {secondsToHours(seconds).toFixed(2)}h
       </span>
     </div>
@@ -88,7 +89,7 @@ function TimerActionButton({
         {pending ? "…" : label}
       </button>
       {state.error && (
-        <span role="alert" className="mt-1 text-[9px] text-danger">
+        <span role="alert" className="mt-1 text-2xs text-danger">
           {state.error}
         </span>
       )}
@@ -119,14 +120,14 @@ export function StartTimerButton({
         disabled={pending || disabled}
         title={disabled ? "Finish your running timer first" : undefined}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5
-                   text-[10px] font-bold transition-colors hover:border-border-strong
+                   text-xs font-bold transition-colors hover:border-border-strong
                    disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="h-[7px] w-[7px] rounded-full bg-brand" aria-hidden />
         {pending ? "…" : label}
       </button>
       {state.error && (
-        <span role="alert" className="max-w-[220px] text-right text-[9px] text-danger">
+        <span role="alert" className="max-w-[220px] text-right text-2xs text-danger">
           {state.error}
         </span>
       )}
@@ -159,7 +160,7 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
         />
       </div>
 
-      <h3 className="m-0 mb-1 text-[15px] font-bold">{session.taskTitle}</h3>
+      <h3 className="m-0 mb-1 text-lg font-bold">{session.taskTitle}</h3>
       <div className="mb-4">
         <Clock session={session} />
       </div>
@@ -170,20 +171,20 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
             action={pauseTimer}
             sessionId={session.id}
             label="Pause"
-            className="btn-secondary px-3 py-1.5 text-[11px]"
+            className="btn-secondary btn-sm"
           />
         ) : (
           <TimerActionButton
             action={resumeTimer}
             sessionId={session.id}
             label="Resume"
-            className="btn-secondary px-3 py-1.5 text-[11px]"
+            className="btn-secondary btn-sm"
           />
         )}
         <button
           type="button"
           onClick={() => setShowAdjust((v) => !v)}
-          className="btn-secondary px-3 py-1.5 text-[11px]"
+          className="btn-secondary btn-sm"
         >
           Correct time
         </button>
@@ -191,7 +192,7 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           action={discardTimer}
           sessionId={session.id}
           label="Discard"
-          className="px-2 py-1.5 text-[11px] font-bold text-fg-muted hover:text-danger"
+          className="btn-ghost btn-sm btn-ghost-danger"
         />
       </div>
 
@@ -201,7 +202,7 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           className="mb-4 space-y-2 rounded-lg bg-surface-2 p-3"
         >
           <input type="hidden" name="sessionId" value={session.id} />
-          <p className="m-0 text-[10px] text-fg-muted">
+          <p className="m-0 text-xs text-fg-muted">
             Forgot to stop it? Set the real time. The measured value is kept
             alongside the correction.
           </p>
@@ -224,14 +225,14 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
             aria-label="Reason for correction"
           />
           {adjustState.error && (
-            <p role="alert" className="text-[10px] text-danger">
+            <p role="alert" className="text-xs text-danger">
               {adjustState.error}
             </p>
           )}
           <button
             type="submit"
             disabled={adjusting}
-            className="btn-secondary w-full py-1.5 text-[11px]"
+            className="btn-secondary btn-sm w-full"
           >
             {adjusting ? "Saving…" : "Apply correction"}
           </button>
@@ -262,23 +263,16 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
         </select>
 
         {finishState.error && (
-          <p
-            role="alert"
-            className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger"
-          >
-            {finishState.error}
-          </p>
+          <FormError>{finishState.error}</FormError>
         )}
         {finishState.ok && finishState.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-            {finishState.message}
-          </p>
+          <FormSuccess>{finishState.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={finishing} className="btn-primary w-full">
           {finishing ? "Logging…" : "Finish & log time"}
         </button>
-        <p className="m-0 text-[9px] text-fg-subtle">
+        <p className="m-0 text-2xs text-fg-subtle">
           Hours are taken from the timer, not typed.
         </p>
       </form>

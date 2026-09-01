@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createTask, type TaskState } from "@/server/tasks";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: TaskState = {};
 
@@ -22,8 +23,8 @@ export function TaskForm({
       noValidate
       className="panel p-5"
     >
-      <h3 className="mb-1 text-[15px] font-bold">Add a task</h3>
-      <p className="mb-4 text-[10px] text-fg-muted">
+      <h3 className="mb-1 text-lg font-bold">Add a task</h3>
+      <p className="mb-4 text-xs text-fg-muted">
         Assigning it puts it in that person&rsquo;s inbox straight away.
       </p>
       <input type="hidden" name="projectId" value={projectId} />
@@ -36,7 +37,7 @@ export function TaskForm({
             placeholder="PDP template — variant picker"
             aria-invalid={!!err.title}
           />
-          {err.title && <p className="mt-1 text-[10px] text-danger">{err.title}</p>}
+          {err.title && <p className="mt-1 text-xs text-danger">{err.title}</p>}
         </div>
 
         <div>
@@ -83,14 +84,10 @@ export function TaskForm({
         </div>
 
         {state.error && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
-            {state.error}
-          </p>
+          <FormError>{state.error}</FormError>
         )}
         {state.ok && state.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-            {state.message}
-          </p>
+          <FormSuccess>{state.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={pending} className="btn-primary w-full">

@@ -8,6 +8,7 @@ import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { QuickLogRow, type QuickLogTask } from "@/components/quick-log";
 
+import { EmptyState } from "@/components/ui";
 /**
  * The developer's front door.
  *
@@ -133,9 +134,9 @@ export default async function LogPage() {
           <div className="panel-head">
             <div>
               <p className="eyebrow">ASSIGNED TO YOU</p>
-              <h3 className="m-0 text-[18px] tracking-[-.035em]">Your tasks</h3>
+              <h3 className="m-0 text-xl tracking-[-.035em]">Your tasks</h3>
             </div>
-            <span className="text-[11px] text-fg-muted">
+            <span className="text-xs text-fg-muted">
               {taskItems.length} open
             </span>
           </div>
@@ -146,12 +147,8 @@ export default async function LogPage() {
           </ul>
         </section>
       ) : (
-        <section className="panel mb-4 p-12 text-center">
-          <p className="m-0 text-[13px] text-fg-muted">
-            Nothing is assigned to you right now. Anything else you worked on
-            can go under a project below.
-          </p>
-        </section>
+        <EmptyState className="mb-4">Nothing is assigned to you right now. Anything else you worked on
+            can go under a project below.</EmptyState>
       )}
 
       {generalItems.length > 0 && (
@@ -159,7 +156,7 @@ export default async function LogPage() {
           <div className="panel-head">
             <div>
               <p className="eyebrow">NO TASK</p>
-              <h3 className="m-0 text-[18px] tracking-[-.035em]">
+              <h3 className="m-0 text-xl tracking-[-.035em]">
                 Calls, meetings, everything else
               </h3>
             </div>

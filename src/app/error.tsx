@@ -29,14 +29,14 @@ export default function Error({
     <main className="grid min-h-screen place-items-center bg-bg px-4 py-10">
       <div className="panel w-full max-w-[440px] p-8">
         <p className="eyebrow text-danger">SOMETHING BROKE</p>
-        <h1 className="display mb-3 mt-2 text-[26px]">This page did not load</h1>
-        <p className="mb-6 text-[12px] text-fg-muted">
+        <h1 className="display mb-3 mt-2 text-3xl">This page did not load</h1>
+        <p className="mb-6 text-xs text-fg-muted">
           The error has been logged. Trying again is usually worth it — if it
           keeps happening, send an admin the reference below.
         </p>
 
         {error.digest && (
-          <p className="mb-6 font-mono text-[11px] text-fg-subtle">
+          <p className="mb-6 font-mono text-xs text-fg-subtle">
             Reference: {error.digest}
           </p>
         )}

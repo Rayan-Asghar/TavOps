@@ -9,6 +9,7 @@ import {
   type TeamState,
 } from "@/server/team-actions";
 import { Badge } from "./badges";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: TeamState = {};
 
@@ -33,8 +34,8 @@ export function CreateTeamForm({ heads }: { heads: Person[] }) {
       noValidate
       className="panel p-5"
     >
-      <h2 className="mb-1 text-[15px] font-bold">New team</h2>
-      <p className="mb-4 text-[10px] text-fg-muted">
+      <h2 className="mb-1 text-lg font-bold">New team</h2>
+      <p className="mb-4 text-xs text-fg-muted">
         People can sit in more than one team. A blocker with no project
         specialist goes to their lead.
       </p>
@@ -46,7 +47,7 @@ export function CreateTeamForm({ heads }: { heads: Person[] }) {
             id="tm-name" name="name" required className="field"
             placeholder="Shopify" aria-invalid={!!err.name}
           />
-          {err.name && <p className="mt-1 text-[10px] text-danger">{err.name}</p>}
+          {err.name && <p className="mt-1 text-xs text-danger">{err.name}</p>}
         </div>
         <div>
           <label className="label" htmlFor="tm-lead">Lead</label>
@@ -56,7 +57,7 @@ export function CreateTeamForm({ heads }: { heads: Person[] }) {
               <option key={h.id} value={h.id}>{h.name}</option>
             ))}
           </select>
-          {err.leadId && <p className="mt-1 text-[10px] text-danger">{err.leadId}</p>}
+          {err.leadId && <p className="mt-1 text-xs text-danger">{err.leadId}</p>}
         </div>
         <div>
           <label className="label" htmlFor="tm-disc">Discipline</label>
@@ -67,14 +68,10 @@ export function CreateTeamForm({ heads }: { heads: Person[] }) {
         </div>
 
         {state.error && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
-            {state.error}
-          </p>
+          <FormError>{state.error}</FormError>
         )}
         {state.ok && state.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-            {state.message}
-          </p>
+          <FormSuccess>{state.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={pending} className="btn-primary w-full">
@@ -103,10 +100,10 @@ export function TeamCard({
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <strong className="text-[15px]">{team.name}</strong>
+            <strong className="text-lg">{team.name}</strong>
             {team.discipline && <Badge tone="neutral">{team.discipline}</Badge>}
           </div>
-          <p className="m-0 mt-0.5 text-[10px] text-fg-muted">
+          <p className="m-0 mt-0.5 text-xs text-fg-muted">
             Led by {team.leadName ?? "nobody"} · {team.members.length} member
             {team.members.length === 1 ? "" : "s"}
           </p>
@@ -119,13 +116,13 @@ export function TeamCard({
             id={`lead-${team.id}`}
             name="leadId"
             defaultValue={team.leadId ?? ""}
-            className="min-h-[30px] rounded-md border border-border bg-surface px-2 text-[10px] font-bold"
+            className="field-sm font-bold"
           >
             {heads.map((h) => (
               <option key={h.id} value={h.id}>{h.name}</option>
             ))}
           </select>
-          <button type="submit" className="min-h-[30px] rounded-md bg-fg px-2.5 text-[10px] font-bold text-white">
+          <button type="submit" className="btn-dark btn-xs">
             Set lead
           </button>
         </form>
@@ -135,11 +132,11 @@ export function TeamCard({
         {team.members.map((m) => (
           <li
             key={m.id}
-            className="flex items-center gap-2 rounded-full border border-border bg-surface-2 py-1 pl-3 pr-1.5 text-[11px]"
+            className="flex items-center gap-2 rounded-full border border-border bg-surface-2 py-1 pl-3 pr-1.5 text-xs"
           >
             <span>{m.name}</span>
             {m.id === team.leadId ? (
-              <span className="rounded-full bg-fg px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-white">
+              <span className="rounded-full bg-fg px-1.5 py-0.5 text-2xs font-black uppercase tracking-wider text-white">
                 Lead
               </span>
             ) : (
@@ -164,7 +161,7 @@ export function TeamCard({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="text-[11px] font-bold text-brand hover:underline"
+            className="text-xs font-bold text-brand hover:underline"
           >
             + Add member
           </button>
@@ -184,11 +181,11 @@ export function TeamCard({
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <button type="submit" className="btn-secondary py-2 text-[11px]">Add</button>
+            <button type="submit" className="btn-secondary btn-sm">Add</button>
             <button
               type="button"
               onClick={() => setAdding(false)}
-              className="px-2 text-[11px] font-bold text-fg-muted"
+              className="btn-ghost btn-sm"
             >
               Cancel
             </button>

@@ -2,17 +2,22 @@
 
 /* Design language from the UI reference: high-contrast black/white identity,
    crimson accent, light paper canvas with a black sidebar. Token names stay
-   semantic so pages do not hardcode a palette. */
+   semantic so pages do not hardcode a palette, and so a second theme is a
+   token swap rather than a rewrite. */
 @theme {
   --color-black: #070707;
   --color-bg: #f5f5f3;
   --color-surface: #ffffff;
   --color-surface-2: #ececea;
   --color-surface-3: #eaeae7;
+  --color-surface-hover: #fafaf8;
   --color-border: #dededb;
   --color-border-strong: #c2c2be;
 
+  /* Four-step text ramp. `label` sits between fg and muted because form labels
+     and table headers need more contrast than secondary prose. */
   --color-fg: #111111;
+  --color-fg-label: #444444;
   --color-fg-muted: #727272;
   --color-fg-subtle: #9a9a9a;
 
@@ -25,9 +30,57 @@
   --color-warn: #9a6500;
   --color-warn-soft: #fff3d3;
   --color-danger: #c51d34;
+  --color-danger-hover: #a81829;
   --color-danger-soft: #ffe7eb;
   --color-info: #1f5ea8;
   --color-info-soft: #e8f1fb;
+
+  /* Badge tones that had no token and were inlined as hex. */
+  --color-neutral: #555555;
+  --color-neutral-soft: #ededed;
+  --color-violet: #5b3fa8;
+  --color-violet-soft: #efe9fb;
+
+  /* Signal dots read at a glance and sit on white, so they run brighter than
+     the `warn` text colour. One token, previously three loose #df9c00s. */
+  --color-signal-warn: #df9c00;
+
+  /* The sidebar is its own dark surface in both themes, so it gets its own
+     ramp rather than borrowing (and inverting) the page tokens. */
+  --color-nav: #070707;
+  --color-nav-hover: #151515;
+  --color-nav-active: #1a1a1a;
+  --color-nav-chip: #232323;
+  --color-nav-border: #202020;
+  --color-nav-fg: #ffffff;
+  --color-nav-fg-muted: #9a9a9a;
+  --color-nav-fg-subtle: #6b6b6b;
+
+  --color-focus: #fb0044;
+
+  /* Type scale. The floor is 11px: below that, uppercase tracked text stops
+     being readable at arm's length on a laptop. Sizes are named so call sites
+     stop inventing their own. */
+  --text-2xs: 0.6875rem; /* 11px - eyebrow, label, tag, table head */
+  --text-2xs--line-height: 1.3;
+  --text-xs: 0.75rem; /* 12px - dense meta, compact controls */
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8125rem; /* 13px - secondary prose */
+  --text-sm--line-height: 1.45;
+  --text-base: 0.875rem; /* 14px - body */
+  --text-base--line-height: 1.45;
+  --text-lg: 1rem; /* 16px - form headings, inputs on touch */
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.125rem; /* 18px - panel headings */
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.25rem; /* 20px - card titles */
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 1.625rem; /* 26px - page titles in bare layouts */
+  --text-3xl--line-height: 1.15;
+  --text-4xl: 2.125rem; /* 34px */
+  --text-4xl--line-height: 1.1;
+  --text-5xl: 2.6875rem; /* 43px - metric numerals */
+  --text-5xl--line-height: 1;
 
   --font-sans: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -41,10 +94,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Keyboard focus was previously invisible: there was no :focus-visible rule
+   anywhere and `.field` cleared the UA outline. One ring, every control. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 @layer components {
   /* Tiny uppercase kicker used above almost every heading in the reference. */
   .eyebrow {
-    @apply m-0 mb-1.5 text-[9px] font-extrabold uppercase tracking-[.15em] text-fg-muted;
+    @apply m-0 mb-1.5 text-2xs font-extrabold uppercase tracking-[.15em] text-fg-muted;
   }
 
   /* Display headings run tight and large; this is the signature of the look. */
@@ -61,34 +121,74 @@ body {
 
   .field {
     @apply w-full min-h-[44px] rounded-[7px] border border-border bg-surface px-3 py-2.5
-           text-sm text-fg placeholder:text-fg-subtle
-           focus:border-fg focus:outline-none;
+           text-base text-fg placeholder:text-fg-subtle focus:border-fg;
+  }
+  .field:focus-visible {
+    outline-offset: 1px;
+  }
+  .field-sm {
+    @apply min-h-[30px] rounded-md border border-border bg-surface px-2 py-1
+           text-xs text-fg placeholder:text-fg-subtle focus:border-fg;
   }
   .label {
-    @apply mb-1.5 block text-[9px] font-extrabold uppercase tracking-[.06em] text-[#444];
+    @apply mb-1.5 block text-2xs font-extrabold uppercase tracking-[.06em] text-fg-label;
   }
 
   /* Tailwind v4 resolves @apply against utilities only, so button variants
-     repeat the base instead of composing a shared .btn. */
+     repeat the base instead of composing a shared .btn. Size modifiers are
+     declared after the variants so source order lets them win. */
   .btn-primary {
-    @apply inline-flex min-h-[42px] items-center justify-center gap-2 rounded-lg px-4
-           text-sm font-bold text-white transition-colors bg-brand hover:bg-brand-hover
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
+           text-base font-bold text-white transition-colors bg-brand hover:bg-brand-hover
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
-    @apply inline-flex min-h-[42px] items-center justify-center gap-2 rounded-lg border
-           border-border bg-surface px-4 text-sm font-bold text-fg transition-colors
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border
+           border-border bg-surface px-4 text-base font-bold text-fg transition-colors
            hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50;
   }
+  .btn-danger {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
+           text-base font-bold text-white transition-colors bg-danger hover:bg-danger-hover
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* Low-emphasis action that still needs a hit area: the Cancel/Remove/Dismiss
+     family that used to be hand-rolled as bare text buttons. */
+  .btn-ghost {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg
+           bg-transparent px-3 text-base font-bold text-fg-muted transition-colors
+           hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* Neutral commit: black fill is as much part of the language as crimson. */
+  .btn-dark {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
+           text-base font-bold text-white transition-colors bg-fg hover:bg-black
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ok {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
+           text-base font-bold text-white transition-colors bg-ok hover:brightness-110
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
   .btn-text {
-    @apply inline-flex items-center gap-1 bg-transparent p-0 text-[11px] font-bold
-           text-fg hover:text-brand;
+    @apply inline-flex items-center gap-1 bg-transparent p-0 text-xs font-bold
+           text-fg hover:text-brand disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply min-h-[34px] gap-1.5 px-3 text-xs;
+  }
+  .btn-xs {
+    @apply min-h-[30px] gap-1 px-2.5 text-2xs;
+  }
+  /* Destructive intent on a ghost button, for inline row actions. */
+  .btn-ghost-danger {
+    @apply hover:bg-danger-soft hover:text-danger;
   }
 
   /* Pill used for status, role and category labels. */
   .tag {
-    @apply inline-flex min-h-[24px] w-max items-center justify-center whitespace-nowrap
-           rounded-full px-2 text-[8px] font-black uppercase tracking-[.09em];
+    @apply inline-flex min-h-[22px] w-max items-center justify-center whitespace-nowrap
+           rounded-full px-2 text-2xs font-black uppercase tracking-[.07em];
   }
 
   .progress {
@@ -102,9 +202,17 @@ body {
   .attention-row {
     @apply grid w-full min-h-[76px] grid-cols-[8px_minmax(0,1fr)] items-center gap-3.5
            border-b border-border bg-surface px-4 py-3.5 text-left last:border-b-0
-           hover:bg-[#fafaf8] sm:grid-cols-[8px_minmax(0,1fr)_auto];
+           hover:bg-surface-hover sm:grid-cols-[8px_minmax(0,1fr)_auto];
   }
   .signal {
     @apply h-[7px] w-[7px] rounded-full;
+  }
+}
+
+/* iOS zooms the viewport on focus for any input under 16px. Two forms used to
+   patch this per-field with text-[16px]; doing it here covers login too. */
+@media (max-width: 767px) {
+  .field {
+    font-size: 16px;
   }
 }

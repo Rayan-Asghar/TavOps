@@ -7,6 +7,7 @@ import {
   SEVERITY_LABELS,
   type BlockerCategory,
 } from "@/lib/blocker-routing";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: FormState = {};
 
@@ -67,8 +68,8 @@ export function BlockerForm({
 
   return (
     <form ref={formRef} action={action} className="panel p-5">
-      <h3 className="mb-1 text-[15px] font-bold">Report a blocker</h3>
-      <p className="mb-4 text-[10px] text-fg-muted">
+      <h3 className="mb-1 text-lg font-bold">Report a blocker</h3>
+      <p className="mb-4 text-xs text-fg-muted">
         Routed by what kind of problem it is, not broadcast to everyone.
       </p>
       <input type="hidden" name="projectId" value={projectId} />
@@ -101,7 +102,7 @@ export function BlockerForm({
               </optgroup>
             ))}
           </select>
-          <p className="mt-1.5 text-[10px] text-fg-muted">{ROUTE_HINT[category]}</p>
+          <p className="mt-1.5 text-xs text-fg-muted">{ROUTE_HINT[category]}</p>
         </div>
 
         {isDependency && (
@@ -140,11 +141,11 @@ export function BlockerForm({
             )}
           </select>
           {isIncident ? (
-            <p className="mt-1 text-[10px] text-danger">
+            <p className="mt-1 text-xs text-danger">
               Production incidents are always critical — one hour to respond.
             </p>
           ) : (
-            <p className="mt-1 text-[9px] text-fg-subtle">
+            <p className="mt-1 text-2xs text-fg-subtle">
               Sets how long the owner has to respond: 16h / 8h / 4h / 1h.
             </p>
           )}
@@ -161,14 +162,10 @@ export function BlockerForm({
         </div>
 
         {state.error && (
-          <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
-            {state.error}
-          </p>
+          <FormError>{state.error}</FormError>
         )}
         {state.ok && state.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-            {state.message}
-          </p>
+          <FormSuccess>{state.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={pending} className="btn-secondary w-full">

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: FormState = {};
 
@@ -54,10 +55,10 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
         className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 text-left min-h-[56px] hover:bg-surface-2"
       >
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-semibold">
+          <span className="block truncate text-sm font-semibold">
             {task.title}
           </span>
-          <span className="mt-0.5 block text-[10px] text-fg-muted">
+          <span className="mt-0.5 block text-xs text-fg-muted">
             {task.projectCode} · {task.projectName}
             {estimate !== null && (
               <span className={over ? "text-danger font-bold" : ""}>
@@ -67,7 +68,7 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
             )}
           </span>
         </span>
-        <span className="text-[11px] font-bold text-fg-muted">
+        <span className="text-xs font-bold text-fg-muted">
           {open ? "Close" : "Log"}
         </span>
       </button>
@@ -93,7 +94,7 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
                 min="0.25"
                 max="24"
                 required
-                className="field text-[16px]"
+                className="field"
                 placeholder="3"
               />
             </div>
@@ -104,7 +105,7 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
               <select
                 id={`s-${task.taskId ?? task.projectId}`}
                 name="resultingStatus"
-                className="field text-[16px]"
+                className="field"
               >
                 <option value="">Leave as-is</option>
                 <option value="in_progress">In progress</option>
@@ -123,29 +124,22 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
               name="internalNotes"
               rows={2}
               required
-              className="field text-[16px]"
+              className="field"
               placeholder="Variant picker done. Gallery still rough on mobile."
             />
           </div>
 
           {state.error && (
-            <p
-              role="alert"
-              className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger"
-            >
-              {state.error}
-            </p>
+            <FormError>{state.error}</FormError>
           )}
           {state.ok && state.message && (
-            <p className="rounded-lg bg-ok-soft px-3 py-2 text-[11px] font-medium text-ok">
-              {state.message}
-            </p>
+            <FormSuccess>{state.message}</FormSuccess>
           )}
 
           <button
             type="submit"
             disabled={pending}
-            className="btn-primary w-full min-h-[44px]"
+            className="btn-primary w-full"
           >
             {pending ? "Saving…" : "Log it"}
           </button>

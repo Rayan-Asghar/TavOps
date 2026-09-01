@@ -8,6 +8,8 @@ import { accessibleProjectIds } from "@/lib/access";
 import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 
+import { fmtDateTime } from "@/lib/format";
+import { EmptyRow } from "@/components/ui";
 const PAGE_SIZE = 100;
 
 /** "work_log.edit" -> "Work log edited" reads better than a dotted verb. */
@@ -24,14 +26,6 @@ const ACTION_LABELS: Record<string, string> = {
   "project.activate": "Project activated",
 };
 
-function fmtWhen(d: Date): string {
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 /**
  * Renders a before/after pair as the fields that actually moved.
@@ -124,9 +118,7 @@ export default async function AuditPage() {
       <section className="panel mt-4">
         <div className="px-5 py-1">
           {rows.length === 0 ? (
-            <p className="py-10 text-center text-[12px] text-fg-muted">
-              Nothing recorded yet.
-            </p>
+            <EmptyRow>Nothing recorded yet.</EmptyRow>
           ) : (
             rows.map((r) => {
               const changes = diffLines(r.before, r.after);
@@ -136,19 +128,19 @@ export default async function AuditPage() {
                   className="grid grid-cols-[130px_1fr] gap-3 border-b border-border py-3 last:border-b-0"
                 >
                   <div>
-                    <div className="text-[10px] font-bold">{fmtWhen(r.ts)}</div>
-                    <div className="text-[9px] text-fg-subtle">
+                    <div className="text-xs font-bold">{fmtDateTime(r.ts)}</div>
+                    <div className="text-2xs text-fg-subtle">
                       {r.actorName ?? "system"}
                     </div>
                   </div>
 
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <strong className="text-[11px]">
+                      <strong className="text-xs">
                         {ACTION_LABELS[r.action] ?? r.action}
                       </strong>
                       {r.projectCode && (
-                        <span className="text-[9px] text-fg-muted">
+                        <span className="text-2xs text-fg-muted">
                           {r.projectCode} · {r.projectName}
                         </span>
                       )}
@@ -159,7 +151,7 @@ export default async function AuditPage() {
                         {changes.map((c) => (
                           <li
                             key={c.key}
-                            className="font-mono text-[9px] text-fg-muted"
+                            className="font-mono text-2xs text-fg-muted"
                           >
                             <span className="text-fg-subtle">{c.key}</span>{" "}
                             {c.from !== undefined && (

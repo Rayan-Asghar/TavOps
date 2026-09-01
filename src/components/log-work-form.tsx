@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
+import { FormError, FormSuccess } from "@/components/ui";
 
 const initial: FormState = {};
 
@@ -76,20 +77,16 @@ export function LogWorkForm({
             className="field"
             placeholder="Hero section done — desktop and mobile. Nav still flaky on Safari."
           />
-          <p className="mt-1 text-[10px] text-fg-subtle">
+          <p className="mt-1 text-xs text-fg-subtle">
             Write it for your reviewer.
           </p>
         </div>
 
         {state.error && (
-          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
-            {state.error}
-          </p>
+          <FormError>{state.error}</FormError>
         )}
         {state.ok && state.message && (
-          <p className="rounded-lg bg-ok-soft px-3 py-2 text-sm font-medium text-ok">
-            {state.message}
-          </p>
+          <FormSuccess>{state.message}</FormSuccess>
         )}
 
         <button type="submit" disabled={pending} className="btn-primary w-full">

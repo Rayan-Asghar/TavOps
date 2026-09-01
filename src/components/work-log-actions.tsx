@@ -6,6 +6,7 @@ import {
   deleteWorkLogFormAction,
   type FormState,
 } from "@/server/form-actions";
+import { FormError } from "@/components/ui";
 
 const initial: FormState = {};
 
@@ -47,7 +48,7 @@ export function WorkLogActions({
   // between the action returning and the page settling.
   if (state.ok) {
     return (
-      <p className="mt-2 text-[10px] font-medium text-ok">{state.message}</p>
+      <p className="mt-2 text-xs font-medium text-ok">{state.message}</p>
     );
   }
 
@@ -57,14 +58,14 @@ export function WorkLogActions({
         <button
           type="button"
           onClick={() => setOpen("edit")}
-          className="text-[9px] font-bold uppercase tracking-[.1em] text-fg-subtle hover:text-fg"
+          className="text-2xs font-bold uppercase tracking-[.1em] text-fg-subtle hover:text-fg"
         >
           Correct
         </button>
         <button
           type="button"
           onClick={() => setOpen("delete")}
-          className="text-[9px] font-bold uppercase tracking-[.1em] text-fg-subtle hover:text-danger"
+          className="text-2xs font-bold uppercase tracking-[.1em] text-fg-subtle hover:text-danger"
         >
           Remove
         </button>
@@ -95,7 +96,7 @@ export function WorkLogActions({
                 max="24"
                 defaultValue={Number(hours).toFixed(2)}
                 required
-                className="field text-[16px]"
+                className="field"
               />
             </div>
             <div className="flex-1">
@@ -107,7 +108,7 @@ export function WorkLogActions({
                 name="workDate"
                 type="date"
                 defaultValue={workDate}
-                className="field text-[16px]"
+                className="field"
               />
             </div>
           </div>
@@ -121,7 +122,7 @@ export function WorkLogActions({
               rows={2}
               defaultValue={notes}
               required
-              className="field text-[16px]"
+              className="field"
             />
           </div>
         </>
@@ -136,7 +137,7 @@ export function WorkLogActions({
           name="reason"
           required
           minLength={3}
-          className="field text-[16px]"
+          className="field"
           placeholder={
             open === "edit" ? "Logged 8h, was actually 0.8h" : "Logged twice"
           }
@@ -144,12 +145,7 @@ export function WorkLogActions({
       </div>
 
       {state.error && (
-        <p
-          role="alert"
-          className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger"
-        >
-          {state.error}
-        </p>
+        <FormError>{state.error}</FormError>
       )}
 
       <div className="flex gap-2">
@@ -158,8 +154,8 @@ export function WorkLogActions({
           disabled={editing || deleting}
           className={
             open === "edit"
-              ? "btn-primary py-1.5 text-[11px]"
-              : "rounded-lg bg-danger px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-60"
+              ? "btn-primary btn-sm"
+              : "rounded-lg bg-danger px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
           }
         >
           {open === "edit"
@@ -173,7 +169,7 @@ export function WorkLogActions({
         <button
           type="button"
           onClick={() => setOpen(null)}
-          className="px-2 text-[11px] font-bold text-fg-muted"
+          className="btn-ghost btn-sm"
         >
           Cancel
         </button>

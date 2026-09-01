@@ -1,6 +1,7 @@
 import type { ProjectDetail } from "@/server/project-queries";
 import { WorkLogActions } from "./work-log-actions";
 
+import { EmptyRow } from "@/components/ui";
 type ActivityRow = NonNullable<ProjectDetail>["activityRows"][number];
 
 function fmtDate(d: Date | null): string {
@@ -40,22 +41,20 @@ export function ProjectActivity({
               ? "EVERYONE ON THIS PROJECT"
               : "ONLY ENTRIES YOU LOGGED"}
           </p>
-          <h3 className="m-0 text-[16px] tracking-[-.03em]">
+          <h3 className="m-0 text-lg tracking-[-.03em]">
             {seesAllActivity ? "Activity" : "Your activity"}
           </h3>
         </div>
-        <span className="text-[11px] text-fg-muted">
+        <span className="text-xs text-fg-muted">
           {rows.length} entr{rows.length === 1 ? "y" : "ies"}
         </span>
       </div>
 
       <div className="px-5 py-1">
         {rows.length === 0 ? (
-          <p className="py-8 text-center text-[12px] text-fg-muted">
-            {seesAllActivity
+          <EmptyRow>{seesAllActivity
               ? "Nothing logged yet."
-              : "You have not logged anything on this project yet."}
-          </p>
+              : "You have not logged anything on this project yet."}</EmptyRow>
         ) : (
           rows.map((l) => (
             <div
@@ -64,12 +63,12 @@ export function ProjectActivity({
             >
               <span className="mt-1 h-[7px] w-[7px] rounded-full bg-brand" />
               <div className="min-w-0">
-                <strong className="text-[11px]">{l.notes}</strong>
-                <p className="m-0 mt-1 text-[10px] text-fg-muted">
+                <strong className="text-xs">{l.notes}</strong>
+                <p className="m-0 mt-1 text-xs text-fg-muted">
                   {l.taskTitle ?? "General project work"} ·{" "}
                   {Number(l.hours).toFixed(2)}h
                 </p>
-                <small className="text-[9px] text-fg-subtle">
+                <small className="text-2xs text-fg-subtle">
                   {fmtDate(l.workDate)} · {l.userName}
                 </small>
                 {(canEditOthersWork || l.userId === actorId) && (

@@ -10,12 +10,9 @@ import { AppShell, SectionIntro } from "@/components/app-shell";
 import { HealthBadge, Badge } from "@/components/badges";
 import { can } from "@/lib/rbac";
 
-function fmtDate(d: Date | null): string {
-  return d
-    ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit" })
-    : "—";
-}
 
+import { fmtDate } from "@/lib/format";
+import { EmptyState } from "@/components/ui";
 export default async function ProjectsPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -96,9 +93,7 @@ export default async function ProjectsPage() {
       />
 
       {rows.length === 0 ? (
-        <div className="panel p-12 text-center text-[13px] text-fg-muted">
-          No projects assigned to you yet.
-        </div>
+        <EmptyState>No projects assigned to you yet.</EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => {
@@ -127,12 +122,12 @@ export default async function ProjectsPage() {
                 <p className="eyebrow">
                   {(p.projectType ?? "PROJECT").toUpperCase()}
                 </p>
-                <h3 className="m-0 text-[20px] tracking-[-.04em]">{p.name}</h3>
-                <p className="mt-2 min-h-[38px] text-[10px] text-fg-muted">
+                <h3 className="m-0 text-2xl tracking-[-.04em]">{p.name}</h3>
+                <p className="mt-2 min-h-[38px] text-xs text-fg-muted">
                   {p.description ?? p.clientName ?? ""}
                 </p>
 
-                <div className="mt-6 flex justify-between text-[9px] text-fg-muted">
+                <div className="mt-6 flex justify-between text-2xs text-fg-muted">
                   <span>
                     {pct}% complete · {Number(p.loggedHours).toFixed(1)}h logged
                   </span>
@@ -143,10 +138,10 @@ export default async function ProjectsPage() {
                 </div>
 
                 <div className="mt-6 flex items-center justify-between">
-                  <span className="font-mono text-[9px] text-fg-subtle">
+                  <span className="font-mono text-2xs text-fg-subtle">
                     {p.code}
                   </span>
-                  <span className="text-[9px] text-fg-muted">
+                  <span className="text-2xs text-fg-muted">
                     {p.doneTasks}/{p.totalTasks} tasks
                   </span>
                 </div>

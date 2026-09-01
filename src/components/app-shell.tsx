@@ -3,17 +3,8 @@ import { logoutAction } from "@/server/auth-actions";
 import { can, type GlobalRole } from "@/lib/rbac";
 import { Sidebar, type NavEntry } from "./sidebar";
 
-function todayLabel(): string {
-  const now = new Date();
-  const day = now
-    .toLocaleDateString("en-US", { weekday: "long" })
-    .toUpperCase();
-  const rest = now
-    .toLocaleDateString("en-US", { month: "short", day: "2-digit" })
-    .toUpperCase();
-  return `${day} · ${rest}`;
-}
 
+import { fmtDayLabel } from "@/lib/format";
 export function AppShell({
   children,
   userName,
@@ -86,7 +77,7 @@ export function AppShell({
           <form action={logoutAction}>
             <button
               type="submit"
-              className="w-full rounded-lg py-2 text-left text-[11px] font-medium text-[#777] transition-colors hover:text-white"
+              className="w-full rounded-lg py-2 text-left text-xs font-medium text-nav-fg-subtle transition-colors hover:text-white"
             >
               Sign out
             </button>
@@ -101,8 +92,8 @@ export function AppShell({
         >
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
-              <p className="eyebrow hidden sm:block">{todayLabel()}</p>
-              <h1 className="m-0 truncate text-[20px] leading-tight tracking-[-.035em]">
+              <p className="eyebrow hidden sm:block">{fmtDayLabel()}</p>
+              <h1 className="m-0 truncate text-2xl leading-tight tracking-[-.035em]">
                 {title}
               </h1>
             </div>
@@ -137,7 +128,7 @@ export function SectionIntro({
         <h2 className="display m-0 text-[clamp(30px,4vw,52px)]">{title}</h2>
       </div>
       {description && (
-        <p className="m-0 max-w-[440px] text-[12px] text-fg-muted">
+        <p className="m-0 max-w-[440px] text-xs text-fg-muted">
           {description}
         </p>
       )}

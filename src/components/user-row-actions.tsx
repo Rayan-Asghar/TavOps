@@ -44,7 +44,7 @@ export function UserRowActions({
           <button
             type="submit"
             disabled={resetting}
-            className="btn-secondary px-3 py-1.5 text-xs"
+            className="btn-secondary btn-sm"
           >
             {resetting ? "Resetting…" : "Reset password"}
           </button>
@@ -57,14 +57,14 @@ export function UserRowActions({
               <input type="hidden" name="makeActive" value="false" />
               <button
                 type="submit"
-                className="btn px-3 py-1.5 text-xs bg-danger text-white hover:bg-brand-hover"
+                className="btn-danger btn-sm"
               >
                 Confirm
               </button>
               <button
                 type="button"
                 onClick={() => setConfirming(false)}
-                className="btn-secondary px-3 py-1.5 text-xs"
+                className="btn-secondary btn-sm"
               >
                 Cancel
               </button>
@@ -73,9 +73,8 @@ export function UserRowActions({
             <button
               type="button"
               disabled={blocked}
-              title={blocked ? blockedReason : undefined}
               onClick={() => setConfirming(true)}
-              className="btn-secondary px-3 py-1.5 text-xs"
+              className="btn-secondary btn-sm"
             >
               Deactivate
             </button>
@@ -84,7 +83,7 @@ export function UserRowActions({
           <form action={setUserActiveAction}>
             <input type="hidden" name="userId" value={userId} />
             <input type="hidden" name="makeActive" value="true" />
-            <button type="submit" className="btn-secondary px-3 py-1.5 text-xs">
+            <button type="submit" className="btn-secondary btn-sm">
               Reactivate
             </button>
           </form>

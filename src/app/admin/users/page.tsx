@@ -7,27 +7,13 @@ import { can } from "@/lib/rbac";
 import { unresolvedCount } from "@/server/notifications";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
 import { AppShell, SectionIntro } from "@/components/app-shell";
-import { Badge, type Tone } from "@/components/badges";
+import { Badge } from "@/components/badges";
 import { CreateUserForm } from "@/components/create-user-form";
 import { UserRowActions } from "@/components/user-row-actions";
 
-const ROLE_TONE: Record<string, Tone> = {
-  admin: "red",
-  pm: "violet",
-  delivery_lead: "blue",
-  sales_head: "violet",
-  sales: "blue",
-  developer: "neutral",
-  collaborator: "amber",
-};
 
-function labelFor(role: string) {
-  return role
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
-}
 
+import { GLOBAL_ROLE_TONE, humanizeRole } from "@/lib/tone";
 export default async function AdminUsersPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -107,8 +93,8 @@ export default async function AdminUsersPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-fg">{p.name}</span>
-                        <Badge tone={ROLE_TONE[p.globalRole] ?? "neutral"}>
-                          {labelFor(p.globalRole)}
+                        <Badge tone={GLOBAL_ROLE_TONE[p.globalRole] ?? "neutral"}>
+                          {humanizeRole(p.globalRole)}
                         </Badge>
                         {!p.isActive && <Badge>Deactivated</Badge>}
                         {expired && <Badge tone="red">Access expired</Badge>}

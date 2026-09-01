@@ -11,14 +11,9 @@ import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, MetricCard, MetricGrid } from "@/components/badges";
 import { ReviewForm } from "@/components/review-form";
 
-function timeAgo(d: Date | null): string {
-  if (!d) return "—";
-  const h = Math.floor((Date.now() - d.getTime()) / 3600000);
-  if (h < 1) return "just now";
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
+import { timeAgo } from "@/lib/format";
+import { EmptyState } from "@/components/ui";
 export default async function ReviewPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -129,12 +124,8 @@ export default async function ReviewPage() {
       </MetricGrid>
 
       {queue.length === 0 ? (
-        <div className="panel p-12 text-center">
-          <p className="m-0 text-[13px] text-fg-muted">
-            Nothing waiting for review. When a developer marks work ready, it
-            lands here.
-          </p>
-        </div>
+        <EmptyState>Nothing waiting for review. When a developer marks work ready, it
+            lands here.</EmptyState>
       ) : (
         <ul className="space-y-3">
           {queue.map((t) => (
@@ -142,14 +133,14 @@ export default async function ReviewPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <strong className="text-[14px]">{t.title}</strong>
+                    <strong className="text-base">{t.title}</strong>
                     {t.priorRounds > 0 && (
                       <Badge tone="amber">
                         Round {t.priorRounds + 1}
                       </Badge>
                     )}
                   </div>
-                  <p className="m-0 text-[10px] text-fg-muted">
+                  <p className="m-0 text-xs text-fg-muted">
                     <Link
                       href={`/projects/${t.projectId}`}
                       className="font-bold hover:text-brand"
@@ -165,11 +156,11 @@ export default async function ReviewPage() {
                   {t.lastNote && (
                     <div className="mt-3 border-l-2 border-border pl-3">
                       <p className="eyebrow m-0">WHAT THEY SAID</p>
-                      <p className="m-0 mt-0.5 text-[12px]">{t.lastNote}</p>
+                      <p className="m-0 mt-0.5 text-xs">{t.lastNote}</p>
                     </div>
                   )}
                   {t.description && (
-                    <p className="mt-2 text-[11px] text-fg-muted">
+                    <p className="mt-2 text-xs text-fg-muted">
                       {t.description}
                     </p>
                   )}

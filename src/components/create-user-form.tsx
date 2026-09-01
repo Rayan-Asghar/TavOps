@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { createUserAction, type UserFormState } from "@/server/user-actions";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
 import { CopyField } from "./copy-field";
+import { FormError } from "@/components/ui";
 
 const initial: UserFormState = {};
 
@@ -177,12 +178,7 @@ function UserFields({
       </div>
 
       {state.error && (
-        <p
-          role="alert"
-          className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger"
-        >
-          {state.error}
-        </p>
+        <FormError>{state.error}</FormError>
       )}
 
       <div className="mt-5 space-y-2">

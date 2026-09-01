@@ -13,10 +13,10 @@ export default function NotFound() {
     <main className="grid min-h-screen place-items-center bg-bg px-4 py-10">
       <div className="panel w-full max-w-[440px] p-8">
         <p className="eyebrow">NOT FOUND</p>
-        <h1 className="display mb-3 mt-2 text-[26px]">
+        <h1 className="display mb-3 mt-2 text-3xl">
           There is nothing here
         </h1>
-        <p className="mb-6 text-[12px] text-fg-muted">
+        <p className="mb-6 text-xs text-fg-muted">
           This page does not exist, or it is not yours to open.
         </p>
         <Link href="/" className="btn-primary">

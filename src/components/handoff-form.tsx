@@ -6,6 +6,7 @@ import {
   convertProposalToProject,
   type HandoffState,
 } from "@/server/handoff";
+import { FormError } from "@/components/ui";
 
 const initial: HandoffState = {};
 
@@ -44,10 +45,10 @@ export function HandoffForm({
   if (state.ok && state.projectId) {
     return (
       <div className="w-full rounded-lg bg-ok-soft p-3">
-        <p className="m-0 text-[11px] font-bold text-ok">{state.message}</p>
+        <p className="m-0 text-xs font-bold text-ok">{state.message}</p>
         <Link
           href={`/projects/${state.projectId}`}
-          className="mt-1 inline-block text-[11px] font-bold text-brand hover:underline"
+          className="mt-1 inline-block text-xs font-bold text-brand hover:underline"
         >
           Open project →
         </Link>
@@ -60,7 +61,7 @@ export function HandoffForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-h-[30px] rounded-md bg-brand px-3 text-[10px] font-bold text-white hover:bg-brand-hover"
+        className="btn-primary btn-xs"
       >
         Convert to project
       </button>
@@ -78,7 +79,7 @@ export function HandoffForm({
           id={`pn-${proposalId}`} name="projectName" required className="field"
           defaultValue={suggestedName} aria-invalid={!!err.projectName}
         />
-        {err.projectName && <p className="mt-1 text-[10px] text-danger">{err.projectName}</p>}
+        {err.projectName && <p className="mt-1 text-xs text-danger">{err.projectName}</p>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -102,7 +103,7 @@ export function HandoffForm({
               placeholder="Acme Ltd" aria-invalid={!!err.newClientName}
             />
             {err.newClientName && (
-              <p className="mt-1 text-[10px] text-danger">{err.newClientName}</p>
+              <p className="mt-1 text-xs text-danger">{err.newClientName}</p>
             )}
           </div>
         )}
@@ -133,9 +134,9 @@ export function HandoffForm({
             aria-invalid={!!err.internalDueDate}
           />
           {err.internalDueDate ? (
-            <p className="mt-1 text-[10px] text-danger">{err.internalDueDate}</p>
+            <p className="mt-1 text-xs text-danger">{err.internalDueDate}</p>
           ) : (
-            <p className="mt-1 text-[9px] text-fg-subtle">Your buffer. Keep it earlier.</p>
+            <p className="mt-1 text-2xs text-fg-subtle">Your buffer. Keep it earlier.</p>
           )}
         </div>
         <div>
@@ -170,23 +171,21 @@ export function HandoffForm({
       </div>
 
       {state.error && (
-        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[11px] font-medium text-danger">
-          {state.error}
-        </p>
+        <FormError>{state.error}</FormError>
       )}
 
       <div className="flex gap-2">
-        <button type="submit" disabled={pending} className="btn-primary flex-1 py-2 text-[12px]">
+        <button type="submit" disabled={pending} className="btn-primary btn-sm flex-1">
           {pending ? "Creating…" : "Create draft project"}
         </button>
         <button
           type="button" onClick={() => setOpen(false)}
-          className="px-3 text-[11px] font-bold text-fg-muted"
+          className="btn-ghost btn-sm"
         >
           Cancel
         </button>
       </div>
-      <p className="m-0 text-[9px] text-fg-subtle">
+      <p className="m-0 text-2xs text-fg-subtle">
         Created as a draft. A PM confirms assets and team before it goes active.
       </p>
     </form>

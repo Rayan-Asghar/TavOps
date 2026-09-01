@@ -13,6 +13,7 @@ import {
   type TeamView,
 } from "@/components/team-manager";
 
+import { EmptyState } from "@/components/ui";
 export default async function TeamsPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -78,7 +79,7 @@ export default async function TeamsPage() {
 
       <div className="mb-4 panel border-l-[3px] border-l-border-strong p-4">
         <p className="eyebrow m-0">FOR REFERENCE ONLY</p>
-        <p className="m-0 mt-1 text-[12px] text-fg-muted">
+        <p className="m-0 mt-1 text-xs text-fg-muted">
           Teams used to decide who a blocker escalated to. Blockers now route by
           project role — the sales owner, PM or delivery lead named on the
           project — so nothing here changes what anyone is sent. Editing these is
@@ -89,9 +90,7 @@ export default async function TeamsPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
           {views.length === 0 ? (
-            <div className="panel p-12 text-center text-[13px] text-fg-muted">
-              No teams yet. Create one to the right.
-            </div>
+            <EmptyState>No teams yet. Create one to the right.</EmptyState>
           ) : (
             <ul className="space-y-3">
               {views.map((t) => (

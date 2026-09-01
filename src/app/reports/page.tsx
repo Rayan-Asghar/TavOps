@@ -16,15 +16,11 @@ import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { MetricCard, MetricGrid, HealthBadge } from "@/components/badges";
 
+import { hrs, pct } from "@/lib/format";
+import { DataTable, EmptyCell, Th } from "@/components/ui";
 const TIMESHEET_PREVIEW = 60;
 
-function hrs(n: number): string {
-  return n.toFixed(2);
-}
 
-function pct(n: number | null): string {
-  return n === null ? "—" : `${Math.round(n * 100)}%`;
-}
 
 /** Over 100% is not an error — it is somebody working past their stated week. */
 function utilTone(u: number | null): string {
@@ -116,12 +112,12 @@ export default async function ReportsPage({
             className="field"
           />
         </div>
-        <button type="submit" className="btn-primary py-2 text-[12px]">
+        <button type="submit" className="btn-primary btn-sm">
           Apply
         </button>
         <a
           href={exportHref}
-          className="btn-secondary py-2 text-[12px]"
+          className="btn-secondary btn-sm"
           download
         >
           Download CSV
@@ -148,34 +144,29 @@ export default async function ReportsPage({
         <div className="panel-head">
           <div>
             <p className="eyebrow">BY PROJECT</p>
-            <h3 className="m-0 text-[16px] tracking-[-.03em]">
+            <h3 className="m-0 text-lg tracking-[-.03em]">
               Logged against estimated
             </h3>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[11px]">
+        <DataTable>
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className="px-5 py-2 font-bold">Project</th>
-                <th className="px-3 py-2 text-right font-bold">In range</th>
-                <th className="px-3 py-2 text-right font-bold">All time</th>
-                <th className="px-3 py-2 text-right font-bold">Estimated</th>
+              <tr>
+                <Th>Project</Th>
+                <Th numeric>In range</Th>
+                <Th numeric>All time</Th>
+                <Th numeric>Estimated</Th>
                 {seesMoney && (
-                  <th className="px-3 py-2 text-right font-bold">Budget</th>
+                  <Th numeric>Budget</Th>
                 )}
-                <th className="px-3 py-2 text-right font-bold">Tasks</th>
-                <th className="px-3 py-2 text-right font-bold">Blockers</th>
-                <th className="px-5 py-2 font-bold">Health</th>
+                <Th numeric>Tasks</Th>
+                <Th numeric>Blockers</Th>
+                <Th>Health</Th>
               </tr>
             </thead>
             <tbody>
               {projectRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-fg-muted">
-                    No projects in scope.
-                  </td>
-                </tr>
+                <EmptyCell colSpan={8}>No projects in scope.</EmptyCell>
               ) : (
                 projectRows.map((p) => {
                   const budget = budgets.get(p.projectId) ?? 0;
@@ -188,7 +179,7 @@ export default async function ReportsPage({
                         <strong>{p.code}</strong>{" "}
                         <span className="text-fg-muted">{p.name}</span>
                         {p.clientName && (
-                          <div className="text-[9px] text-fg-subtle">
+                          <div className="text-2xs text-fg-subtle">
                             {p.clientName}
                           </div>
                         )}
@@ -225,8 +216,7 @@ export default async function ReportsPage({
                 })
               )}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
       </section>
 
       {/* ---------------- per person ---------------- */}
@@ -235,31 +225,35 @@ export default async function ReportsPage({
           <div className="panel-head">
             <div>
               <p className="eyebrow">BY PERSON</p>
-              <h3 className="m-0 text-[16px] tracking-[-.03em]">
+              <h3 className="m-0 text-lg tracking-[-.03em]">
                 Logged against capacity
               </h3>
             </div>
-            <span className="text-[11px] text-fg-muted">
+            <span className="text-xs text-fg-muted">
               capacity = stated week spread over the range&rsquo;s working days
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[11px]">
+          <DataTable>
               <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="px-5 py-2 font-bold">Person</th>
-                  <th className="px-3 py-2 text-right font-bold">Logged</th>
-                  <th className="px-3 py-2 text-right font-bold">Capacity</th>
-                  <th className="px-3 py-2 text-right font-bold">Utilisation</th>
-                  <th className="px-5 py-2 text-right font-bold">Projects</th>
+                <tr>
+                  <Th>Person</Th>
+                  <Th numeric>Logged</Th>
+                  <Th numeric>Capacity</Th>
+                  <Th numeric>Utilisation</Th>
+                  <Th numeric>Projects</Th>
                 </tr>
               </thead>
               <tbody>
-                {personRows.map((p) => (
+                {personRows.length === 0 ? (
+                  <EmptyCell colSpan={5}>
+                    Nobody with capacity in this range.
+                  </EmptyCell>
+                ) : (
+                  personRows.map((p) => (
                   <tr key={p.userId} className="border-b border-border last:border-b-0">
                     <td className="px-5 py-2.5">
                       {p.name}{" "}
-                      <span className="text-[9px] text-fg-subtle">{p.role}</span>
+                      <span className="text-2xs text-fg-subtle">{p.role}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono">
                       {hrs(p.loggedHours)}
@@ -275,11 +269,11 @@ export default async function ReportsPage({
                     <td className="px-5 py-2.5 text-right font-mono text-fg-muted">
                       {p.projectCount || "—"}
                     </td>
-                  </tr>
-                ))}
+                    </tr>
+                  ))
+                )}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
         </section>
       )}
 
@@ -290,31 +284,26 @@ export default async function ReportsPage({
             <p className="eyebrow">
               {seesEveryone ? "EVERY ENTRY IN RANGE" : "YOUR ENTRIES IN RANGE"}
             </p>
-            <h3 className="m-0 text-[16px] tracking-[-.03em]">Timesheet</h3>
+            <h3 className="m-0 text-lg tracking-[-.03em]">Timesheet</h3>
           </div>
-          <span className="text-[11px] text-fg-muted">
+          <span className="text-xs text-fg-muted">
             newest {TIMESHEET_PREVIEW} shown · CSV has them all
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[11px]">
+        <DataTable>
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className="px-5 py-2 font-bold">Date</th>
-                <th className="px-3 py-2 font-bold">Person</th>
-                <th className="px-3 py-2 font-bold">Project</th>
-                <th className="px-3 py-2 font-bold">Task</th>
-                <th className="px-3 py-2 text-right font-bold">Hours</th>
-                <th className="px-5 py-2 font-bold">Notes</th>
+              <tr>
+                <Th>Date</Th>
+                <Th>Person</Th>
+                <Th>Project</Th>
+                <Th>Task</Th>
+                <Th numeric>Hours</Th>
+                <Th>Notes</Th>
               </tr>
             </thead>
             <tbody>
               {sheet.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-fg-muted">
-                    Nothing logged in this range.
-                  </td>
-                </tr>
+                <EmptyCell colSpan={6}>Nothing logged in this range.</EmptyCell>
               ) : (
                 sheet.map((r, i) => (
                   <tr
@@ -341,8 +330,7 @@ export default async function ReportsPage({
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
       </section>
     </AppShell>
   );
