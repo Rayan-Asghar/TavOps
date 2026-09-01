@@ -57,6 +57,22 @@ describe("global role capabilities", () => {
     }
   });
 
+  it("keeps correcting somebody else's hours off the default roles", () => {
+    // Your own entry is editable without any capability — the action checks
+    // authorship first. worklog.edit is only about other people's entries.
+    expect(can("developer", "worklog.edit")).toBe(false);
+    expect(can("collaborator", "worklog.edit")).toBe(false);
+    expect(can("sales", "worklog.edit")).toBe(false);
+    expect(can("head", "worklog.edit")).toBe(true);
+    expect(can("admin", "worklog.edit")).toBe(true);
+  });
+
+  it("never grants worklog.edit through a project role", () => {
+    for (const r of ["pm", "tech_lead", "sales_owner", "qa", "developer", "observer"] as const) {
+      expect(canInProject("developer", r, "worklog.edit")).toBe(false);
+    }
+  });
+
   it("does not let a collaborator edit tasks", () => {
     expect(can("developer", "task.edit")).toBe(true);
     expect(can("collaborator", "task.edit")).toBe(false);

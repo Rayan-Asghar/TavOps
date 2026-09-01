@@ -1,7 +1,7 @@
 # HANDOFF
 
 > Overwrite this file — never append. Max 100 lines. No pasted code, file:line only.
-> Previous handoff archived at `.claude/handoff-history/2026-09-01_phase1.md`.
+> Previous handoffs in `.claude/handoff-history/`.
 
 ## Goal
 
@@ -13,70 +13,72 @@ access. Full audit and phased plan:
 
 ## Current State
 
-**Phase 1 of 5 is complete and committed. 94 tests pass, build green, app runs.**
+**Phases 1 and 2 of 5 complete and committed. 102 tests pass, build green.**
 
-The client-facing Google Sheets sync is gone — the one subsystem that
-contradicted the target architecture. Source is **−2,616 lines / +54**.
+**Phase 1** removed the client-facing sheets sync (−2,616 lines, 21 tables → 17,
+`googleapis` dropped). See `.claude/handoff-history/2026-09-01_phase1.md`.
 
-- **Deleted**: `sheets.ts`, `sheets.test.ts`, `sync-worker.ts`, `sheet-actions.ts`,
-  `sheet-queries.ts`, `sheet-schemas.ts`, `sheet-config.tsx`,
-  `api/cron/sync/route.ts`, `scripts/sheets-doctor.ts`, `scripts/attach-sheet.ts`,
-  and the `googleapis` dependency.
-- **Schema**: 21 tables → **17**. `drizzle/0009_remove_client_sheets.sql` applied.
-  Dropped `sheet_connections`, `sheet_row_links`, `sheet_templates`, `sync_jobs`,
-  `tasks.sheet_row_ref`, `work_logs.client_update`,
-  `worklog_revisions.{client_update,connection_id,row_hash}`,
-  `audit_log.sync_job_id`, and 6 enum types.
-- **`recordWorkInTx`** (`src/server/record-work.ts:47`) is now purely internal
-  bookkeeping: work log + revision v1 + task status + nag clear + reviewer
-  notify. Returns `{entry, revision}`. Verified against the live DB in a
-  rolled-back transaction — v1 written, `current_revision_id` correct.
-- **Work logs carry one note.** The internal/client split existed only to feed
-  the sheets; the second field is gone from all three log surfaces
-  (`log-work-form.tsx`, `quick-log.tsx`, `task-timer.tsx`).
-- **RBAC**: `sheet.configure`, `sheets.client.manage`, `sheets.admin` removed.
-  The project-role overlay survives on `deadline.viewClient` and its tests were
-  re-pointed there, so the mechanism is still covered.
-- Data preserved: 15 work logs, 15 revisions, 7 tasks.
+**Phase 2** closed the internal record loop. Verified in a real browser against
+the live DB, not just by tests:
 
-**Backup before the destructive migration:**
-`/home/rayan/Desktop/tavrenops-backups/pre-0009-20260901-213816.sql` (97K,
-outside the repo). It is the only copy of the dropped `client_update` values.
+- **Work logs can be corrected and removed** — `editWorkLog` / `deleteWorkLog`
+  in `src/server/work-logs.ts`. An edit appends revision vN and moves
+  `current_revision_id`; a delete soft-deletes and appends a reversal (hours 0,
+  `is_reversal`). Both require a reason, as `adjustTimer` already did.
+  Proven: 21.00h → 1.75h left v1 intact with the original note; a removal
+  dropped the project total by exactly its hours.
+- **`projects.invoiced_through` is enforced for the first time.** It existed
+  since the first migration and nothing read it. Refuses edit and delete on
+  billed work, and refuses moving an entry *into or out of* a billed period.
+  Pure predicate extracted to `src/lib/billing-lock.ts` with 6 tests.
+- **Own entries are always editable; other people's need `worklog.edit`**
+  (new capability, admin + head).
+- **Audit is wired into the operational tables** via `writeAudit`
+  (`src/server/audit.ts`) — work log create/edit/delete, task create/update,
+  review, blocker report/resolve, project create/activate. It takes the caller's
+  `tx`, so an audit row cannot commit while its change rolls back.
+- **`/audit`** renders the newest 100 entries as field-level diffs, behind the
+  pre-existing `audit.view`. Nav entry added.
+- **Soft delete is now honoured everywhere.** Four sites counted deleted hours:
+  the project activity list and total, `projects/page.tsx`, and two subqueries in
+  `review/page.tsx`. Fixed — they were harmless only because nothing could delete.
+
+**Dev data changed by the verification run** (all on junk seed entries): one
+NW-001 log corrected to 1.75h, one NW-001 and one BL-002 log removed. Left in
+place deliberately — the audit log is append-only and reverting would make it
+contradict reality.
 
 ## Next Steps
 
 1. **Phase 0 — hosting + scheduler (Rayan, blocks everything automatic).**
-   Nothing runs on a timer today. Schedule `/api/cron/sweeps` hourly and
+   Nothing runs on a timer. Schedule `/api/cron/sweeps` hourly and
    `/api/cron/digest` daily with `CRON_SECRET`. Vercel Hobby is out.
    Set `DIGEST_WEBHOOK_URLS` or the digest builds and goes nowhere.
-2. **Phase 2 — close the internal record loop.** The highest-value remaining
-   work, and what employees will hit in week one:
-   - `editWorkLog` / `deleteWorkLog`. The schema is already built for it —
-     `deleted_at`, `is_reversal`, the version chain, and the
-     `projects.invoiced_through` lock. Today a mistyped 8h is permanent and
-     `worklog_revisions` only ever holds v1.
-   - One `writeAudit` helper wired into work logs, tasks, projects, blockers and
-     reviews. Currently only users/teams/timer/handoff write audit rows and
-     **nothing reads the table**, though `audit.view` exists.
-3. **Phase 3** — schema/dead-code cleanup; delete the dead `authorized` callback
-   in `src/lib/auth.config.ts` (no `middleware.ts` exists, so it never runs);
-   check `notifications_dedupe_unique` for the NULL-distinct trap; split the
-   673-line `src/app/projects/[id]/page.tsx`.
-4. **Phase 4** — `src/server/reports.ts` + `/reports` + CSV export. This is what
-   actually replaces the internal spreadsheets.
-5. **Phase 5** — DB-fixture tests for access control and the RLS backstop.
+2. **Phase 3 — cleanup.** Backfill and drop `audit_log.detail` (the older
+   user/team/timer/handoff call sites still write it; `writeAudit` writes
+   `before`/`after`). Delete the dead `authorized` callback in
+   `src/lib/auth.config.ts` — no `middleware.ts` exists so it never runs. Check
+   `notifications_dedupe_unique` for the NULL-distinct trap. Split the 700-line
+   `src/app/projects/[id]/page.tsx`.
+3. **Phase 4 — reporting.** `src/server/reports.ts` + `/reports` + CSV export.
+   This is what actually replaces the internal spreadsheets.
+4. **Phase 5** — DB-fixture tests for access control and the RLS backstop.
 
 ## What Failed / Dead Ends
 
-- **`pkill -f "next dev"` kills the agent's own shell** (the pattern matches the
-  bash command line). Use `pgrep -af` to check, and a PID.
-- **`tsx` scripts are transformed as CJS** — no top-level await. Wrap in
-  `main()`. They must also live inside the repo for `../src/...` to resolve.
-- **Deleting `.next` breaks `pnpm typecheck`** — `LayoutProps` and friends are
-  generated there. Run `pnpm build` once to regenerate.
+- **`pkill`/`pgrep -f "next dev"` kills the agent's own shell** — the pattern
+  matches its command line. Use a bracket class: `pgrep -af "nex[t] dev"`.
+- **Browser harness: never use a global `input[name=...]` lookup.** The project
+  page's rail has its own log-work form with `hours`/`internalNotes`. Anchor on
+  `input[name=workLogId]`, then `.closest('form')`, and query inside it.
+- **`requestSubmit()` silently no-ops on constraint violations.** An hours value
+  of 9.99 fails the field's `step="0.25"`, so nothing posts and no error shows —
+  it looks exactly like a broken action. Call `form.checkValidity()` first.
+- **Deleting `.next` breaks `pnpm typecheck`** (`LayoutProps` is generated
+  there). Run `pnpm build` once to regenerate.
 - **Enum values cannot be dropped in Postgres.** `change_source.'sheet'`,
-  `audit_actor_type.'sync'` and `notification_kind.'sync_failed'` survive as
-  dead labels, annotated in `src/db/schema.ts`. Never write them.
+  `audit_actor_type.'sync'`, `notification_kind.'sync_failed'` survive as
+  annotated dead labels. Never write them.
 - **Do not re-add a Stop hook** (`62fa8e5` → `9427490`): it blocked every turn.
 - Nine seed accounts still share `tavren123`. Delete once real admins exist.
 
@@ -84,5 +86,5 @@ outside the repo). It is the only copy of the dropped `client_update` values.
 
 - **Hosting decision** — blocks step 1, which blocks everything automatic.
 - **Discord/Slack webhook URL** needed from Rayan.
-- Whether Phase 4 should end in a Google Sheets *export*. `googleapis` was
-  removed; re-add it only if that is wanted, and keep it one-way.
+- Should Phase 4 end in a Google Sheets *export*? `googleapis` was removed;
+  re-add only if wanted, and keep it one-way.

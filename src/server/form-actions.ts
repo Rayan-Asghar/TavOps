@@ -1,6 +1,6 @@
 "use server";
 
-import { logWork } from "./work-logs";
+import { logWork, editWorkLog, deleteWorkLog } from "./work-logs";
 import { reportBlocker } from "./blockers";
 import { resolveBlocker } from "./blockers";
 import { safeErrorMessage } from "./action-errors";
@@ -66,5 +66,39 @@ export async function resolveBlockerFormAction(
     return { ok: true, message: "Resolved." };
   } catch (err) {
     return toState(err, "resolveBlocker");
+  }
+}
+
+export async function editWorkLogFormAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const workDate = String(formData.get("workDate") ?? "");
+    await editWorkLog({
+      workLogId: String(formData.get("workLogId") ?? ""),
+      hours: Number(formData.get("hours") ?? 0),
+      internalNotes: String(formData.get("internalNotes") ?? ""),
+      workDate: workDate === "" ? undefined : workDate,
+      reason: String(formData.get("reason") ?? ""),
+    });
+    return { ok: true, message: "Entry corrected." };
+  } catch (err) {
+    return toState(err, "editWorkLog");
+  }
+}
+
+export async function deleteWorkLogFormAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    await deleteWorkLog({
+      workLogId: String(formData.get("workLogId") ?? ""),
+      reason: String(formData.get("reason") ?? ""),
+    });
+    return { ok: true, message: "Entry removed." };
+  } catch (err) {
+    return toState(err, "deleteWorkLog");
   }
 }

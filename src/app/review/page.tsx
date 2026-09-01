@@ -60,10 +60,12 @@ export default async function ReviewPage() {
                where ${reviews.taskId} = ${tasks.id})`,
             loggedHours: sql<string>`(
               select coalesce(sum(${workLogs.hours}),0)::text from ${workLogs}
-               where ${workLogs.taskId} = ${tasks.id})`,
+               where ${workLogs.taskId} = ${tasks.id}
+                 and ${workLogs.deletedAt} is null)`,
             lastNote: sql<string | null>`(
               select ${workLogs.internalNotes} from ${workLogs}
                where ${workLogs.taskId} = ${tasks.id}
+                 and ${workLogs.deletedAt} is null
                order by ${workLogs.workDate} desc limit 1)`,
           })
           .from(tasks)

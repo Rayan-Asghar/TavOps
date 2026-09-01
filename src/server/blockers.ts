@@ -21,6 +21,7 @@ import {
   type ResolveBlockerInput,
 } from "./schemas";
 import { UserFacingError } from "@/lib/errors";
+import { writeAudit } from "./audit";
 
 
 /**
@@ -147,6 +148,21 @@ export async function reportBlocker(input: ReportBlockerInput) {
       );
     }
 
+    await writeAudit(tx, {
+      actorId: actor.id,
+      projectId: data.projectId,
+      entityType: "blocker",
+      entityId: blocker.id,
+      action: "blocker.report",
+      after: {
+        category: blocker.category,
+        severity: blocker.severity,
+        ownerSide: blocker.ownerSide,
+        assignedToId: blocker.assignedToId,
+        routingRule: blocker.routingRule,
+      },
+    });
+
     return blocker;
   });
 
@@ -223,6 +239,16 @@ export async function resolveBlocker(input: ResolveBlockerInput) {
         tx,
       );
     }
+
+    await writeAudit(tx, {
+      actorId: actor.id,
+      projectId: blocker.projectId,
+      entityType: "blocker",
+      entityId: blocker.id,
+      action: "blocker.resolve",
+      before: { status: "open" },
+      after: { status: "resolved", resolutionNote: data.resolutionNote },
+    });
 
     return blocker;
   });

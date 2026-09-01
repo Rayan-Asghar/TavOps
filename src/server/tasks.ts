@@ -9,6 +9,7 @@ import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { notify, resolveByDedupeKey } from "./notifications";
+import { writeAudit } from "./audit";
 import { createTaskSchema, reviewSchema, updateTaskSchema } from "./task-schemas";
 import { safeErrorMessage } from "./action-errors";
 
@@ -94,6 +95,19 @@ export async function createTask(
           tx,
         );
       }
+
+      await writeAudit(tx, {
+        actorId: actor.id,
+        projectId: data.projectId,
+        entityType: "task",
+        entityId: task.id,
+        action: "task.create",
+        after: {
+          title: task.title,
+          assigneeId: task.assigneeId,
+          estimatedHours: task.estimatedHours,
+        },
+      });
     });
 
     revalidatePath(`/projects/${data.projectId}`);
@@ -163,6 +177,26 @@ export async function updateTask(
           tx,
         );
       }
+
+      await writeAudit(tx, {
+        actorId: actor.id,
+        projectId: task.projectId,
+        entityType: "task",
+        entityId: task.id,
+        action: "task.update",
+        before: {
+          title: task.title,
+          assigneeId: task.assigneeId,
+          status: task.status,
+          estimatedHours: task.estimatedHours,
+        },
+        after: {
+          title: data.title ?? task.title,
+          assigneeId: data.assigneeId ?? null,
+          status: data.status ?? task.status,
+          estimatedHours: data.estimatedHours?.toFixed(2) ?? task.estimatedHours,
+        },
+      });
     });
 
     revalidatePath(`/projects/${task.projectId}`);
@@ -258,6 +292,20 @@ export async function submitReview(
           tx,
         );
       }
+
+      await writeAudit(tx, {
+        actorId: actor.id,
+        projectId: task.projectId,
+        entityType: "task",
+        entityId: task.id,
+        action: "review.submit",
+        before: { status: task.status },
+        after: {
+          status: data.decision === "approved" ? "done" : "in_progress",
+          decision: data.decision,
+          round: rounds + 1,
+        },
+      });
     });
 
     revalidatePath(`/projects/${task.projectId}`);

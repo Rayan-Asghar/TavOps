@@ -4,6 +4,49 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-01 — Phase 2: work logs can finally be corrected
+
+- **Shipped:** `editWorkLog` / `deleteWorkLog`, the `writeAudit` helper wired
+  into the operational tables, and `/audit`. 102 tests pass, build green.
+  Verified in a real browser against the live DB, not only by unit tests.
+
+- **Why this first:** the schema had been built for corrections since the first
+  migration — `deleted_at`, `is_reversal`, the version chain, and
+  `projects.invoiced_through` — and none of it was reachable. `worklog_revisions`
+  only ever held v1, and a mistyped 8h was permanent. It is the thing the team
+  hits in week one.
+
+- **Decisions:**
+  - **A reason is mandatory on both edit and delete.** Follows the precedent
+    `adjustTimer` already set. A revision chain that records what changed but
+    never why answers the easy half of "what happened here".
+  - **Delete is a reversal, not a removal.** hours 0 + `is_reversal`, and the
+    row soft-deleted, so totals fall to the truth while the record of what was
+    once claimed survives.
+  - **`invoiced_through` is enforced on BOTH the old and new date.** Moving an
+    entry out of a billed period rewrites that invoice as surely as changing its
+    hours does.
+  - **Own entries need no capability; other people's need `worklog.edit`**
+    (new, admin + head). Authorship is checked before the capability, so a
+    developer fixing their own typo needs no grant.
+  - **`writeAudit` takes the caller's `tx`.** An audit row that can commit while
+    its change rolls back is worse than no audit row — it asserts something
+    happened that did not.
+  - **Extracted `isInvoiced` to `src/lib/billing-lock.ts`.** A `"use server"`
+    module may only export async functions, so a predicate cannot live there and
+    still be testable. Same reason `business-time.ts` and `timer-utils.ts` exist.
+
+- **Fixed while building:** four queries counted deleted hours — the project
+  activity list and total, `projects/page.tsx`, and two subqueries in
+  `review/page.tsx`. Harmless until now only because nothing could delete.
+
+- **Dev data touched by the verification run**, on junk seed entries: one NW-001
+  log corrected 21.00h → 1.75h, one NW-001 and one BL-002 log removed. Left as
+  they are: the audit log is append-only, and reverting would make it contradict
+  reality.
+
+---
+
 ### 2026-09-01 — Audit, direction change, and Phase 1: the client sheet sync is gone
 
 - **Context:** Direction changed. TavrenOPS is now **strictly internal** —

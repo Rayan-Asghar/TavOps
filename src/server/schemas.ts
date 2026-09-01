@@ -20,6 +20,31 @@ export const logWorkSchema = z.object({
 
 export type LogWorkInput = z.infer<typeof logWorkSchema>;
 
+/**
+ * Correcting an entry.
+ *
+ * The reason is required, for the same argument as the timer's adjustment: a
+ * revision chain that records what changed but never why answers the easy half
+ * of "what happened here" and leaves the half anyone actually asks.
+ */
+export const editWorkLogSchema = z.object({
+  workLogId: z.string().uuid(),
+  hours: z.coerce.number().positive().max(24),
+  internalNotes: z.string().trim().min(3, "Say what you did, even briefly."),
+  /** Optional: only sent when the entry was filed against the wrong day. */
+  workDate: z.coerce.date().optional(),
+  reason: z.string().trim().min(3, "Say why this entry is changing."),
+});
+
+export type EditWorkLogInput = z.input<typeof editWorkLogSchema>;
+
+export const deleteWorkLogSchema = z.object({
+  workLogId: z.string().uuid(),
+  reason: z.string().trim().min(3, "Say why this entry is being removed."),
+});
+
+export type DeleteWorkLogInput = z.infer<typeof deleteWorkLogSchema>;
+
 export const reportBlockerSchema = z
   .object({
     projectId: z.string().uuid(),

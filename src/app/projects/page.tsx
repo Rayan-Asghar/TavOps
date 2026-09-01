@@ -58,7 +58,8 @@ export default async function ProjectsPage() {
                  and ${blockers.status} <> 'resolved')`,
             loggedHours: sql<string>`(
               select coalesce(sum(${workLogs.hours}),0)::text from ${workLogs}
-               where ${workLogs.projectId} = ${projects.id})`,
+               where ${workLogs.projectId} = ${projects.id}
+                 and ${workLogs.deletedAt} is null)`,
           })
           .from(projects)
           .leftJoin(clients, eq(projects.clientId, clients.id))

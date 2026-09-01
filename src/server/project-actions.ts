@@ -10,6 +10,7 @@ import { createProjectSchema } from "./task-schemas";
 import { nextProjectCode } from "./project-code";
 import { eq } from "drizzle-orm";
 import { safeErrorMessage } from "./action-errors";
+import { writeAudit } from "./audit";
 
 export type ProjectState = {
   ok?: boolean;
@@ -118,6 +119,21 @@ export async function createProject(
           .onConflictDoNothing();
       }
 
+      await writeAudit(tx, {
+        actorId: actor.id,
+        projectId: project.id,
+        entityType: "project",
+        entityId: project.id,
+        action: "project.create",
+        after: {
+          code: project.code,
+          name: project.name,
+          clientId: project.clientId,
+          pmId: project.pmId,
+          deliveryLeadId: project.deliveryLeadId,
+        },
+      });
+
       return project;
     });
 
@@ -135,10 +151,23 @@ export async function activateProject(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   if (!projectId) return;
 
-  await db
-    .update(projects)
-    .set({ lifecycle: "active", updatedAt: new Date() })
-    .where(eq(projects.id, projectId));
+  // Wrapped so the audit row cannot commit without the change it records.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(projects)
+      .set({ lifecycle: "active", updatedAt: new Date() })
+      .where(eq(projects.id, projectId));
+
+    await writeAudit(tx, {
+      actorId: actor.id,
+      projectId,
+      entityType: "project",
+      entityId: projectId,
+      action: "project.activate",
+      before: { lifecycle: "draft" },
+      after: { lifecycle: "active" },
+    });
+  });
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");

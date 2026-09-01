@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { aliasedTable, and, desc, eq, ne, sql } from "drizzle-orm";
+import { aliasedTable, and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
 import {
   blockers,
@@ -30,6 +30,7 @@ import {
   type ActiveSession,
 } from "@/components/task-timer";
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
+import { WorkLogActions } from "@/components/work-log-actions";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
 
 function fmtDate(d: Date | null): string {
@@ -119,6 +120,8 @@ export default async function ProjectPage({
   // naming it "internal" would itself give away that a later date exists.
   const seesClientDeadline = can(role, "deadline.viewClient");
   const canManageMembers = can(role, "project.manageMembers");
+  // Your own entries are always yours to fix; anyone else's needs the grant.
+  const canEditOthersWork = can(role, "worklog.edit");
 
   const activeTab: TabKey = requestedTab;
 
@@ -164,6 +167,7 @@ export default async function ProjectPage({
           hours: workLogs.hours,
           notes: workLogs.internalNotes,
           workDate: workLogs.workDate,
+          userId: workLogs.userId,
           userName: users.name,
           taskTitle: tasks.title,
         })
@@ -172,8 +176,12 @@ export default async function ProjectPage({
         .leftJoin(tasks, eq(workLogs.taskId, tasks.id))
         .where(
           seesAllActivity
-            ? eq(workLogs.projectId, id)
-            : and(eq(workLogs.projectId, id), eq(workLogs.userId, actor.id)),
+            ? and(eq(workLogs.projectId, id), isNull(workLogs.deletedAt))
+            : and(
+                eq(workLogs.projectId, id),
+                eq(workLogs.userId, actor.id),
+                isNull(workLogs.deletedAt),
+              ),
         )
         .orderBy(desc(workLogs.workDate))
         .limit(40),
@@ -187,7 +195,7 @@ export default async function ProjectPage({
   const [totals] = await db
     .select({ hours: sql<string>`coalesce(sum(${workLogs.hours}),0)::text` })
     .from(workLogs)
-    .where(eq(workLogs.projectId, id));
+    .where(and(eq(workLogs.projectId, id), isNull(workLogs.deletedAt)));
 
   // Money is fetched only when the role allows it, and only inside the RLS
   // opt-in. Without both, the query returns nothing.
@@ -593,6 +601,14 @@ export default async function ProjectPage({
                         <small className="text-[9px] text-fg-subtle">
                           {fmtDate(l.workDate)} · {l.userName}
                         </small>
+                        {(canEditOthersWork || l.userId === actor.id) && (
+                          <WorkLogActions
+                            workLogId={l.id}
+                            hours={l.hours}
+                            notes={l.notes}
+                            workDate={l.workDate.toISOString().slice(0, 10)}
+                          />
+                        )}
                       </div>
                     </div>
                   ))

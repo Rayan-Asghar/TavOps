@@ -64,6 +64,9 @@ export function AppShell({
   if (can(role, "user.manage")) {
     management.push({ href: "/admin/users", label: "People", icon: "people" });
   }
+  if (can(role, "audit.view")) {
+    management.push({ href: "/audit", label: "Audit log", icon: "review" });
+  }
   // Teams no longer drive blocker routing, so there is nothing they change from
   // day to day. The tables and the page remain; the nav slot does not.
 

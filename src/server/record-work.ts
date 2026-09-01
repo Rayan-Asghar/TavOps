@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { UserFacingError } from "@/lib/errors";
 import { notify, resolveByDedupeKey } from "./notifications";
+import { writeAudit } from "./audit";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type TaskStatus = (typeof taskStatus.enumValues)[number];
@@ -130,6 +131,20 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       }
     }
   }
+
+  await writeAudit(tx, {
+    actorId: input.userId,
+    projectId: input.projectId,
+    entityType: "work_log",
+    entityId: entry.id,
+    action: "work_log.create",
+    after: {
+      hours: entry.hours,
+      taskId: entry.taskId,
+      workDate: entry.workDate.toISOString().slice(0, 10),
+      resultingStatus: input.resultingStatus ?? null,
+    },
+  });
 
   return { entry, revision };
 }
