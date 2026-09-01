@@ -13,7 +13,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 /* ------------------------------------------------------------------ *
  * Enums
@@ -112,9 +112,10 @@ export const reviewDecision = pgEnum("review_decision", [
 /**
  * Where a change came from.
  *
- * `sheet` is dead — the client-sheet sync it belonged to was removed. Postgres
- * cannot drop a value from an enum in use, and recreating the type across three
- * columns costs more than one unused label. Do not write it.
+ * `sheet` was dormant between the client-sheet sync being removed and the
+ * project work-log mirror replacing it. It is live again: the mirror is one-way
+ * (Tavren → Sheet), so nothing is ever written to the database with this source
+ * today, but the label is reserved for the day a row could originate there.
  */
 export const changeSource = pgEnum("change_source", [
   "sheet",
@@ -123,7 +124,7 @@ export const changeSource = pgEnum("change_source", [
   "system",
 ]);
 
-/** `sync` is dead with the sheet sync; see the note on changeSource. */
+/** Written by the work-log sheet sync worker, which acts for nobody. */
 export const auditActorType = pgEnum("audit_actor_type", [
   "user",
   "system",
@@ -138,7 +139,8 @@ export const notificationKind = pgEnum("notification_kind", [
   "task_needs_review",
   "task_stalled",
   "update_missing",
-  // Dead with the sheet sync; see the note on changeSource. Never emitted.
+  // Raised when a project's work-log sheet has stopped accepting writes —
+  // usually a revoked share or an edited header row.
   "sync_failed",
   "project_at_risk",
   "review_approved",
@@ -152,6 +154,33 @@ export const notificationKind = pgEnum("notification_kind", [
   "feasibility_answered",
   "followup_due",
   "timer_left_running",
+]);
+
+/** One sheet per project. `shareable` withholds the work note — see sheetVisibility. */
+export const sheetVisibility = pgEnum("sheet_visibility", [
+  "internal",
+  "shareable",
+]);
+
+export const sheetConnectionStatus = pgEnum("sheet_connection_status", [
+  "active",
+  "paused",
+  "error",
+  "archived",
+]);
+
+/** A delete blanks its row rather than removing it — see the note on syncJobs. */
+export const syncJobType = pgEnum("sync_job_type", [
+  "append",
+  "update",
+  "delete",
+]);
+
+export const syncStatus = pgEnum("sync_status", [
+  "queued",
+  "running",
+  "done",
+  "failed",
 ]);
 
 export const timerStatus = pgEnum("timer_status", [
@@ -621,6 +650,145 @@ export const notifications = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
+ * Project work-log sheets — a one-way mirror, Tavren -> Google
+ * ------------------------------------------------------------------ */
+
+/**
+ * The spreadsheet a project's work logs are mirrored into.
+ *
+ * One sheet per project, and never the reverse: the Sheet is a reporting view
+ * that team heads read, not a second place work is recorded. Reading edits back
+ * would need conflict resolution, duplicate detection and deletion handling for
+ * no gain, since Tavren is where the work is logged.
+ *
+ * Columns are fixed by the Tavren template — there is deliberately no mapping
+ * layer. The previous, client-facing implementation had one, and every bug it
+ * produced came from a mapping that had drifted from the sheet it described.
+ */
+export const sheetConnections = pgTable(
+  "sheet_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    spreadsheetId: varchar("spreadsheet_id", { length: 120 }).notNull(),
+    spreadsheetUrl: text("spreadsheet_url").notNull(),
+    tabName: varchar("tab_name", { length: 120 }).default("Sheet1").notNull(),
+    /**
+     * `internal` writes the work note into the sheet; `shareable` leaves that
+     * cell empty. Set per sheet so flipping one to shareable cannot
+     * retroactively expose notes already written — only new rows change.
+     */
+    visibility: sheetVisibility("visibility").default("internal").notNull(),
+    templateVersion: integer("template_version").default(1).notNull(),
+    /**
+     * Hash of the header row as it was at connect time.
+     *
+     * Somebody inserting a column would otherwise send Hours quietly into the
+     * Status column. On mismatch the worker refuses to write and marks the
+     * connection `error` instead.
+     */
+    headerHash: text("header_hash"),
+    status: sheetConnectionStatus("status").default("active").notNull(),
+    errorMessage: text("error_message"),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    // Both columns are NOT NULL, so unlike the index these replace, NULLs
+    // cannot make them silently permissive.
+    uniqueIndex("sheet_connections_project_unique").on(t.projectId),
+    // Partial: a disconnected project archives its row, and that must not
+    // reserve the spreadsheet forever against a project that wants it next.
+    uniqueIndex("sheet_connections_destination_unique")
+      .on(t.spreadsheetId, t.tabName)
+      .where(sql`${t.status} <> 'archived'`),
+  ],
+);
+
+/**
+ * Where a work log currently sits in its project's sheet.
+ *
+ * `rowNumber` is a HINT, not an identity. The sheet carries the work log's uuid
+ * in its own column, and that is what actually addresses a row — a person
+ * sorting the sheet or inserting rows above invalidates every number here at
+ * once, which is precisely the corruption the previous implementation suffered.
+ * The worker verifies the id at the hinted row and repairs the hint on a miss.
+ */
+export const sheetRowLinks = pgTable(
+  "sheet_row_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => sheetConnections.id, { onDelete: "cascade" }),
+    workLogId: uuid("work_log_id")
+      .notNull()
+      .references(() => workLogs.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("sheet_row_links_unique").on(t.connectionId, t.workLogId),
+  ],
+);
+
+/**
+ * The queue. Postgres only — claimed with FOR UPDATE SKIP LOCKED, no broker.
+ *
+ * Rows are inserted in the same transaction as the work log that caused them
+ * (outbox), so an entry can never be recorded without its sheet write being
+ * queued, and never queued for work that was not recorded.
+ *
+ * `delete` blanks the row rather than removing it: deleting a row shifts every
+ * row beneath it up by one and invalidates every hint for that sheet at once.
+ * It also matches the domain — a work log is reversed, not erased.
+ */
+export const syncJobs = pgTable(
+  "sync_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => sheetConnections.id, { onDelete: "cascade" }),
+    workLogId: uuid("work_log_id").references(() => workLogs.id, {
+      onDelete: "cascade",
+    }),
+    jobType: syncJobType("job_type").default("append").notNull(),
+    /**
+     * Makes a retry after a timeout a no-op rather than a duplicate row in the
+     * sheet. NOT NULL, because the unique index it backs treats NULLs as
+     * distinct — a nullable key is a guarantee that does not hold.
+     */
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: syncStatus("status").default("queued").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    runAfter: timestamp("run_after", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("sync_jobs_idempotency_unique").on(t.idempotencyKey),
+    index("sync_jobs_claim_idx").on(t.status, t.runAfter),
+    index("sync_jobs_connection_idx").on(t.connectionId),
+  ],
+);
+
+/* ------------------------------------------------------------------ *
  * Audit — scoped to the data that actually warrants it
  * ------------------------------------------------------------------ */
 
@@ -774,6 +942,7 @@ export const projectsRelations = relations(projects, ({ many, one }) => ({
   workLogs: many(workLogs),
   blockers: many(blockers),
   financials: one(projectFinancials),
+  sheetConnection: one(sheetConnections),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -834,6 +1003,29 @@ export const worklogRevisionsRelations = relations(
     }),
   }),
 );
+
+export const sheetConnectionsRelations = relations(
+  sheetConnections,
+  ({ one, many }) => ({
+    project: one(projects, {
+      fields: [sheetConnections.projectId],
+      references: [projects.id],
+    }),
+    jobs: many(syncJobs),
+    rowLinks: many(sheetRowLinks),
+  }),
+);
+
+export const syncJobsRelations = relations(syncJobs, ({ one }) => ({
+  connection: one(sheetConnections, {
+    fields: [syncJobs.connectionId],
+    references: [sheetConnections.id],
+  }),
+  workLog: one(workLogs, {
+    fields: [syncJobs.workLogId],
+    references: [workLogs.id],
+  }),
+}));
 
 export const timeSessionsRelations = relations(timeSessions, ({ one }) => ({
   task: one(tasks, { fields: [timeSessions.taskId], references: [tasks.id] }),

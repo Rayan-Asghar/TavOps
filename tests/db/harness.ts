@@ -18,6 +18,9 @@ export const owner = postgres(OWNER_URL, { max: 2 });
 
 /** Everything the fixtures touch, children first. */
 const TABLES = [
+  "sync_jobs",
+  "sheet_row_links",
+  "sheet_connections",
   "audit_log",
   "notifications",
   "worklog_revisions",
@@ -124,4 +127,71 @@ export async function makeRate(userId: string, costPerHour: string) {
       INSERT INTO user_rates (user_id, internal_cost_per_hour)
       VALUES (${userId}, ${costPerHour})`;
   });
+}
+
+/** A work log, with its v1 revision, ready to be mirrored. */
+export async function makeWorkLog(opts: {
+  projectId: string;
+  userId: string;
+  taskId?: string | null;
+  hours?: string;
+  notes?: string;
+  workDate?: string;
+  status?: string | null;
+}) {
+  const id = randomUUID();
+  const revisionId = randomUUID();
+  const date = opts.workDate ?? "2026-09-01";
+
+  await owner`
+    INSERT INTO work_logs (id, project_id, task_id, user_id, work_date, hours,
+                           internal_notes, resulting_status, current_revision_id)
+    VALUES (${id}, ${opts.projectId}, ${opts.taskId ?? null}, ${opts.userId},
+            ${`${date}T12:00:00Z`}, ${opts.hours ?? "2.50"},
+            ${opts.notes ?? "Did the thing."}, ${opts.status ?? null}, ${revisionId})`;
+
+  await owner`
+    INSERT INTO worklog_revisions (id, work_log_id, version, work_date, hours,
+                                   internal_notes, changed_by_user_id)
+    VALUES (${revisionId}, ${id}, 1, ${date}, ${opts.hours ?? "2.50"},
+            ${opts.notes ?? "Did the thing."}, ${opts.userId})`;
+
+  return { id, revisionId };
+}
+
+export async function makeConnection(opts: {
+  projectId: string;
+  headerHash?: string | null;
+  visibility?: "internal" | "shareable";
+  status?: "active" | "paused" | "error" | "archived";
+}) {
+  const id = randomUUID();
+  await owner`
+    INSERT INTO sheet_connections (id, project_id, spreadsheet_id, spreadsheet_url,
+                                   tab_name, visibility, header_hash, status)
+    VALUES (${id}, ${opts.projectId}, 'sheet-1',
+            'https://docs.google.com/spreadsheets/d/sheet-1/edit', 'Sheet1',
+            ${opts.visibility ?? "internal"}, ${opts.headerHash ?? null},
+            ${opts.status ?? "active"})`;
+  return id;
+}
+
+export async function queueJob(opts: {
+  connectionId: string;
+  workLogId: string;
+  jobType: "append" | "update" | "delete";
+  key?: string;
+}) {
+  const id = randomUUID();
+  await owner`
+    INSERT INTO sync_jobs (id, connection_id, work_log_id, job_type, idempotency_key)
+    VALUES (${id}, ${opts.connectionId}, ${opts.workLogId}, ${opts.jobType},
+            ${opts.key ?? id})`;
+  return id;
+}
+
+export async function jobStatuses(connectionId: string) {
+  const rows = await owner`
+    SELECT status, last_error FROM sync_jobs WHERE connection_id = ${connectionId}`;
+  return rows as unknown as { status: string; last_error: string | null }[];
 }

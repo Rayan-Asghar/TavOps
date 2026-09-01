@@ -10,6 +10,7 @@ import {
 import { UserFacingError } from "@/lib/errors";
 import { notify, resolveByDedupeKey } from "./notifications";
 import { writeAudit } from "./audit";
+import { enqueueSheetWrite } from "./sheet-sync";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type TaskStatus = (typeof taskStatus.enumValues)[number];
@@ -146,5 +147,14 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     },
   });
 
-  return { entry, revision };
+  // Queue the sheet write, never perform it: same transaction as the entry, so
+  // the two cannot disagree about whether the work happened.
+  const queuedSync = await enqueueSheetWrite(tx, {
+    projectId: input.projectId,
+    workLogId: entry.id,
+    jobType: "append",
+    idempotencyKey: `revision:${revision.id}`,
+  });
+
+  return { entry, revision, queuedSync };
 }

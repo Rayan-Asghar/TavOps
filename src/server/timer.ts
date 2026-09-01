@@ -16,6 +16,7 @@ import {
 } from "./timer-schemas";
 import { safeErrorMessage } from "./action-errors";
 import { writeAudit } from "./audit";
+import { scheduleDrain } from "./sheet-sync";
 
 export type TimerState = {
   error?: string;
@@ -240,6 +241,8 @@ export async function finishTimer(
         })
         .where(eq(timeSessions.id, session.id));
     });
+
+    scheduleDrain();
 
     revalidatePath(`/projects/${session.projectId}`);
     revalidatePath("/");

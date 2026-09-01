@@ -19,6 +19,7 @@ export const CAPABILITIES = [
   "worklog.create",
   "worklog.viewAll",
   "worklog.edit",
+  "sheet.configure",
   "blocker.create",
   "blocker.resolve",
   "review.approve",
@@ -61,6 +62,7 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "worklog.create",
     "worklog.viewAll",
     "worklog.edit",
+    "sheet.configure",
     "blocker.create",
     "blocker.resolve",
     "review.approve",
@@ -133,8 +135,9 @@ export const ORG_WIDE_ROLES: readonly GlobalRole[] = ["admin", "head"];
  * Never hardcode a person: this is keyed on the role, not on a user id.
  */
 const PROJECT_ROLE_CAPABILITIES: Record<ProjectRole, readonly Capability[]> = {
-  pm: ["deadline.viewClient"],
-  tech_lead: ["deadline.viewClient"],
+  // Whoever runs a project attaches its work-log sheet, whatever their title.
+  pm: ["deadline.viewClient", "sheet.configure"],
+  tech_lead: ["deadline.viewClient", "sheet.configure"],
   sales_owner: ["deadline.viewClient"],
   qa: [],
   developer: [],

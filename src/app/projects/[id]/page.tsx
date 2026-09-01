@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getActor } from "@/lib/auth";
-import { canAccessProject } from "@/lib/access";
-import { can } from "@/lib/rbac";
+import { canAccessProject, projectRoleOf } from "@/lib/access";
+import { can, canInProject } from "@/lib/rbac";
 import { activeSessionFor } from "@/server/timer";
 import { loadProjectDetail, projectTitle } from "@/server/project-queries";
 import { activateProject } from "@/server/project-actions";
@@ -19,6 +19,9 @@ import {
   type ActiveSession,
 } from "@/components/task-timer";
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
+import { SheetPanel } from "@/components/sheet-panel";
+import { sheetStatusFor } from "@/server/sheet-queries";
+import { templateCopyUrl } from "@/lib/sheet-template";
 import { ProjectActivity } from "@/components/project-activity";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
 import { CopyBlock } from "@/components/copy-field";
@@ -78,7 +81,7 @@ function Stat({
   );
 }
 
-const TAB_KEYS: TabKey[] = ["overview", "tasks", "team", "activity"];
+const TAB_KEYS: TabKey[] = ["overview", "tasks", "team", "activity", "sheet"];
 
 export default async function ProjectPage({
   params,
@@ -150,7 +153,17 @@ export default async function ProjectPage({
     : null;
   // Your own entries are always yours to fix; anyone else's needs the grant.
   const canEditOthersWork = can(role, "worklog.edit");
-  const activeTab: TabKey = requestedTab;
+  // Attaching a sheet belongs to whoever runs the project, so a developer who
+  // types ?tab=sheet lands somewhere useful rather than on a blank pane.
+  const canConfigureSheet = canInProject(
+    role,
+    await projectRoleOf(actor, id),
+    "sheet.configure",
+  );
+  const activeTab: TabKey =
+    requestedTab === "sheet" && !canConfigureSheet ? "overview" : requestedTab;
+
+  const sheetStatus = canConfigureSheet ? await sheetStatusFor(id) : null;
 
   const rawSession = await activeSessionFor(actor.id);
   // Dates cross the server/client boundary as ISO strings.
@@ -282,6 +295,15 @@ export default async function ProjectPage({
           { key: "tasks", label: "Tasks", count: openTasks.length },
           { key: "team", label: "Team", count: teamList.length },
           { key: "activity", label: "Activity" },
+          ...(canConfigureSheet
+            ? [
+                {
+                  key: "sheet" as const,
+                  label: "Sheet",
+                  count: sheetStatus?.failed ?? 0,
+                },
+              ]
+            : []),
         ]}
       />
 
@@ -560,6 +582,21 @@ export default async function ProjectPage({
               members={teamList}
               assignable={addableStaff}
               canManage={canManageMembers}
+            />
+          )}
+
+          {activeTab === "sheet" && canConfigureSheet && sheetStatus && (
+            <SheetPanel
+              projectId={project.id}
+              status={sheetStatus}
+              serviceAccountEmail={
+                process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null
+              }
+              templateCopyHref={
+                process.env.TAVREN_SHEET_TEMPLATE_ID
+                  ? templateCopyUrl(process.env.TAVREN_SHEET_TEMPLATE_ID)
+                  : null
+              }
             />
           )}
 

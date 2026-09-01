@@ -23,6 +23,7 @@ import {
 } from "./schemas";
 import { recordWorkInTx } from "./record-work";
 import { writeAudit } from "./audit";
+import { enqueueSheetWrite, scheduleDrain } from "./sheet-sync";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -48,6 +49,9 @@ export async function logWork(input: LogWorkInput) {
       resultingStatus: data.resultingStatus ?? null,
     }),
   );
+
+  // The entry is committed; push it to the sheet once the response is out.
+  if (result.queuedSync) scheduleDrain();
 
   revalidatePath(`/projects/${data.projectId}`);
   revalidatePath("/");
@@ -119,6 +123,7 @@ export async function editWorkLog(input: EditWorkLogInput) {
   }
 
   const hours = data.hours.toFixed(2);
+  let queuedSync = false;
 
   await db.transaction(async (tx) => {
     const version = await nextVersion(tx, log.id);
@@ -149,6 +154,14 @@ export async function editWorkLog(input: EditWorkLogInput) {
       })
       .where(eq(workLogs.id, log.id));
 
+    // The sheet row is corrected in place, addressed by the entry's id.
+    queuedSync = await enqueueSheetWrite(tx, {
+      projectId: log.projectId,
+      workLogId: log.id,
+      jobType: "update",
+      idempotencyKey: `revision:${revision.id}`,
+    });
+
     await writeAudit(tx, {
       actorId: actor.id,
       projectId: log.projectId,
@@ -169,6 +182,8 @@ export async function editWorkLog(input: EditWorkLogInput) {
       },
     });
   });
+
+  if (queuedSync) scheduleDrain();
 
   revalidatePath(`/projects/${log.projectId}`);
   revalidatePath("/");
@@ -194,6 +209,8 @@ export async function deleteWorkLog(input: DeleteWorkLogInput) {
     );
   }
 
+  let queuedDelete = false;
+
   await db.transaction(async (tx) => {
     const version = await nextVersion(tx, log.id);
 
@@ -216,6 +233,15 @@ export async function deleteWorkLog(input: DeleteWorkLogInput) {
       .set({ deletedAt: new Date() })
       .where(eq(workLogs.id, log.id));
 
+    // The sheet keeps the row and blanks it: removing a row would shift every
+    // row beneath it and invalidate every recorded position at once.
+    queuedDelete = await enqueueSheetWrite(tx, {
+      projectId: log.projectId,
+      workLogId: log.id,
+      jobType: "delete",
+      idempotencyKey: `delete:${log.id}`,
+    });
+
     await writeAudit(tx, {
       actorId: actor.id,
       projectId: log.projectId,
@@ -234,6 +260,8 @@ export async function deleteWorkLog(input: DeleteWorkLogInput) {
       },
     });
   });
+
+  if (queuedDelete) scheduleDrain();
 
   revalidatePath(`/projects/${log.projectId}`);
   revalidatePath("/");
