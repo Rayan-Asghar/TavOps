@@ -16,6 +16,10 @@ import { timeAgo } from "@/lib/format";
 
 import { KIND_META, SIGNAL_COLOR, type Signal } from "@/lib/tone";
 import { EmptyState } from "@/components/ui";
+
+// title.template applies to child segments only, and the root page shares a
+// segment with the root layout — so this one carries the suffix itself.
+export const metadata = { title: { absolute: "Needs attention · TavrenOPS" } };
 export default async function InboxPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");

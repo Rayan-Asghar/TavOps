@@ -14,6 +14,8 @@ import {
 } from "@/components/team-manager";
 
 import { EmptyState } from "@/components/ui";
+
+export const metadata = { title: "Teams" };
 export default async function TeamsPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");

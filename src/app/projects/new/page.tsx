@@ -8,6 +8,8 @@ import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { ProjectForm } from "@/components/project-form";
 
+
+export const metadata = { title: "New project" };
 export default async function NewProjectPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -35,7 +37,9 @@ export default async function NewProjectPage() {
     staff.filter((u) => roles.includes(u.role)).map(({ id, name }) => ({ id, name }));
 
   return (
-    <AppShell userName={me?.name ?? ""} userRole={role} inboxCount={count} title="New project">
+    <AppShell userName={me?.name ?? ""} userRole={role} inboxCount={count} title="New project"
+      parent={{ label: "Projects", href: "/projects" }}
+    >
       <SectionIntro
         eyebrow="DELIVERY CONTROL"
         title="New project"

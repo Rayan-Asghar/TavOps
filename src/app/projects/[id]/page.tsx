@@ -1,9 +1,10 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getActor } from "@/lib/auth";
 import { canAccessProject } from "@/lib/access";
 import { can } from "@/lib/rbac";
 import { activeSessionFor } from "@/server/timer";
-import { loadProjectDetail } from "@/server/project-queries";
+import { loadProjectDetail, projectTitle } from "@/server/project-queries";
 import { activateProject } from "@/server/project-actions";
 import { AppShell } from "@/components/app-shell";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
@@ -26,6 +27,29 @@ import { renderClientBrief, type ClientBrief } from "@/lib/client-brief";
 
 import { fmtDate } from "@/lib/format";
 import { DataTable, EmptyRow, Th } from "@/components/ui";
+
+/**
+ * The one route where a dynamic tab title earns its keep — people keep several
+ * projects open at once.
+ *
+ * Runs the same access check as the page rather than trusting the id: without
+ * it, a title would confirm that a project exists, and to whom, which is
+ * exactly what the page's notFound() is there to prevent.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const actor = await getActor();
+  if (!actor) return { title: "Project" };
+
+  const { id } = await params;
+  if (!(await canAccessProject(actor, id))) return { title: "Project" };
+
+  const row = await projectTitle(id);
+  return { title: row ? `${row.code} ${row.name}` : "Project" };
+}
 function Stat({
   label,
   value,
@@ -152,6 +176,7 @@ export default async function ProjectPage({
 
   return (
     <AppShell
+      parent={{ label: "Projects", href: "/projects" }}
       userName={me?.name ?? "Unknown"}
       userRole={role}
       inboxCount={count}
@@ -184,9 +209,9 @@ export default async function ProjectPage({
           {project.projectType && ` · ${project.projectType.toUpperCase()}`}
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="m-0 text-3xl font-bold tracking-[-.04em]">
+          <h1 className="m-0 text-3xl font-bold tracking-[-.04em]">
             {project.name}
-          </h2>
+          </h1>
           <HealthBadge health={project.health} />
           <Badge tone="neutral">{project.lifecycle}</Badge>
         </div>

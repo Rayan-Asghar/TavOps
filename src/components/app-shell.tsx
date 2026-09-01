@@ -1,26 +1,41 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { cookies } from "next/headers";
 import { logoutAction } from "@/server/auth-actions";
 import { can, type GlobalRole } from "@/lib/rbac";
 import { Sidebar, type NavEntry } from "./sidebar";
+import { ThemeToggle } from "./theme-toggle";
+import { TimerChip } from "./timer-chip";
+import { getActor } from "@/lib/auth";
+import { activeSessionFor } from "@/server/timer";
+import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 
 import { fmtDayLabel } from "@/lib/format";
-export function AppShell({
+export async function AppShell({
   children,
   userName,
   userRole,
   inboxCount,
   title,
-  actions,
+  parent,
 }: {
   children: ReactNode;
   userName: string;
   userRole: string;
   inboxCount: number;
   title: string;
-  actions?: ReactNode;
+  /** Ancestor crumb. `/projects/[id]` had no way back to the list except the
+   *  sidebar; this is it. */
+  parent?: { label: string; href: string };
 }) {
   const role = userRole as GlobalRole;
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+
+  // Fetched here rather than threaded through eleven call sites. getActor()
+  // reads the JWT and costs no query; the session lookup is one indexed row.
+  const actor = await getActor();
+  const timer = actor ? await activeSessionFor(actor.id) : null;
 
   const main: NavEntry[] = [
     {
@@ -73,6 +88,7 @@ export function AppShell({
         management={management}
         userName={userName}
         userRole={userRole}
+        themeToggle={<ThemeToggle current={theme} />}
         signOut={
           <form action={logoutAction}>
             <button
@@ -87,20 +103,48 @@ export function AppShell({
 
       <div className="min-w-0">
         <header
-          className="sticky top-0 z-30 flex h-[78px] items-center justify-between gap-5
+          className="sticky top-0 z-30 flex h-[56px] items-center justify-between gap-4
                      border-b border-border bg-bg/90 pl-[72px] pr-5 backdrop-blur-md md:px-7"
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="min-w-0">
-              <p className="eyebrow hidden sm:block">{fmtDayLabel()}</p>
-              <h1 className="m-0 truncate text-2xl leading-tight tracking-[-.035em]">
+          {/* The page title used to be rendered twice: a 20px h1 here and a
+              52px h2 below it, semantic level and visual weight inverted. This
+              bar now carries the navigational label — small, and a trail — and
+              the display heading below is the real h1. */}
+          <nav aria-label="Breadcrumb" className="min-w-0">
+            <ol className="m-0 flex min-w-0 list-none items-center gap-1.5 p-0 text-2xs font-bold">
+              {parent && (
+                <>
+                  <li className="shrink-0">
+                    <Link
+                      href={parent.href}
+                      className="text-fg-muted transition-colors hover:text-fg"
+                    >
+                      {parent.label}
+                    </Link>
+                  </li>
+                  <li aria-hidden className="shrink-0 text-fg-subtle">
+                    /
+                  </li>
+                </>
+              )}
+              <li aria-current="page" className="min-w-0 truncate text-fg">
                 {title}
-              </h1>
-            </div>
+              </li>
+            </ol>
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-3">
+            {timer && (
+              <TimerChip
+                projectId={timer.projectId}
+                taskTitle={timer.taskTitle}
+                status={timer.status as "running" | "paused"}
+                accumulatedSeconds={timer.accumulatedSeconds}
+                resumedAt={timer.resumedAt ? timer.resumedAt.toISOString() : null}
+              />
+            )}
+            <p className="eyebrow m-0 hidden lg:block">{fmtDayLabel()}</p>
           </div>
-          {actions && (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          )}
         </header>
 
         <main className="p-5 md:p-7">{children}</main>
@@ -125,7 +169,7 @@ export function SectionIntro({
     <div className="mb-7 mt-3.5 flex flex-col items-start justify-between gap-5 border-b border-fg pb-6 pt-6 sm:flex-row sm:items-end">
       <div className="min-w-0">
         <p className="eyebrow">{eyebrow}</p>
-        <h2 className="display m-0 text-[clamp(30px,4vw,52px)]">{title}</h2>
+        <h1 className="display m-0 text-[clamp(28px,3.5vw,44px)]">{title}</h1>
       </div>
       {description && (
         <p className="m-0 max-w-[440px] text-xs text-fg-muted">

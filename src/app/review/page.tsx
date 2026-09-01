@@ -14,6 +14,8 @@ import { ReviewForm } from "@/components/review-form";
 
 import { timeAgo } from "@/lib/format";
 import { EmptyState } from "@/components/ui";
+
+export const metadata = { title: "Review queue" };
 export default async function ReviewPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");

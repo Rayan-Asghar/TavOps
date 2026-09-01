@@ -14,6 +14,8 @@ import { UserRowActions } from "@/components/user-row-actions";
 
 
 import { GLOBAL_ROLE_TONE, humanizeRole } from "@/lib/tone";
+
+export const metadata = { title: "People" };
 export default async function AdminUsersPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");

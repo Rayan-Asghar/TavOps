@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   InboxIcon,
   ProjectsIcon,
@@ -70,16 +70,71 @@ export function Sidebar({
   userName,
   userRole,
   signOut,
+  themeToggle,
 }: {
   main: NavEntry[];
   management: NavEntry[];
   userName: string;
   userRole: string;
   signOut: React.ReactNode;
+  themeToggle: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const wasOpen = useRef(false);
+
+  // The same element is an off-canvas drawer below `md` and a static column
+  // above it, so every drawer behaviour has to be conditional on width.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // Escape to dismiss, and a focus trap so Tab cannot walk out of an open
+  // drawer into the page behind it.
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const el = asideRef.current;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !el) return;
+      const focusable = el.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    el?.querySelector<HTMLElement>("a[href], button")?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, isMobile]);
+
+  // Send focus back where it came from, rather than dropping it on <body>.
+  useEffect(() => {
+    if (wasOpen.current && !open && isMobile) triggerRef.current?.focus();
+    wasOpen.current = open;
+  }, [open, isMobile]);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -95,9 +150,11 @@ export function Sidebar({
     <>
       {/* Mobile trigger lives here so the shell stays a server component. */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open menu"
+        aria-expanded={open}
         className="fixed left-4 top-[18px] z-[60] grid h-[42px] w-[42px] place-items-center
                    rounded-lg border border-border bg-surface md:hidden"
       >
@@ -113,6 +170,12 @@ export function Sidebar({
       )}
 
       <aside
+        ref={asideRef}
+        aria-label="Main navigation"
+        {...(isMobile && open ? { role: "dialog", "aria-modal": true } : {})}
+        // Closed, it was only translated off-screen, so every nav link stayed
+        // in the tab order behind the page.
+        inert={isMobile && !open}
         className={`fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col overflow-y-auto
                     bg-nav px-3.5 py-4 text-white transition-transform duration-200
                     ${open ? "translate-x-0" : "-translate-x-[105%]"}
@@ -170,6 +233,7 @@ export function Sidebar({
         )}
 
         <div className="mt-auto border-t border-nav-border pt-4">
+          <div className="mb-3 px-1.5">{themeToggle}</div>
           <div className="grid grid-cols-[34px_1fr] items-center gap-2.5 p-1.5">
             <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-brand text-xs font-extrabold">
               {initials}

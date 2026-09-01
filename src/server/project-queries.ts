@@ -172,3 +172,17 @@ export async function loadProjectDetail(actor: Actor, projectId: string) {
     canManageMembers,
   };
 }
+
+/**
+ * Just enough to title a browser tab. Separate from `loadProjectDetail`
+ * because `generateMetadata` runs alongside the page render and should not
+ * repeat its dozen queries to produce one string.
+ */
+export async function projectTitle(projectId: string) {
+  const [row] = await db
+    .select({ code: projects.code, name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row ?? null;
+}

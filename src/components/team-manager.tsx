@@ -136,7 +136,7 @@ export function TeamCard({
           >
             <span>{m.name}</span>
             {m.id === team.leadId ? (
-              <span className="rounded-full bg-fg px-1.5 py-0.5 text-2xs font-black uppercase tracking-wider text-white">
+              <span className="rounded-full bg-fill-strong px-1.5 py-0.5 text-2xs font-black uppercase tracking-wider text-fill-strong-fg">
                 Lead
               </span>
             ) : (

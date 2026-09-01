@@ -24,6 +24,8 @@ import { fmtDate } from "@/lib/format";
 
 import { PROPOSAL_TONE } from "@/lib/tone";
 import { EmptyRow } from "@/components/ui";
+
+export const metadata = { title: "Sales" };
 export default async function SalesPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");

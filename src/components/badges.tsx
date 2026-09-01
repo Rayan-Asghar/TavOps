@@ -87,7 +87,7 @@ export function MetricCard({
   return (
     <article
       className={`min-h-[180px] border-b border-r border-border p-5 ${
-        accent ? "bg-fg text-white" : "bg-surface"
+        accent ? "bg-fill-strong text-fill-strong-fg" : "bg-surface"
       }`}
     >
       <div className="flex items-center justify-between gap-3">

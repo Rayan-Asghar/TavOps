@@ -9,6 +9,8 @@ import { AppShell, SectionIntro } from "@/components/app-shell";
 import { QuickLogRow, type QuickLogTask } from "@/components/quick-log";
 
 import { EmptyState } from "@/components/ui";
+
+export const metadata = { title: "Log work" };
 /**
  * The developer's front door.
  *

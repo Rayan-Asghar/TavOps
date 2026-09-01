@@ -69,7 +69,7 @@ export function ProjectTeam({
           const expired = !!m.expiresAt && m.expiresAt <= now;
           return (
             <li key={m.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-fg text-xs font-extrabold text-white">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-fill-strong text-xs font-extrabold text-fill-strong-fg">
                 {m.name.split(" ").slice(0, 2).map((w) => w[0]).join("")}
               </span>
               <div className="min-w-0 flex-1">

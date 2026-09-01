@@ -18,6 +18,8 @@ import { MetricCard, MetricGrid, HealthBadge } from "@/components/badges";
 
 import { hrs, pct } from "@/lib/format";
 import { DataTable, EmptyCell, Th } from "@/components/ui";
+
+export const metadata = { title: "Reports" };
 const TIMESHEET_PREVIEW = 60;
 
 

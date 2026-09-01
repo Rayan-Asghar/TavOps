@@ -10,6 +10,8 @@ import { AppShell, SectionIntro } from "@/components/app-shell";
 
 import { fmtDateTime } from "@/lib/format";
 import { EmptyRow } from "@/components/ui";
+
+export const metadata = { title: "Audit log" };
 const PAGE_SIZE = 100;
 
 /** "work_log.edit" -> "Work log edited" reads better than a dotted verb. */

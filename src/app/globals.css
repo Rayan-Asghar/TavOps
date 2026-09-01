@@ -58,6 +58,11 @@
 
   --color-focus: #fb0044;
 
+  /* Inverting pair for high-contrast fills (accent metric tile, avatars,
+     .btn-dark). These swap with the theme; `bg-fg text-white` cannot. */
+  --color-fill-strong: #111111;
+  --color-fill-strong-fg: #ffffff;
+
   /* Type scale. The floor is 11px: below that, uppercase tracked text stops
      being readable at arm's length on a laptop. Sizes are named so call sites
      stop inventing their own. */
@@ -99,6 +104,116 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme.
+   Token overrides only: every utility already resolves through these custom
+   properties, so no component needs a `dark:` variant. The team works an
+   18:00-02:00 shift, which is the whole reason this exists.
+
+   The two blocks below MUST stay in sync. The attribute selector is the
+   explicit choice; the media query is the default when no choice was made,
+   guarded so an explicit "light" always wins over the OS.
+   --------------------------------------------------------------------------- */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #101012;
+  --color-surface: #191a1d;
+  --color-surface-2: #212226;
+  --color-surface-3: #292a2f;
+  --color-surface-hover: #1e1f22;
+  --color-border: #2b2c31;
+  --color-border-strong: #3e3f46;
+
+  --color-fg: #f0f0ee;
+  --color-fg-label: #c6c6c2;
+  --color-fg-muted: #9b9b98;
+  --color-fg-subtle: #6f6f6d;
+
+  --color-fill-strong: #f0f0ee;
+  --color-fill-strong-fg: #101012;
+
+  --color-brand-hover: #ff2a63;
+  --color-brand-soft: #3a0715;
+
+  --color-ok: #4ade80;
+  --color-ok-soft: #10261a;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #2e2410;
+  --color-danger: #f87171;
+  --color-danger-hover: #fca5a5;
+  --color-danger-soft: #2e1416;
+  --color-info: #60a5fa;
+  --color-info-soft: #10203a;
+
+  --color-neutral: #b4b4b0;
+  --color-neutral-soft: #26262a;
+  --color-violet: #c4b5fd;
+  --color-violet-soft: #241d3a;
+  --color-signal-warn: #fbbf24;
+
+  /* The sidebar sits darker than the page in both themes, so it still reads as
+     its own surface rather than dissolving into the canvas. */
+  --color-nav: #0a0a0b;
+  --color-nav-hover: #17171a;
+  --color-nav-active: #202024;
+  --color-nav-chip: #2a2a2f;
+  --color-nav-border: #232328;
+  --color-nav-fg-muted: #a0a09d;
+  --color-nav-fg-subtle: #6f6f6d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #101012;
+    --color-surface: #191a1d;
+    --color-surface-2: #212226;
+    --color-surface-3: #292a2f;
+    --color-surface-hover: #1e1f22;
+    --color-border: #2b2c31;
+    --color-border-strong: #3e3f46;
+
+    --color-fg: #f0f0ee;
+    --color-fg-label: #c6c6c2;
+    --color-fg-muted: #9b9b98;
+    --color-fg-subtle: #6f6f6d;
+
+    --color-fill-strong: #f0f0ee;
+    --color-fill-strong-fg: #101012;
+
+    --color-brand-hover: #ff2a63;
+    --color-brand-soft: #3a0715;
+
+    --color-ok: #4ade80;
+    --color-ok-soft: #10261a;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #2e2410;
+    --color-danger: #f87171;
+    --color-danger-hover: #fca5a5;
+    --color-danger-soft: #2e1416;
+    --color-info: #60a5fa;
+    --color-info-soft: #10203a;
+
+    --color-neutral: #b4b4b0;
+    --color-neutral-soft: #26262a;
+    --color-violet: #c4b5fd;
+    --color-violet-soft: #241d3a;
+    --color-signal-warn: #fbbf24;
+
+    /* The sidebar sits darker than the page in both themes, so it still reads as
+       its own surface rather than dissolving into the canvas. */
+    --color-nav: #0a0a0b;
+    --color-nav-hover: #17171a;
+    --color-nav-active: #202024;
+    --color-nav-chip: #2a2a2f;
+    --color-nav-border: #232328;
+    --color-nav-fg-muted: #a0a09d;
+    --color-nav-fg-subtle: #6f6f6d;
+  }
 }
 
 @layer components {
@@ -162,8 +277,8 @@ body {
   /* Neutral commit: black fill is as much part of the language as crimson. */
   .btn-dark {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
-           text-base font-bold text-white transition-colors bg-fg hover:bg-black
-           disabled:cursor-not-allowed disabled:opacity-50;
+           text-base font-bold transition-colors bg-fill-strong text-fill-strong-fg
+           hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ok {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4

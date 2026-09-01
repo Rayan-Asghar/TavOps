@@ -13,6 +13,8 @@ import { can } from "@/lib/rbac";
 
 import { fmtDate } from "@/lib/format";
 import { EmptyState } from "@/components/ui";
+
+export const metadata = { title: "Projects" };
 export default async function ProjectsPage() {
   const actor = await getActor();
   if (!actor) redirect("/login");
