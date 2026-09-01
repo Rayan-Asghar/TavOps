@@ -1,6 +1,6 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, projects, proposals, users, workLogs } from "@/db/schema";
+import { clients, proposals, users } from "@/db/schema";
 
 /**
  * Read side of the BD pipeline.
@@ -8,28 +8,16 @@ import { clients, projects, proposals, users, workLogs } from "@/db/schema";
  * Deliberately NOT in a "use server" module: every exported async function in
  * one becomes a callable server action, and these take an actorId, so a client
  * could simply pass somebody else's. Server components import them directly.
+ *
+ * Scope is deliberately narrow: what was sent, and what landed. The pipeline
+ * carried feasibility routing and per-category rate economics once; both were
+ * built for a BD team that does more analysis than this one does, and reporting
+ * nobody reads is worse than no reporting.
  */
 
 /** A rep sees their own pipeline; heads and management see everyone's. */
 function ownerFilter(actorId: string, seesAll: boolean) {
   return seesAll ? undefined : eq(proposals.ownerId, actorId);
-}
-
-/**
- * Visibility for the proposal LIST, which is wider than the stats scope: a
- * delivery lead owns no proposals but must see the ones routed to them for a
- * technical read, or they can never answer one.
- */
-function listFilter(actorId: string, seesAll: boolean, canAnswerFeasibility: boolean) {
-  if (seesAll) return undefined;
-  if (!canAnswerFeasibility) return eq(proposals.ownerId, actorId);
-  return or(
-    eq(proposals.ownerId, actorId),
-    and(
-      eq(proposals.feasibilityAssignedToId, actorId),
-      eq(proposals.feasibility, "pending"),
-    ),
-  );
 }
 
 export type BdStats = {
@@ -38,8 +26,6 @@ export type BdStats = {
   sentMonth: number;
   responsesToday: number;
   meetingsBooked: number;
-  followUpsDue: number;
-  feasibilityWaiting: number;
   wonMonth: number;
   wonValueMonth: number;
   responseRate: number;
@@ -59,7 +45,6 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
   const today = startOfDay().toISOString();
   const week = new Date(Date.now() - 7 * 864e5).toISOString();
   const month = new Date(Date.now() - 30 * 864e5).toISOString();
-  const now = new Date().toISOString();
 
   const [row] = await db
     .select({
@@ -68,8 +53,6 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
       sentMonth: sql<number>`count(*) filter (where ${proposals.sentAt} >= ${month}::timestamptz)::int`,
       responsesToday: sql<number>`count(*) filter (where ${proposals.respondedAt} >= ${today}::timestamptz)::int`,
       meetingsBooked: sql<number>`count(*) filter (where ${proposals.meetingAt} is not null and ${proposals.meetingAt} >= ${month}::timestamptz)::int`,
-      followUpsDue: sql<number>`count(*) filter (where ${proposals.followUpDueAt} <= ${now}::timestamptz and ${proposals.status} not in ('won','lost'))::int`,
-      feasibilityWaiting: sql<number>`count(*) filter (where ${proposals.feasibility} = 'pending')::int`,
       wonMonth: sql<number>`count(*) filter (where ${proposals.status} = 'won' and ${proposals.decidedAt} >= ${month}::timestamptz)::int`,
       wonValueMonth: sql<number>`coalesce(sum(${proposals.wonValue}) filter (where ${proposals.status} = 'won' and ${proposals.decidedAt} >= ${month}::timestamptz), 0)::float`,
       monthTotal: sql<number>`count(*) filter (where ${proposals.sentAt} >= ${month}::timestamptz)::int`,
@@ -85,8 +68,6 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
     sentMonth: row?.sentMonth ?? 0,
     responsesToday: row?.responsesToday ?? 0,
     meetingsBooked: row?.meetingsBooked ?? 0,
-    followUpsDue: row?.followUpsDue ?? 0,
-    feasibilityWaiting: row?.feasibilityWaiting ?? 0,
     wonMonth: row?.wonMonth ?? 0,
     wonValueMonth: row?.wonValueMonth ?? 0,
     responseRate: monthTotal ? ((row?.monthResponded ?? 0) / monthTotal) * 100 : 0,
@@ -94,12 +75,8 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
   };
 }
 
-export async function listProposals(
-  actorId: string,
-  seesAll: boolean,
-  canAnswerFeasibility = false,
-) {
-  const scope = listFilter(actorId, seesAll, canAnswerFeasibility);
+export async function listProposals(actorId: string, seesAll: boolean) {
+  const scope = ownerFilter(actorId, seesAll);
   return db
     .select({
       id: proposals.id,
@@ -111,9 +88,6 @@ export async function listProposals(
       currency: proposals.currency,
       status: proposals.status,
       sentAt: proposals.sentAt,
-      followUpDueAt: proposals.followUpDueAt,
-      feasibility: proposals.feasibility,
-      feasibilityNote: proposals.feasibilityNote,
       wonValue: proposals.wonValue,
       wonProjectId: proposals.wonProjectId,
       ownerName: users.name,
@@ -124,79 +98,6 @@ export async function listProposals(
     .where(scope)
     .orderBy(desc(proposals.sentAt))
     .limit(60);
-}
-
-export type CategoryRow = {
-  category: string;
-  sent: number;
-  responded: number;
-  won: number;
-  wonValue: number;
-  /** Hours actually spent delivering the won jobs in this category. */
-  deliveredHours: number;
-  /** Effective rate: what the won work in this category really paid per hour. */
-  perHour: number | null;
-};
-
-/**
- * Category performance, both legs of the deal.
- *
- * Response rate says which niches are worth bidding on at all. But on
- * fixed-price marketplace work that is only half the question — a category can
- * convert brilliantly and still lose money, and until now nothing ever reported
- * back what a won job actually cost. `proposals.wonProjectId` already points at
- * the project a bid became, so the hours are one join away.
- *
- * `perHour` is the number that should change the next bid: winning $2,000 of
- * Shopify migrations that take 90 hours is a worse business than winning $900
- * of automation work that takes 12.
- */
-export async function conversionByCategory(
-  actorId: string,
-  seesAll: boolean,
-): Promise<CategoryRow[]> {
-  const scope = ownerFilter(actorId, seesAll);
-  const bucket = sql`coalesce(${proposals.category}, 'Uncategorised')`;
-
-  const pipeline = await db
-    .select({
-      category: sql<string>`coalesce(${proposals.category}, 'Uncategorised')`,
-      sent: sql<number>`count(*)::int`,
-      responded: sql<number>`count(*) filter (where ${proposals.respondedAt} is not null)::int`,
-      won: sql<number>`count(*) filter (where ${proposals.status} = 'won')::int`,
-      wonValue: sql<number>`coalesce(sum(${proposals.wonValue}) filter (where ${proposals.status} = 'won'), 0)::float`,
-    })
-    .from(proposals)
-    .where(scope)
-    .groupBy(bucket)
-    .orderBy(sql`count(*) desc`)
-    .limit(12);
-
-  // Separate query, merged in JS: joining work_logs into the query above would
-  // multiply the proposal rows and inflate every count in it.
-  const delivered = await db
-    .select({
-      category: sql<string>`coalesce(${proposals.category}, 'Uncategorised')`,
-      hours: sql<number>`coalesce(sum(${workLogs.hours}), 0)::float`,
-    })
-    .from(proposals)
-    .innerJoin(projects, eq(proposals.wonProjectId, projects.id))
-    .innerJoin(workLogs, eq(workLogs.projectId, projects.id))
-    .where(and(scope, isNull(workLogs.deletedAt)))
-    .groupBy(bucket);
-
-  const hoursByCategory = new Map(delivered.map((r) => [r.category, r.hours]));
-
-  return pipeline.map((r) => {
-    const deliveredHours = hoursByCategory.get(r.category) ?? 0;
-    return {
-      ...r,
-      deliveredHours,
-      // Null rather than zero when nothing has been delivered yet: "no data"
-      // and "earns nothing per hour" must not look the same on a screen.
-      perHour: deliveredHours > 0 ? r.wonValue / deliveredHours : null,
-    };
-  });
 }
 
 /** Options the handoff form needs: existing clients and assignable leads. */

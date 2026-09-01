@@ -39,7 +39,7 @@ export function AppShell({
     main.splice(1, 0, { href: "/log", label: "Log work", icon: "log" });
   }
 
-  if (can(role, "proposal.create") || can(role, "feasibility.answer")) {
+  if (can(role, "proposal.create")) {
     main.push({ href: "/sales", label: "Sales", icon: "sales" });
   }
 

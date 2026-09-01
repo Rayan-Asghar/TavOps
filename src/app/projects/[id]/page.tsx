@@ -20,13 +20,12 @@ import {
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
 import { ProjectActivity } from "@/components/project-activity";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
+import { CopyBlock } from "@/components/copy-field";
+import { renderClientBrief, type ClientBrief } from "@/lib/client-brief";
 
-function fmtDate(d: Date | null): string {
-  return d
-    ? d.toLocaleDateString("en-US", { month: "short", day: "2-digit" })
-    : "—";
-}
 
+import { fmtDate } from "@/lib/format";
+import { DataTable, EmptyRow, Th } from "@/components/ui";
 function Stat({
   label,
   value,
@@ -38,11 +37,11 @@ function Stat({
 }) {
   return (
     <div className="bg-surface px-4 py-3">
-      <div className="text-[9px] font-black uppercase tracking-[.12em] text-fg-muted">
+      <div className="text-2xs font-black uppercase tracking-[.12em] text-fg-muted">
         {label}
       </div>
       <div
-        className={`mt-0.5 text-[17px] font-extrabold ${
+        className={`mt-0.5 text-xl font-extrabold ${
           tone === "danger" ? "text-danger" : "text-fg"
         }`}
       >
@@ -98,6 +97,30 @@ export default async function ProjectPage({
   // client-facing date gets the internal one labelled plainly as "Deadline" —
   // naming it "internal" would itself give away that a later date exists.
   const seesClientDeadline = can(role, "deadline.viewClient");
+
+  // The same capability gates the client brief. `deadline.viewClient` already
+  // means "this person deals with the client" — admin, head and sales — so
+  // reusing it keeps one answer to that question instead of two that can drift.
+  const brief: ClientBrief | null = seesClientDeadline
+    ? {
+        code: project.code,
+        name: project.name,
+        clientName: project.clientName,
+        tasksDone: taskRows.filter((t) => t.status === "done").length,
+        tasksTotal: taskRows.length,
+        tasksInReview: taskRows.filter((t) => t.status === "in_review").length,
+        clientDueDate: project.clientDueDate,
+        waitingOnClient: blockerRows
+          .filter((b) => b.ownerSide === "client")
+          .map((b) => b.description),
+        // `sql<Date>` is an assertion, not a conversion — drizzle cannot map a
+        // bare max(), so postgres-js may hand back a string. Coerced the same
+        // way digest.ts does it.
+        lastMovementAt: totals?.lastMovementAt
+          ? new Date(totals.lastMovementAt)
+          : null,
+      }
+    : null;
   // Your own entries are always yours to fix; anyone else's needs the grant.
   const canEditOthersWork = can(role, "worklog.edit");
   const activeTab: TabKey = requestedTab;
@@ -138,14 +161,14 @@ export default async function ProjectPage({
         <div className="panel mb-4 flex flex-wrap items-center justify-between gap-3 border-l-[3px] border-l-warn p-4">
           <div>
             <p className="eyebrow m-0">DRAFT</p>
-            <p className="m-0 mt-0.5 text-[12px] text-fg-muted">
+            <p className="m-0 mt-0.5 text-xs text-fg-muted">
               Not active yet. Confirm assets, scope and team, then start the
               clock.
             </p>
           </div>
           <form action={activateProject}>
             <input type="hidden" name="projectId" value={project.id} />
-            <button type="submit" className="btn-primary py-2 text-[12px]">
+            <button type="submit" className="btn-primary btn-sm">
               Set active
             </button>
           </form>
@@ -161,7 +184,7 @@ export default async function ProjectPage({
           {project.projectType && ` · ${project.projectType.toUpperCase()}`}
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="m-0 text-[26px] font-bold tracking-[-.04em]">
+          <h2 className="m-0 text-3xl font-bold tracking-[-.04em]">
             {project.name}
           </h2>
           <HealthBadge health={project.health} />
@@ -196,26 +219,26 @@ export default async function ProjectPage({
         <div className="panel mb-4 flex flex-wrap items-center gap-x-8 gap-y-3 border-l-[3px] border-l-warn px-5 py-3.5">
           <Badge tone="amber">Restricted</Badge>
           <div className="flex items-baseline gap-2">
-            <span className="text-[9px] uppercase tracking-wider text-fg-muted">
+            <span className="text-2xs uppercase tracking-wider text-fg-muted">
               Contract
             </span>
-            <strong className="font-mono text-[14px]">
+            <strong className="font-mono text-base">
               {finance.currency} {finance.contractValue ?? "—"}
             </strong>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-[9px] uppercase tracking-wider text-fg-muted">
+            <span className="text-2xs uppercase tracking-wider text-fg-muted">
               Budgeted
             </span>
-            <strong className="font-mono text-[14px]">
+            <strong className="font-mono text-base">
               {finance.budgetedHours ?? "—"}h
             </strong>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-[9px] uppercase tracking-wider text-fg-muted">
+            <span className="text-2xs uppercase tracking-wider text-fg-muted">
               Platform fee
             </span>
-            <strong className="font-mono text-[14px]">
+            <strong className="font-mono text-base">
               {finance.platformFeePct ?? "0"}%
             </strong>
           </div>
@@ -240,7 +263,7 @@ export default async function ProjectPage({
                 <div className="panel-head">
                   <div>
                     <p className="eyebrow">UNRESOLVED</p>
-                    <h3 className="m-0 text-[16px] tracking-[-.03em]">
+                    <h3 className="m-0 text-lg tracking-[-.03em]">
                       Open blockers
                     </h3>
                   </div>
@@ -249,22 +272,20 @@ export default async function ProjectPage({
                   )}
                 </div>
                 {blockerRows.length === 0 ? (
-                  <p className="m-0 px-5 py-8 text-center text-[12px] text-fg-muted">
-                    Nothing is blocked.
-                  </p>
+                  <EmptyRow>Nothing is blocked.</EmptyRow>
                 ) : (
                   <ul>
                     {blockerRows.map((b) => (
                       <li key={b.id} className="attention-row">
                         <span
-                          className={`mt-1.5 signal ${b.ownerSide === "client" ? "bg-[#df9c00]" : "bg-brand"}`}
+                          className={`mt-1.5 signal ${b.ownerSide === "client" ? "bg-signal-warn" : "bg-brand"}`}
                           aria-hidden
                         />
                         <div className="min-w-0">
-                          <strong className="block text-[12px]">
+                          <strong className="block text-xs">
                             {b.description}
                           </strong>
-                          <span className="mt-1 block text-[9px] text-fg-subtle">
+                          <span className="mt-1 block text-2xs text-fg-subtle">
                             {b.reportedBy ?? "unknown"} · {fmtDate(b.createdAt)}
                             {b.assignedToName && (
                               <> · owned by <b>{b.assignedToName}</b></>
@@ -291,10 +312,75 @@ export default async function ProjectPage({
                 )}
               </section>
 
+              {brief && (
+                <section className="panel">
+                  <div className="panel-head">
+                    <div>
+                      <p className="eyebrow">FOR THE CLIENT</p>
+                      <h3 className="m-0 text-lg tracking-[-.03em]">
+                        Where this stands
+                      </h3>
+                      <p className="m-0 mt-1 text-xs text-fg-muted">
+                        Safe to send as written. No hours, no internal notes and
+                        no internal date — the target below is the client&apos;s.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4 p-5">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      <Stat
+                        label="Done"
+                        value={
+                          brief.tasksTotal > 0
+                            ? `${brief.tasksDone}/${brief.tasksTotal}`
+                            : "—"
+                        }
+                      />
+                      <Stat label="In review" value={String(brief.tasksInReview)} />
+                      <Stat
+                        label="Target date"
+                        value={
+                          brief.clientDueDate ? fmtDate(brief.clientDueDate) : "—"
+                        }
+                      />
+                      <Stat
+                        label="Last movement"
+                        value={
+                          brief.lastMovementAt
+                            ? fmtDate(brief.lastMovementAt)
+                            : "—"
+                        }
+                      />
+                    </div>
+
+                    {brief.waitingOnClient.length > 0 && (
+                      <div>
+                        <p className="eyebrow">WAITING ON THE CLIENT</p>
+                        <ul className="m-0 mt-2 space-y-1 pl-4">
+                          {brief.waitingOnClient.map((w) => (
+                            <li key={w} className="list-disc text-xs text-fg">
+                              {w}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Rendered from the same function as the panel above, so
+                        what a rep pastes can never drift from what they read. */}
+                    <CopyBlock
+                      value={renderClientBrief(brief)}
+                      label="Paste into an email or a chat"
+                      buttonLabel="Copy brief"
+                    />
+                  </div>
+                </section>
+              )}
+
               {project.description && (
                 <section className="panel p-5">
                   <p className="eyebrow">SCOPE</p>
-                  <p className="m-0 text-[12px] leading-relaxed text-fg-muted">
+                  <p className="m-0 text-xs leading-relaxed text-fg-muted">
                     {project.description}
                   </p>
                 </section>
@@ -306,14 +392,14 @@ export default async function ProjectPage({
                     <p className="eyebrow">
                       {seesAllActivity ? "LATEST" : "YOUR ENTRIES ONLY"}
                     </p>
-                    <h3 className="m-0 text-[16px] tracking-[-.03em]">
+                    <h3 className="m-0 text-lg tracking-[-.03em]">
                       Recent activity
                     </h3>
                   </div>
                 </div>
                 <div className="px-5 py-1">
                   {activityRows.length === 0 ? (
-                    <p className="py-6 text-[12px] text-fg-muted">
+                    <p className="py-6 text-xs text-fg-muted">
                       Nothing logged yet.
                     </p>
                   ) : (
@@ -324,8 +410,8 @@ export default async function ProjectPage({
                       >
                         <span className="mt-1 h-[7px] w-[7px] rounded-full bg-brand" />
                         <div className="min-w-0">
-                          <strong className="text-[11px]">{l.notes}</strong>
-                          <p className="m-0 mt-0.5 text-[9px] text-fg-subtle">
+                          <strong className="text-xs">{l.notes}</strong>
+                          <p className="m-0 mt-0.5 text-2xs text-fg-subtle">
                             {fmtDate(l.workDate)} · {l.userName} ·{" "}
                             {Number(l.hours).toFixed(2)}h
                           </p>
@@ -353,53 +439,48 @@ export default async function ProjectPage({
                 <div className="panel-head">
                   <div>
                     <p className="eyebrow">DELIVERY</p>
-                    <h3 className="m-0 text-[16px] tracking-[-.03em]">Tasks</h3>
+                    <h3 className="m-0 text-lg tracking-[-.03em]">Tasks</h3>
                   </div>
-                  <span className="text-[11px] text-fg-muted">
+                  <span className="text-xs text-fg-muted">
                     {openTasks.length} open
                     {reviewCount > 0 && ` · ${reviewCount} in review`}
                   </span>
                 </div>
                 {taskRows.length === 0 ? (
-                  <p className="m-0 px-5 py-10 text-center text-[12px] text-fg-muted">
-                    No tasks yet.
-                  </p>
+                  <EmptyRow>No tasks yet.</EmptyRow>
                 ) : (
-                  <div className="w-full overflow-x-auto">
-                    <table className="w-full min-w-[640px] border-collapse">
+                  <DataTable minWidth={640}>
                       <thead>
                         <tr>
-                          {["Task", "Assignee", "Status", "Due", "Est", ""].map(
-                            (h) => (
-                              <th
-                                key={h || "actions"}
-                                className="h-[40px] border-b border-border px-4 text-left text-[8px] font-black uppercase tracking-[.12em] text-fg-muted"
-                              >
-                                {h}
-                              </th>
-                            ),
-                          )}
+                          <Th>Task</Th>
+                          <Th>Assignee</Th>
+                          <Th>Status</Th>
+                          <Th>Due</Th>
+                          <Th>Est</Th>
+                          {/* Named for screen readers; an unnamed <th> is a hole
+                              in the header row. */}
+                          <Th srOnly>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
                         {taskRows.map((t) => (
                           <tr
                             key={t.id}
-                            className="border-b border-border last:border-b-0 hover:bg-[#fafaf8]"
+                            className="border-b border-border last:border-b-0 hover:bg-surface-hover"
                           >
-                            <td className="h-[58px] px-4 text-[11px] font-bold">
+                            <td className="h-[58px] px-4 text-xs font-bold">
                               {t.title}
                             </td>
-                            <td className="px-4 text-[11px] text-fg-muted">
+                            <td className="px-4 text-xs text-fg-muted">
                               {t.assigneeName ?? "Unassigned"}
                             </td>
                             <td className="px-4">
                               <TaskStatusBadge status={t.status} />
                             </td>
-                            <td className="px-4 font-mono text-[9px] text-fg-muted">
+                            <td className="px-4 font-mono text-2xs text-fg-muted">
                               {fmtDate(t.dueDate)}
                             </td>
-                            <td className="px-4 font-mono text-[9px] text-fg-muted">
+                            <td className="px-4 font-mono text-2xs text-fg-muted">
                               {t.estimatedHours ?? "—"}
                             </td>
                             <td className="px-4 text-right">
@@ -428,7 +509,7 @@ export default async function ProjectPage({
                                   />
                                 )}
                               {session?.taskId === t.id && (
-                                <span className="text-[9px] font-bold text-brand">
+                                <span className="text-2xs font-bold text-brand">
                                   TIMING
                                 </span>
                               )}
@@ -436,8 +517,7 @@ export default async function ProjectPage({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
-                  </div>
+                    </DataTable>
                 )}
               </section>
             </>
@@ -471,7 +551,7 @@ export default async function ProjectPage({
           {session && !sessionOnThisProject && (
             <div className="panel border-l-[3px] border-l-warn p-4">
               <p className="eyebrow m-0">TIMER RUNNING ELSEWHERE</p>
-              <p className="m-0 mt-1 text-[11px] text-fg-muted">
+              <p className="m-0 mt-1 text-xs text-fg-muted">
                 You are timing &ldquo;{session.taskTitle}&rdquo; on another
                 project. Finish it before starting one here.
               </p>

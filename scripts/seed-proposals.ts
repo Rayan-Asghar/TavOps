@@ -8,7 +8,6 @@ async function main() {
   const saqlain = by("Saqlain");
   const shahab = by("Shahab");
   const muz = by("Muzammil");
-  const hozefa = by("Hozefa");
 
   const day = 864e5;
   const rows = [
@@ -22,9 +21,9 @@ async function main() {
     { o: shahab, t: "Elementor to Gutenberg migration", c: "WordPress", b: "1200", s: "lost", d: 18 },
     { o: shahab, t: "Multisite maintenance retainer", c: "WordPress", b: "800", s: "sent", d: 6 },
     { o: muz, t: "GoHighLevel CRM buildout", c: "CRM / GHL", b: "5500", s: "won", d: 25, won: "5500" },
-    { o: muz, t: "Zapier → Make migration", c: "Automation", b: "3000", s: "qualified", d: 2, feas: true },
-    { o: muz, t: "AI support chatbot on docs", c: "AI / Chatbot", b: "7000", s: "responded", d: 4, feas: true },
-    { o: saqlain, t: "Custom inventory sync service", c: "Automation", b: "9000", s: "sent", d: 1, feas: true },
+    { o: muz, t: "Zapier → Make migration", c: "Automation", b: "3000", s: "qualified", d: 2 },
+    { o: muz, t: "AI support chatbot on docs", c: "AI / Chatbot", b: "7000", s: "responded", d: 4 },
+    { o: saqlain, t: "Custom inventory sync service", c: "Automation", b: "9000", s: "sent", d: 1 },
   ];
 
   await db.insert(proposals).values(
@@ -48,11 +47,6 @@ async function main() {
           ? new Date(sentAt.getTime() + 5 * day)
           : null,
         wonValue: r.won ?? null,
-        feasibility: r.feas ? ("pending" as never) : ("not_needed" as never),
-        feasibilityAssignedToId: r.feas ? hozefa.id : null,
-        followUpDueAt: ["won", "lost"].includes(r.s)
-          ? null
-          : new Date(sentAt.getTime() + 2 * day),
       };
     }),
   );

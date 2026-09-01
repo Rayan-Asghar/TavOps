@@ -143,6 +143,11 @@ export const notificationKind = pgEnum("notification_kind", [
   "project_at_risk",
   "review_approved",
   "revision_requested",
+  // Dead with feasibility routing and follow-up chasing, both removed when BD
+  // was cut back to "what was sent" and "what landed". Postgres cannot drop a
+  // value from an enum type still in use, so these survive as labels the way
+  // 'sync_failed' does. Never emitted; existing rows still render, because the
+  // inbox reads title and body rather than kind.
   "feasibility_requested",
   "feasibility_answered",
   "followup_due",
@@ -166,12 +171,6 @@ export const proposalStatus = pgEnum("proposal_status", [
   "lost",
 ]);
 
-export const feasibilityStatus = pgEnum("feasibility_status", [
-  "not_needed",
-  "pending",
-  "approved",
-  "rejected",
-]);
 
 /* ------------------------------------------------------------------ *
  * People
@@ -686,15 +685,6 @@ export const proposals = pgTable(
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
 
-    /** Routed to a lead when the rep cannot judge the technical scope alone. */
-    feasibility: feasibilityStatus("feasibility").default("not_needed").notNull(),
-    feasibilityAssignedToId: uuid("feasibility_assigned_to_id").references(
-      () => users.id,
-      { onDelete: "set null" },
-    ),
-    feasibilityNote: text("feasibility_note"),
-
-    followUpDueAt: timestamp("follow_up_due_at", { withTimezone: true }),
     wonValue: numeric("won_value", { precision: 12, scale: 2 }),
     /** The handoff: a won proposal points at the project it became. */
     wonProjectId: uuid("won_project_id").references(() => projects.id, {
@@ -711,7 +701,6 @@ export const proposals = pgTable(
   (t) => [
     index("proposals_owner_idx").on(t.ownerId, t.sentAt),
     index("proposals_status_idx").on(t.status),
-    index("proposals_followup_idx").on(t.followUpDueAt),
   ],
 );
 

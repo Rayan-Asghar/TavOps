@@ -11,14 +11,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  blockers,
-  projects,
-  proposals,
-  tasks,
-  timeSessions,
-  workLogs,
-} from "@/db/schema";
+import { blockers, projects, tasks, timeSessions, workLogs } from "@/db/schema";
 import {
   addBusinessHours,
   businessHoursBetween,
@@ -362,36 +355,6 @@ export async function flagRunawayTimers() {
   return { flagged };
 }
 
-/** Proposals whose follow-up date has passed and that are still in play. */
-export async function flagDueFollowUps() {
-  const due = await db
-    .select({
-      id: proposals.id,
-      ownerId: proposals.ownerId,
-      jobTitle: proposals.jobTitle,
-    })
-    .from(proposals)
-    .where(
-      and(
-        lt(proposals.followUpDueAt, new Date()),
-        ne(proposals.status, "won"),
-        ne(proposals.status, "lost"),
-      ),
-    );
-
-  for (const p of due) {
-    await notify({
-      userId: p.ownerId,
-      kind: "followup_due",
-      title: `Follow up: ${p.jobTitle}`,
-      body: "No movement since you sent this. Nudge the client or mark it lost.",
-      isActionable: true,
-      dedupeKey: `followup:${p.id}`,
-    });
-  }
-  return { due: due.length };
-}
-
 /**
  * Flags work that has burned well past its estimate and is still not done.
  *
@@ -466,6 +429,5 @@ export async function runAllSweeps() {
   const overruns = await flagEstimateOverruns();
   const health = await recomputeProjectHealth();
   const timers = await flagRunawayTimers();
-  const followUps = await flagDueFollowUps();
-  return { escalation, stale, overruns, health, timers, followUps };
+  return { escalation, stale, overruns, health, timers };
 }

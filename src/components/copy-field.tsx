@@ -2,8 +2,12 @@
 
 import { useState } from "react";
 
-/** Read-only value with a copy button and a short confirmation. */
-export function CopyField({ value, label }: { value: string; label?: string }) {
+/**
+ * Shared by both copy widgets. Clipboard access throws outside a secure
+ * context, so every caller has to survive the failure — the value stays
+ * selectable on screen either way, which beats an alert.
+ */
+function useCopy(value: string) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -12,10 +16,25 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard is blocked outside a secure context; the value is selectable
-      // on screen either way, so failing silently is better than an alert.
+      // Deliberately silent; see above.
     }
   }
+
+  return { copied, copy };
+}
+
+/** Announced to screen readers without stealing focus. */
+function CopyAnnouncement({ copied }: { copied: boolean }) {
+  return (
+    <span aria-live="polite" className="sr-only">
+      {copied ? "Copied to clipboard" : ""}
+    </span>
+  );
+}
+
+/** Read-only value with a copy button and a short confirmation. */
+export function CopyField({ value, label }: { value: string; label?: string }) {
+  const { copied, copy } = useCopy(value);
 
   return (
     <div>
@@ -31,10 +50,41 @@ export function CopyField({ value, label }: { value: string; label?: string }) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      {/* Announced to screen readers without stealing focus. */}
-      <span aria-live="polite" className="sr-only">
-        {copied ? "Copied to clipboard" : ""}
-      </span>
+      <CopyAnnouncement copied={copied} />
+    </div>
+  );
+}
+
+/**
+ * The multi-line sibling. Same behaviour, but the value keeps its line breaks —
+ * for text meant to be pasted somewhere else whole rather than read as a token.
+ */
+export function CopyBlock({
+  value,
+  label,
+  buttonLabel = "Copy",
+}: {
+  value: string;
+  label?: string;
+  buttonLabel?: string;
+}) {
+  const { copied, copy } = useCopy(value);
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        {label && <span className="label m-0">{label}</span>}
+        <button type="button" onClick={copy} className="btn-secondary shrink-0 px-3">
+          {copied ? "Copied" : buttonLabel}
+        </button>
+      </div>
+      <pre
+        className="select-all overflow-x-auto whitespace-pre-wrap rounded-lg border
+                   border-border bg-bg px-3 py-2 font-mono text-xs leading-relaxed text-fg"
+      >
+        {value}
+      </pre>
+      <CopyAnnouncement copied={copied} />
     </div>
   );
 }

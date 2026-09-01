@@ -131,9 +131,15 @@ export async function loadProjectDetail(actor: Actor, projectId: string) {
     ]);
 
   // Whole-project total, independent of what this person may read row by row —
-  // an hours total is not sensitive, individual entries are.
+  // an hours total is not sensitive, individual entries are. The same holds for
+  // the date of the last entry: "nothing has moved in nine days" is the thing a
+  // sales owner needs before the client says it, and a bare date discloses no
+  // note, no author and no duration.
   const [totals] = await db
-    .select({ hours: sql<string>`coalesce(sum(${workLogs.hours}),0)::text` })
+    .select({
+      hours: sql<string>`coalesce(sum(${workLogs.hours}),0)::text`,
+      lastMovementAt: sql<Date | null>`max(${workLogs.workDate})`,
+    })
     .from(workLogs)
     .where(and(eq(workLogs.projectId, projectId), isNull(workLogs.deletedAt)));
 

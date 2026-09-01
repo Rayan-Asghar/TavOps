@@ -42,7 +42,6 @@ export const createProposalSchema = z.object({
   category: z.string().trim().max(80).optional(),
   source: z.string().trim().max(40).default("upwork"),
   budgetAmount: z.coerce.number().min(0).max(10_000_000).optional(),
-  needsFeasibility: z.boolean().default(false),
   notes: z.string().trim().max(2000).optional(),
 });
 
@@ -50,12 +49,6 @@ export const advanceProposalSchema = z.object({
   proposalId: z.string().uuid(),
   status: z.enum(PROPOSAL_STATUSES),
   wonValue: z.coerce.number().min(0).optional(),
-});
-
-export const feasibilityAnswerSchema = z.object({
-  proposalId: z.string().uuid(),
-  decision: z.enum(["approved", "rejected"]),
-  note: z.string().trim().min(3, "Give the rep something to act on."),
 });
 
 export type CreateProposalInput = z.input<typeof createProposalSchema>;
