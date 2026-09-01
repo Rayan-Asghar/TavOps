@@ -9,7 +9,7 @@ import { z } from "zod";
 export const logWorkSchema = z.object({
   projectId: z.string().uuid(),
   taskId: z.string().uuid().nullable().optional(),
-  hours: z.coerce.number().positive().max(24),
+  hours: z.coerce.number().min(0.01, "Log at least a minute.").max(24),
   /** What the team and reviewers read. The only note a work log carries. */
   internalNotes: z.string().trim().min(3, "Say what you did, even briefly."),
   resultingStatus: z
@@ -29,7 +29,7 @@ export type LogWorkInput = z.infer<typeof logWorkSchema>;
  */
 export const editWorkLogSchema = z.object({
   workLogId: z.string().uuid(),
-  hours: z.coerce.number().positive().max(24),
+  hours: z.coerce.number().min(0.01, "Log at least a minute.").max(24),
   internalNotes: z.string().trim().min(3, "Say what you did, even briefly."),
   /** Optional: only sent when the entry was filed against the wrong day. */
   workDate: z.coerce.date().optional(),

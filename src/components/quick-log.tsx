@@ -90,8 +90,8 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
                 name="hours"
                 type="number"
                 inputMode="decimal"
-                step="0.25"
-                min="0.25"
+                step="any"
+                min="0.01"
                 max="24"
                 required
                 className="field"

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, count as countRows, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { blockers, clients, projects, tasks, users, workLogs } from "@/db/schema";
 import { getActor } from "@/lib/auth";
@@ -12,10 +12,23 @@ import { can } from "@/lib/rbac";
 
 
 import { fmtDate } from "@/lib/format";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, ListFilters, Pagination } from "@/components/ui";
 
+import {
+  offsetFor,
+  pageInfo,
+  parseListParams,
+  type RawParams,
+} from "@/lib/list-params";
 export const metadata = { title: "Projects" };
-export default async function ProjectsPage() {
+const SORTABLE = ["name", "due", "health"] as const;
+const PAGE_SIZE = 24;
+
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawParams>;
+}) {
   const actor = await getActor();
   if (!actor) redirect("/login");
 
@@ -30,10 +43,39 @@ export default async function ProjectsPage() {
     unresolvedCount(actor.id),
   ]);
 
-  const rows =
-    scope !== null && scope.length === 0
-      ? []
-      : await db
+  const params = await searchParams;
+  const list = parseListParams(params, {
+    sortable: SORTABLE,
+    defaultSort: "name",
+    pageSize: PAGE_SIZE,
+  });
+
+  const where = and(
+    ne(projects.lifecycle, "archived"),
+    scope === null ? sql`true` : inArray(projects.id, scope),
+    list.q
+      ? or(
+          ilike(projects.name, `%${list.q}%`),
+          ilike(projects.code, `%${list.q}%`),
+          ilike(clients.name, `%${list.q}%`),
+        )
+      : undefined,
+  );
+
+  const dir = list.desc ? desc : asc;
+  const orderBy =
+    list.sort === "due"
+      ? [dir(projects.internalDueDate)]
+      : list.sort === "health"
+        ? [dir(projects.health), asc(projects.name)]
+        : [dir(projects.name)];
+
+  const empty = scope !== null && scope.length === 0;
+
+  const [rows, total] = empty
+    ? [[], 0]
+    : await Promise.all([
+      db
           .select({
             id: projects.id,
             code: projects.code,
@@ -62,13 +104,19 @@ export default async function ProjectsPage() {
           })
           .from(projects)
           .leftJoin(clients, eq(projects.clientId, clients.id))
-          .where(
-            and(
-              ne(projects.lifecycle, "archived"),
-              scope === null ? sql`true` : inArray(projects.id, scope),
-            ),
-          )
-          .orderBy(projects.name);
+          .where(where)
+          .orderBy(...orderBy)
+          .limit(PAGE_SIZE)
+          .offset(offsetFor(list)),
+      db
+        .select({ n: countRows() })
+        .from(projects)
+        .leftJoin(clients, eq(projects.clientId, clients.id))
+        .where(where)
+        .then((r) => Number(r[0]?.n ?? 0)),
+    ]);
+
+  const info = pageInfo(list, total);
 
   return (
     <AppShell
@@ -94,8 +142,38 @@ export default async function ProjectsPage() {
         }
       />
 
+      <ListFilters
+        action="/projects"
+        params={params}
+        active={list}
+        placeholder="Project, code or client"
+        keepSort={false}
+      >
+        <div>
+          <label className="label" htmlFor="filter-sort">
+            Sort by
+          </label>
+          <select
+            id="filter-sort"
+            name="sort"
+            defaultValue={list.desc ? `-${list.sort}` : (list.sort ?? "name")}
+            className="field w-auto min-w-[150px]"
+          >
+            <option value="name">Name A–Z</option>
+            <option value="-name">Name Z–A</option>
+            <option value="due">Due soonest</option>
+            <option value="-due">Due latest</option>
+            <option value="health">Health</option>
+          </select>
+        </div>
+      </ListFilters>
+
       {rows.length === 0 ? (
-        <EmptyState>No projects assigned to you yet.</EmptyState>
+        <EmptyState>
+          {list.q
+            ? `Nothing matches “${list.q}”.`
+            : "No projects assigned to you yet."}
+        </EmptyState>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => {
@@ -157,6 +235,17 @@ export default async function ProjectsPage() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {info.pages > 1 && (
+        <div className="panel mt-4">
+          <Pagination
+            info={info}
+            pathname="/projects"
+            params={params}
+            unit="projects"
+          />
         </div>
       )}
     </AppShell>

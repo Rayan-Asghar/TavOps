@@ -30,17 +30,22 @@ export function ActionPanel({
   return (
     <div>
       {options.length > 1 && (
+        // Not a tablist. It declared role="tablist"/role="tab"/aria-selected
+        // with no aria-controls, no tabpanel, no roving tabindex and no arrow
+        // keys, so a screen reader announced "tab 1 of 2" and then could not
+        // find the panel. Two buttons that swap a form are two buttons: native
+        // focus order works, and aria-pressed says which one is on.
         <div
-          role="tablist"
+          role="group"
           aria-label="Quick actions"
           className="mb-2 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface-2 p-1"
         >
           {options.map((o) => (
             <button
               key={o.key}
-              role="tab"
               type="button"
-              aria-selected={active === o.key}
+              aria-pressed={active === o.key}
+              aria-controls="quick-action-form"
               onClick={() => setActive(o.key)}
               className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
                 active === o.key
@@ -53,7 +58,9 @@ export function ActionPanel({
           ))}
         </div>
       )}
-      {options.find((o) => o.key === active)?.node}
+      <div id="quick-action-form">
+        {options.find((o) => o.key === active)?.node}
+      </div>
     </div>
   );
 }

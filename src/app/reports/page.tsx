@@ -151,7 +151,7 @@ export default async function ReportsPage({
             </h3>
           </div>
         </div>
-        <DataTable>
+        <DataTable minWidth={760}>
             <thead>
               <tr>
                 <Th>Project</Th>
@@ -235,7 +235,7 @@ export default async function ReportsPage({
               capacity = stated week spread over the range&rsquo;s working days
             </span>
           </div>
-          <DataTable>
+          <DataTable minWidth={560}>
               <thead>
                 <tr>
                   <Th>Person</Th>
@@ -292,7 +292,7 @@ export default async function ReportsPage({
             newest {TIMESHEET_PREVIEW} shown · CSV has them all
           </span>
         </div>
-        <DataTable>
+        <DataTable minWidth={680}>
             <thead>
               <tr>
                 <Th>Date</Th>

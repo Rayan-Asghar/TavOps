@@ -89,7 +89,7 @@ export default async function TeamsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
           {views.length === 0 ? (
             <EmptyState>No teams yet. Create one to the right.</EmptyState>

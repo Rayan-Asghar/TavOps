@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { desc, eq, isNull, or, inArray } from "drizzle-orm";
+import { and, count as countRows, desc, eq, ilike, isNull, or, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, projects, users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
@@ -9,10 +9,21 @@ import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 
 import { fmtDateTime } from "@/lib/format";
-import { EmptyRow } from "@/components/ui";
+import {
+  EmptyRow,
+  FilterSelect,
+  ListFilters,
+  Pagination,
+} from "@/components/ui";
+import {
+  offsetFor,
+  pageInfo,
+  parseListParams,
+  type RawParams,
+} from "@/lib/list-params";
 
 export const metadata = { title: "Audit log" };
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
 
 /** "work_log.edit" -> "Work log edited" reads better than a dotted verb. */
 const ACTION_LABELS: Record<string, string> = {
@@ -55,7 +66,11 @@ function diffLines(
     .map((k) => ({ key: k, from: show(before[k]), to: show(after?.[k]) }));
 }
 
-export default async function AuditPage() {
+export default async function AuditPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawParams>;
+}) {
   const actor = await getActor();
   if (!actor) redirect("/login");
 
@@ -74,7 +89,36 @@ export default async function AuditPage() {
   // project (user and team administration) are never project-scoped.
   const scope = await accessibleProjectIds(actor);
 
-  const [rows, count] = await Promise.all([
+  const params = await searchParams;
+  const list = parseListParams(params, { pageSize: PAGE_SIZE });
+  const actionFilter = typeof params.action === "string" ? params.action : "";
+
+  // Scope first, then the user's filters on top — never the other way round.
+  const scopeClause =
+    scope === null
+      ? undefined
+      : or(
+          isNull(auditLog.projectId),
+          inArray(auditLog.projectId, scope.length ? scope : [""]),
+        );
+
+  const searchClause = list.q
+    ? or(
+        ilike(users.name, `%${list.q}%`),
+        ilike(projects.code, `%${list.q}%`),
+        ilike(projects.name, `%${list.q}%`),
+        ilike(auditLog.action, `%${list.q}%`),
+      )
+    : undefined;
+
+  const actionClause =
+    actionFilter && actionFilter in ACTION_LABELS
+      ? eq(auditLog.action, actionFilter)
+      : undefined;
+
+  const where = and(scopeClause, searchClause, actionClause);
+
+  const [rows, [{ total }], count] = await Promise.all([
     db
       .select({
         id: auditLog.id,
@@ -90,18 +134,22 @@ export default async function AuditPage() {
       .from(auditLog)
       .leftJoin(users, eq(auditLog.actorId, users.id))
       .leftJoin(projects, eq(auditLog.projectId, projects.id))
-      .where(
-        scope === null
-          ? undefined
-          : or(
-              isNull(auditLog.projectId),
-              inArray(auditLog.projectId, scope.length ? scope : [""]),
-            ),
-      )
+      .where(where)
       .orderBy(desc(auditLog.ts))
-      .limit(PAGE_SIZE),
+      .limit(PAGE_SIZE)
+      .offset(offsetFor(list)),
+    // Counted through the same joins and the same where, so the pager can
+    // never disagree with the rows it is paging.
+    db
+      .select({ total: countRows() })
+      .from(auditLog)
+      .leftJoin(users, eq(auditLog.actorId, users.id))
+      .leftJoin(projects, eq(auditLog.projectId, projects.id))
+      .where(where),
     unresolvedCount(actor.id),
   ]);
+
+  const info = pageInfo(list, Number(total));
 
   return (
     <AppShell
@@ -114,20 +162,41 @@ export default async function AuditPage() {
         eyebrow="APPEND-ONLY RECORD"
         title="What changed, who changed it, and when"
         description="Written in the same transaction as the change itself, and the
-                     app role cannot update or delete these rows. Newest hundred."
+                     app role cannot update or delete these rows."
       />
+
+      <ListFilters
+        action="/audit"
+        params={params}
+        active={list}
+        placeholder="Person, project or action"
+      >
+        <FilterSelect
+          name="action"
+          label="Action"
+          value={actionFilter}
+          options={Object.entries(ACTION_LABELS).map(([value, label]) => ({
+            value,
+            label,
+          }))}
+        />
+      </ListFilters>
 
       <section className="panel mt-4">
         <div className="px-5 py-1">
           {rows.length === 0 ? (
-            <EmptyRow>Nothing recorded yet.</EmptyRow>
+            <EmptyRow>
+              {list.q || actionFilter
+                ? "Nothing matches those filters."
+                : "Nothing recorded yet."}
+            </EmptyRow>
           ) : (
             rows.map((r) => {
               const changes = diffLines(r.before, r.after);
               return (
                 <div
                   key={r.id}
-                  className="grid grid-cols-[130px_1fr] gap-3 border-b border-border py-3 last:border-b-0"
+                  className="grid grid-cols-1 gap-1 border-b border-border py-3 last:border-b-0 sm:grid-cols-[130px_1fr] sm:gap-3"
                 >
                   <div>
                     <div className="text-xs font-bold">{fmtDateTime(r.ts)}</div>
@@ -173,6 +242,7 @@ export default async function AuditPage() {
             })
           )}
         </div>
+        <Pagination info={info} pathname="/audit" params={params} unit="entries" />
       </section>
     </AppShell>
   );

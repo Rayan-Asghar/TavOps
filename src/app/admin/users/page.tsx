@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -70,9 +71,17 @@ export default async function AdminUsersPage() {
         description={`${active.length} active${
           inactive.length > 0 ? `, ${inactive.length} deactivated` : ""
         }. Accounts are never deleted — logged hours have to stay attributable.`}
+        actions={
+          // /admin/teams had no link from anywhere in the app: no nav slot, no
+          // in-page link, reachable only by typing the URL. It is reference
+          // data now rather than routing, so it belongs next to People.
+          <Link href="/admin/teams" className="btn-secondary btn-sm">
+            Teams
+          </Link>
+        }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_400px]">
         <section aria-labelledby="people-heading">
           <h2 id="people-heading" className="sr-only">
             Existing accounts

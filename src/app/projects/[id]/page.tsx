@@ -59,18 +59,21 @@ function Stat({
   value: string;
   tone?: "danger";
 }) {
+  // A <div> inside a <dl> is only valid as a wrapper around dt/dd pairs, which
+  // is what this now is. It used to be divs all the way down, so the list
+  // announced as a definition list with no terms in it.
   return (
     <div className="bg-surface px-4 py-3">
-      <div className="text-2xs font-black uppercase tracking-[.12em] text-fg-muted">
+      <dt className="text-2xs font-black uppercase tracking-[.12em] text-fg-muted">
         {label}
-      </div>
-      <div
-        className={`mt-0.5 text-xl font-extrabold ${
+      </dt>
+      <dd
+        className={`m-0 mt-0.5 text-xl font-extrabold ${
           tone === "danger" ? "text-danger" : "text-fg"
         }`}
       >
         {value}
-      </div>
+      </dd>
     </div>
   );
 }
@@ -282,7 +285,7 @@ export default async function ProjectPage({
         ]}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="min-w-0 space-y-4">
           {activeTab === "overview" && (
             <>

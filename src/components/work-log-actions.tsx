@@ -91,8 +91,8 @@ export function WorkLogActions({
                 id={`h-${workLogId}`}
                 name="hours"
                 type="number"
-                step="0.25"
-                min="0.25"
+                step="any"
+                min="0.01"
                 max="24"
                 defaultValue={Number(hours).toFixed(2)}
                 required

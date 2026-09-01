@@ -46,8 +46,8 @@ export function LogWorkForm({
               id="hours"
               name="hours"
               type="number"
-              step="0.25"
-              min="0.25"
+              step="any"
+              min="0.01"
               max="24"
               required
               className="field"

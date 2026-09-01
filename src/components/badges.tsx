@@ -61,7 +61,7 @@ export function TaskStatusBadge({ status }: { status: string }) {
  *  tile seamlessly without doubled borders. */
 export function MetricGrid({ children }: { children: ReactNode }) {
   return (
-    <section className="my-6 grid grid-cols-1 border-l border-t border-border sm:grid-cols-2 xl:grid-cols-4">
+    <section className="my-6 grid grid-cols-1 border-l border-t border-border sm:grid-cols-2 lg:grid-cols-4">
       {children}
     </section>
   );
