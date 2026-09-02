@@ -4,6 +4,64 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-03 — Google Sheets, back but inverted
+
+- **Shipped:** a one-way work-log mirror, Tavren → Google Sheets, in the layout
+  the team already keeps by hand. Six commits, `2a6f75e` → `a155744`.
+  216 unit + 47 fixture tests.
+
+- **This is not the sync deleted in 0009.** That one was client-facing, carried
+  per-project column mapping, and addressed rows by number. This is internal,
+  fixed-column, and addresses rows by the work log's uuid written into a hidden
+  column — which is the fix for the corruption hazard the audit found in the old
+  one.
+
+- **The model was wrong twice before it was right**, and both corrections came
+  from Rayan rather than from me:
+  - Built per-project. Told it should be per person. Re-keyed.
+  - Re-keyed again to person-per-project. Then: "who performed the task doesn't
+    really matter, what matters is what and time" — which makes a per-person
+    sheet a doubling of setup to record a distinction nobody reads off the
+    sheet. Back to per-project, final.
+
+  Worth keeping: the template itself was the evidence all along. It has no
+  Developer column. I read the layout off it and did not read that.
+
+- **Reading the real sheet changed the design more than any discussion did.**
+  Header on row 8 under a banner and a live-formula totals strip, not row 1;
+  a tab per month; columns that are the team's, with only four of six written
+  by Tavren. Every assumption I had made about the layout was wrong, and the
+  connect flow would have rejected their own sheet outright.
+
+- **Decisions:**
+  - **A delete blanks its row rather than removing it.** Removing shifts every
+    row beneath and invalidates every recorded position at once. It also matches
+    the domain: a work log is reversed, not erased.
+  - **One id-column read per connection per drain**, and grouped append /
+    batchUpdate. A 12-entry batch is one API call, asserted by test.
+  - **`pg_try_advisory_lock` around the drain.** Every logged entry schedules
+    one; ten people logging at once would otherwise mean ten reaper sweeps.
+  - **`header_hash` per drain.** An inserted column would otherwise send Hours
+    quietly into the Notes column, one row at a time, with nothing failing.
+  - **`after()` bridges the missing scheduler** so a developer never waits on
+    Google. A bridge, not a replacement — a lost drain leaves the job queued.
+
+- **Three constraints established by testing, not by argument:**
+  - The service account **cannot create Drive files** (403). This is why the app
+    sends people to Google's `/copy` link and why the template is laid out in a
+    sheet a person already owns.
+  - The **Drive API is not enabled** on the Cloud project, so the "who else can
+    edit this sheet" warning has never fired. It was written to degrade
+    silently, which is exactly why nobody noticed.
+  - **Renaming a spreadsheet does not need Drive** — `updateSpreadsheetProperties`
+    is the Sheets API and the title is the Drive filename. Verified with a no-op
+    rename that set the title to what it already was.
+
+- **Not yet proven:** no sheet has been connected. The first allotment exercises
+  the rename, the backfill and the first live write together.
+
+---
+
 ### 2026-09-01 — Session close
 
 Four commits: `63b510f`, `bac35be`, `a7bfdd6`, `e58fcea`. The five phases above

@@ -3,98 +3,87 @@
 > Overwrite this file — never append. Max 100 lines. No pasted code, file:line only.
 > Previous handoffs in `.claude/handoff-history/`.
 
-## ⚠️ READ FIRST — uncommitted work in this tree is NOT from this handoff
-
-At the time of writing, **a second Claude Code session was working in this repo
-concurrently** and had ~45 files uncommitted (+694 / −1032). That work is
-unrelated to the five phases below and belongs to that session:
-
-- `drizzle/0011_bd_strip_to_sent_and_landed.sql` — cuts the BD pipeline back to
-  "sent" and "landed", dropping feasibility routing and follow-up chasing.
-  **Marked IRREVERSIBLE**: it drops `proposals.feasibility_note`, free text a
-  delivery lead wrote about a bid, recorded nowhere else.
-- New `src/components/ui/` (data-table, empty-state, feedback), plus
-  `src/lib/{client-brief,format,tone}.ts`.
-
-**Do not commit, revert or `git clean` that work without checking with Rayan
-first** — it was mid-flight, not abandoned. Everything described below IS
-committed, in `63b510f`, `bac35be`, `a7bfdd6`, `e58fcea`.
-
-Note also that HANDOFF.md is a single overwrite-only file. Two sessions wrapping
-up in the same repo will clobber each other's version of it; PROGRESS.md and the
-commit messages are the durable record.
-
 ## Goal
 
-A clean, understandable, **strictly internal** Postgres-centred operations
-system: Web App → PostgreSQL (single source of truth) → reporting. No client
-portals, client sheets, billing or external access. Full audit and phased plan:
-`~/.claude/plans/can-you-explain-to-wiggly-canyon.md`.
+A clean, strictly internal, Postgres-centred operations system:
+Web App → PostgreSQL (single source of truth) → reporting and one-way mirrors.
+Full history in PROGRESS.md; the five-phase refactor that preceded this is at
+`.claude/handoff-history/2026-09-01_session-close.md`.
 
 ## Current State
 
-**All five phases complete and committed at `e58fcea`. 130 unit + 26 fixture
-tests, build green at that commit.** The only outstanding work is Phase 0, which
-is Rayan's. (The working tree has since moved — see the warning above.)
+**Project work-log sheets are built, committed and green.** 216 unit + 47
+fixture tests, build clean. Six commits: `2a6f75e` → `a155744`.
 
-- **1** — client-facing sheets sync removed. −2,616 lines, 21 → 17 tables.
-- **2** — work logs correctable (revision chain, reversal, `invoiced_through`
-  enforced); `writeAudit` wired into the operational tables; `/audit`.
-- **4** — reporting on Postgres: `/reports`, CSV at `/api/reports/timesheet`.
-- **3** — `audit_log.detail` retired; project page 660 → 504 lines.
-- **5** — fixture tests: `pnpm test:db`, `pnpm verify:all`.
+- **One sheet per project.** Every entry on a project goes to its sheet,
+  whoever logged it. Who did the work lives on the work log, the activity feed
+  and `/reports` — the sheet records what and how long, and has no Developer
+  column, matching the team's own tracker.
+- **The team's layout, not a generic one.** Title banner, a summary strip whose
+  totals are live formulas, header on **row 8**, columns
+  `Date | <project> | Hours | Notes — Work Done | Link (if any) | Work Log ID`.
+  Tavren fills date, hours, notes and the hidden id; the label, link and totals
+  are the team's and are never written to.
+- **A tab per month**, created on demand with its banner. An entry routes to the
+  tab for its own work date, so a September correction to August work lands in
+  August.
+- **Rows are addressed by the work log's uuid** in hidden column F, not by row
+  number — a person sorting or inserting rows cannot cause a wrong-row write.
+  A delete blanks its row rather than removing it, because removing one shifts
+  every row beneath it.
+- **Connecting** validates the header row, adopts a sheet missing only the id
+  column, backfills existing entries, renames the file to
+  `Tavren — <project> — <client>`, and refuses the template's own link.
+- `pnpm sheets:template <url>` lays out a blank sheet you own as the template.
+  `TAVREN_SHEET_TEMPLATE_ID` is set; the Copy button works.
 
-Full reasoning for each is in PROGRESS.md and the four commit messages.
-
-### Two audit findings that were WRONG, now corrected
-
-- **`auth.config.ts`'s `authorized` callback is LIVE, not dead.** Next.js 16
-  renamed Middleware to Proxy: the consumer is `src/proxy.ts`, not
-  `middleware.ts`, which is why grepping for the latter found nothing. It gates
-  every matched route by default. Deleting it — as the plan said to — would have
-  left only the per-page `getActor()` checks, so any page missing one would
-  become public. Now documented in the file itself.
-- **`notifications_dedupe_unique` is not the NULL-distinct trap.** `dedupe_key`
-  is nullable and means "do not collapse this one"; NULLs being distinct is what
-  makes every un-keyed notification insert. Making it NULLS NOT DISTINCT would
-  cap a person at one un-keyed notification ever. Documented in the schema.
+**Nothing is connected.** `sheet_connections` is empty — migrations `0015`/`0016`
+cleared the earlier keyings, which were never live. The first real allotment is
+the last unproven step end to end.
 
 ## Next Steps
 
-1. **Phase 0 — hosting + scheduler (Rayan). The only thing left, and it blocks
-   everything automatic.** Nothing runs on a timer. Schedule
-   `/api/cron/sweeps` hourly and `/api/cron/digest` daily with `CRON_SECRET`.
-   Vercel Hobby is out. Set `DIGEST_WEBHOOK_URLS` or the digest goes nowhere.
-2. **Delete the nine seed accounts** sharing `tavren123` once real admins exist.
-3. Optional: blocker/SLA and review-round breakdowns on `/reports` (one grouped
-   query each); a one-way Google Sheets *export* if CSV proves insufficient
-   (`googleapis` was removed — re-add only then, and keep it one-way).
+1. **Attach a sheet to one project** — Sheet tab → Copy the template → name it →
+   share with the service account → paste the link. This exercises the rename,
+   the backfill and the first live write in one go.
+2. **Phase 0 — hosting and a scheduler. Still the only thing blocking every
+   automation**, and now the sheets sync too. `after()` drains after each
+   response, which covers the normal case but is not durable. Schedule
+   `/api/cron/sync` (2–5 min), `/api/cron/sweeps` (hourly),
+   `/api/cron/digest` (daily) with `CRON_SECRET`. Vercel Hobby is out.
+3. **Set `DIGEST_WEBHOOK_URLS`** or the digest builds and goes nowhere.
+4. **Delete the nine seed accounts** sharing `tavren123`.
+5. `.claude/settings.json` has uncommitted permission allowances from this
+   session — commit or discard.
 
 ## What Failed / Dead Ends
 
-- **`pkill`/`pgrep -f "next dev"` kills the agent's own shell** — the pattern
-  matches its own command line. Use a bracket class: `pgrep -af "nex[t] dev"`.
-- **Browser harness: never use a global `input[name=...]` lookup.** The project
-  page's rail has its own log-work form with `hours`/`internalNotes`. Anchor on
-  `input[name=workLogId]`, then `.closest('form')`, and query inside it.
-- **`requestSubmit()` silently no-ops on constraint violations.** An hours value
-  of 9.99 fails the field's `step="0.25"` — nothing posts, no error, looks
-  exactly like a broken action. Call `form.checkValidity()` first.
-- **The dev DB owner `tavren` is a SUPERUSER with BYPASSRLS**, so it ignores
-  RLS even with FORCE. A test asserting "FORCE blocks the owner" is wrong. What
-  actually holds the backstop up is the app connecting as `tavren_app`
-  (NOSUPERUSER, NOBYPASSRLS) — asserted in `tests/db/rls.test.ts`.
-- **`vitest.config.mts` collects `tests/**`**, so a new suite there runs in the
-  pure `pnpm test` too. `tests/db` is explicitly excluded.
+- **The service account cannot create Drive files.** `spreadsheets.create`
+  returns 403. This is why the app offers Google's `/copy` link instead of a
+  "create it for me" button, and why the template is laid out in a sheet a
+  person already owns.
+- **The Drive API is not enabled** on Cloud project `authentic-root-471504-q1`.
+  So `readOtherEditors` always fails and the "who else can edit this sheet"
+  warning has never once fired. Deliberately non-fatal, which is why nobody
+  noticed. Enabling it is free, needs no billing and no OAuth verification.
+- **Renaming a spreadsheet does NOT need Drive.** `updateSpreadsheetProperties`
+  is the Sheets API and the title is the Drive filename. Verified live.
+- **`pkill`/`pgrep -f "next dev"` kills the agent's own shell.** Use a bracket
+  class: `pgrep -af "nex[t] dev"`.
+- **Browser harness: never use a global `input[name=…]` lookup** — the project
+  page's rail has its own log-work form. Anchor on a field only the target form
+  has, then `.closest('form')`.
+- **`requestSubmit()` silently no-ops on constraint violations.** Call
+  `form.checkValidity()` first or a blocked submit looks like a broken action.
+- **The git index is shared with concurrent sessions.** `git add` then
+  `git commit` swept another session's staged work into a commit once. Use
+  `git commit --only <paths>`.
 - **Deleting `.next` breaks `pnpm typecheck`** (`LayoutProps` is generated
   there). Run `pnpm build` once to regenerate.
-- **Enum values cannot be dropped in Postgres** — several survive as annotated
-  dead labels. Never write them.
-- **Do not re-add a Stop hook** (`62fa8e5` → `9427490`): it blocked every turn.
 
 ## Open Questions / Blockers
 
-- **Hosting decision** — blocks step 1, which blocks everything automatic.
-- **Discord/Slack webhook URL** needed from Rayan.
-- `~/Desktop/tavrenops-backups/pre-0009-*.sql` is the only copy of the
-  `client_update` values dropped in Phase 1. Keep it somewhere safe.
+- **Hosting decision** — blocks step 2, which blocks everything automatic.
+- **Discord/Slack webhook URL** for the digest.
+- The template must be shared "Anyone with the link → Viewer" or the Copy button
+  fails for colleagues. Unverifiable from here without the Drive API.
