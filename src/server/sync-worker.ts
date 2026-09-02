@@ -255,12 +255,21 @@ async function failJobs(
  * becomes somebody's actionable inbox item rather than a log line.
  */
 async function notifyAdmins(connectionId: string, message: string) {
+  // Left join: a developer's sheet has no project, and an inner join would
+  // silently drop the alert for exactly those failures.
   const [connection] = await db
-    .select({ projectId: sheetConnections.projectId, code: projects.code })
+    .select({
+      projectId: sheetConnections.projectId,
+      code: projects.code,
+      person: users.name,
+    })
     .from(sheetConnections)
-    .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
+    .leftJoin(projects, eq(sheetConnections.projectId, projects.id))
+    .leftJoin(users, eq(sheetConnections.userId, users.id))
     .where(eq(sheetConnections.id, connectionId))
     .limit(1);
+
+  const which = connection?.code ?? connection?.person ?? null;
 
   const admins = await db
     .select({ id: users.id })
@@ -271,7 +280,7 @@ async function notifyAdmins(connectionId: string, message: string) {
     await notify({
       userId: admin.id,
       kind: "sync_failed",
-      title: `Work log sheet stopped syncing${connection ? ` — ${connection.code}` : ""}`,
+      title: `Work log sheet stopped syncing${which ? ` — ${which}` : ""}`,
       body: message,
       projectId: connection?.projectId ?? null,
       isActionable: true,

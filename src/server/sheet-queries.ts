@@ -9,6 +9,10 @@ import { sheetConnections, syncJobs } from "@/db/schema";
  * endpoint, and these are queries.
  */
 
+export type SheetOwner =
+  | { scope: "project"; projectId: string }
+  | { scope: "developer"; userId: string };
+
 export type SheetStatus = {
   connection: {
     id: string;
@@ -33,11 +37,17 @@ const EMPTY: SheetStatus = {
   lastError: null,
 };
 
-export async function sheetStatusFor(projectId: string): Promise<SheetStatus> {
+export async function sheetStatusFor(
+  owner: SheetOwner,
+): Promise<SheetStatus> {
   const [connection] = await db
     .select()
     .from(sheetConnections)
-    .where(eq(sheetConnections.projectId, projectId))
+    .where(
+      owner.scope === "project"
+        ? eq(sheetConnections.projectId, owner.projectId)
+        : eq(sheetConnections.userId, owner.userId),
+    )
     .limit(1);
 
   if (!connection || connection.status === "archived") return EMPTY;

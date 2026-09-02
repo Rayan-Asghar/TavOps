@@ -155,12 +155,14 @@ export async function editWorkLog(input: EditWorkLogInput) {
       .where(eq(workLogs.id, log.id));
 
     // The sheet row is corrected in place, addressed by the entry's id.
-    queuedSync = await enqueueSheetWrite(tx, {
-      projectId: log.projectId,
-      workLogId: log.id,
-      jobType: "update",
-      idempotencyKey: `revision:${revision.id}`,
-    });
+    queuedSync =
+      (await enqueueSheetWrite(tx, {
+        projectId: log.projectId,
+        userId: log.userId,
+        workLogId: log.id,
+        jobType: "update",
+        changeKey: `revision:${revision.id}`,
+      })) > 0;
 
     await writeAudit(tx, {
       actorId: actor.id,
@@ -235,12 +237,14 @@ export async function deleteWorkLog(input: DeleteWorkLogInput) {
 
     // The sheet keeps the row and blanks it: removing a row would shift every
     // row beneath it and invalidate every recorded position at once.
-    queuedDelete = await enqueueSheetWrite(tx, {
-      projectId: log.projectId,
-      workLogId: log.id,
-      jobType: "delete",
-      idempotencyKey: `delete:${log.id}`,
-    });
+    queuedDelete =
+      (await enqueueSheetWrite(tx, {
+        projectId: log.projectId,
+        userId: log.userId,
+        workLogId: log.id,
+        jobType: "delete",
+        changeKey: `delete:${log.id}`,
+      })) > 0;
 
     await writeAudit(tx, {
       actorId: actor.id,

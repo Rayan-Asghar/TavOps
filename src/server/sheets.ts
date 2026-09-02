@@ -1,4 +1,4 @@
-import { google, type sheets_v4 } from "googleapis";
+import { google, type drive_v3, type sheets_v4 } from "googleapis";
 import { ID_COLUMN, ROW_RANGE } from "@/lib/sheet-template";
 
 /**
@@ -15,10 +15,22 @@ import { ID_COLUMN, ROW_RANGE } from "@/lib/sheet-template";
  */
 
 let cached: sheets_v4.Sheets | null = null;
+let cachedDrive: drive_v3.Drive | null = null;
 
-export function sheetsClient(): sheets_v4.Sheets {
-  if (cached) return cached;
+/**
+ * Scopes.
+ *
+ * `drive.metadata.readonly` is the narrowest scope that can list a file's
+ * permissions, which is what powers the warning about who else can edit a
+ * sheet. It grants no ability to read cell contents through Drive and none to
+ * change sharing — Tavren reports, a person fixes it in Google.
+ */
+const SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+];
 
+function jwt() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
 
@@ -28,20 +40,63 @@ export function sheetsClient(): sheets_v4.Sheets {
     );
   }
 
-  const auth = new google.auth.JWT({
+  return new google.auth.JWT({
     email,
     // Env files store the key with escaped newlines; the JWT signer needs real ones.
     key: key.replace(/\\n/g, "\n"),
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: SCOPES,
   });
+}
 
-  cached = google.sheets({ version: "v4", auth });
+export function sheetsClient(): sheets_v4.Sheets {
+  if (cached) return cached;
+  cached = google.sheets({ version: "v4", auth: jwt() });
   return cached;
+}
+
+function driveClient(): drive_v3.Drive {
+  if (cachedDrive) return cachedDrive;
+  cachedDrive = google.drive({ version: "v3", auth: jwt() });
+  return cachedDrive;
 }
 
 /** Test seam: lets the worker's state machine be exercised without a network. */
 export function __setSheetsClientForTests(client: sheets_v4.Sheets | null) {
   cached = client;
+}
+
+export function __setDriveClientForTests(client: drive_v3.Drive | null) {
+  cachedDrive = client;
+}
+
+/**
+ * Who else can edit this sheet.
+ *
+ * Developers log their work in Tavren now, so their Editor access to the sheet
+ * has stopped being useful and started being a hazard: an edit made there is
+ * never read back, is silently overwritten by the next correction, and a column
+ * they insert stops the project syncing altogether.
+ *
+ * Reported, never changed. Tavren has no business rewriting a spreadsheet's
+ * sharing, and a person removing access deliberately in Google is clearer than
+ * software doing it quietly.
+ */
+export async function readOtherEditors(
+  spreadsheetId: string,
+): Promise<string[]> {
+  const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? "";
+  const res = await driveClient().permissions.list({
+    fileId: spreadsheetId,
+    fields: "permissions(emailAddress,role,type)",
+    // Sheets in a Shared Drive would otherwise report nothing useful.
+    supportsAllDrives: true,
+  });
+
+  const WRITERS = new Set(["writer", "owner", "organizer", "fileOrganizer"]);
+  return (res.data.permissions ?? [])
+    .filter((p) => WRITERS.has(p.role ?? ""))
+    .map((p) => p.emailAddress ?? "")
+    .filter((email) => email !== "" && email !== serviceAccount);
 }
 
 /**

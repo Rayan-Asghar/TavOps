@@ -151,10 +151,11 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
   // the two cannot disagree about whether the work happened.
   const queuedSync = await enqueueSheetWrite(tx, {
     projectId: input.projectId,
+    userId: input.userId,
     workLogId: entry.id,
     jobType: "append",
-    idempotencyKey: `revision:${revision.id}`,
+    changeKey: `revision:${revision.id}`,
   });
 
-  return { entry, revision, queuedSync };
+  return { entry, revision, queuedSync: queuedSync > 0 };
 }

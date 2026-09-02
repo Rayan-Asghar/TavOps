@@ -160,19 +160,25 @@ export async function makeWorkLog(opts: {
 }
 
 export async function makeConnection(opts: {
-  projectId: string;
+  /** Exactly one of these, matching the scope. */
+  projectId?: string | null;
+  userId?: string | null;
+  spreadsheetId?: string;
   headerHash?: string | null;
   visibility?: "internal" | "shareable";
   status?: "active" | "paused" | "error" | "archived";
 }) {
   const id = randomUUID();
+  const scope = opts.projectId ? "project" : "developer";
+  const sheet = opts.spreadsheetId ?? `sheet-${id.slice(0, 8)}`;
   await owner`
-    INSERT INTO sheet_connections (id, project_id, spreadsheet_id, spreadsheet_url,
-                                   tab_name, visibility, header_hash, status)
-    VALUES (${id}, ${opts.projectId}, 'sheet-1',
-            'https://docs.google.com/spreadsheets/d/sheet-1/edit', 'Sheet1',
-            ${opts.visibility ?? "internal"}, ${opts.headerHash ?? null},
-            ${opts.status ?? "active"})`;
+    INSERT INTO sheet_connections (id, scope, project_id, user_id, spreadsheet_id,
+                                   spreadsheet_url, tab_name, visibility,
+                                   header_hash, status)
+    VALUES (${id}, ${scope}, ${opts.projectId ?? null}, ${opts.userId ?? null},
+            ${sheet}, ${`https://docs.google.com/spreadsheets/d/${sheet}/edit`},
+            'Sheet1', ${opts.visibility ?? "internal"},
+            ${opts.headerHash ?? null}, ${opts.status ?? "active"})`;
   return id;
 }
 

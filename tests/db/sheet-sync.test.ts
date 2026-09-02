@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { sheets_v4 } from "googleapis";
 import { __setSheetsClientForTests } from "@/server/sheets";
 import { runSyncWorker } from "@/server/sync-worker";
+import { enqueueSheetWrite } from "@/server/sheet-sync";
+import { db } from "@/db";
 import { TEMPLATE_HEADERS, headerHash } from "@/lib/sheet-template";
 import {
   jobStatuses,
@@ -412,5 +414,140 @@ describe("connection state", () => {
     const statuses = await jobStatuses(connectionId);
     expect(statuses[0].status).toBe("done");
     expect(statuses[0].last_error).toContain("archived");
+  });
+});
+
+describe("an entry belongs to two sheets", () => {
+  it("writes to the project's sheet AND the developer's", async () => {
+    // Neither is a view of the other: they are separate spreadsheets, one
+    // answering "what did this project cost", the other "what did Ahmed do".
+    const userId = await makeUser({ name: "Ahmed" });
+    const projectId = await makeProject({ code: "TS-001" });
+    const projectSheet = await makeConnection({
+      projectId,
+      spreadsheetId: "project-sheet",
+      headerHash: validHash,
+    });
+    const devSheet = await makeConnection({
+      userId,
+      spreadsheetId: "developer-sheet",
+      headerHash: validHash,
+    });
+
+    const log = await makeWorkLog({ projectId, userId, hours: "2.50" });
+    const queued = await db.transaction((tx) =>
+      enqueueSheetWrite(tx, {
+        projectId,
+        userId,
+        workLogId: log.id,
+        jobType: "append",
+        changeKey: `revision:${log.revisionId}`,
+      }),
+    );
+    expect(queued).toBe(2);
+
+    const { client, calls } = fakeSheets({});
+    __setSheetsClientForTests(client);
+    const result = await runSyncWorker();
+
+    expect(result).toMatchObject({ done: 2, failed: 0 });
+
+    // One append per sheet, each carrying the same entry.
+    const appends = calls.filter((c) => c.method === "append");
+    expect(appends).toHaveLength(2);
+    expect(
+      new Set(
+        appends.map(
+          (a) => (a.args as { spreadsheetId: string }).spreadsheetId,
+        ),
+      ),
+    ).toEqual(new Set(["project-sheet", "developer-sheet"]));
+
+    // And a position remembered in each, so a later correction finds both.
+    const links = await owner`
+      SELECT connection_id FROM sheet_row_links WHERE work_log_id = ${log.id}`;
+    expect(links).toHaveLength(2);
+    expect(new Set(links.map((l) => (l as { connection_id: string }).connection_id)))
+      .toEqual(new Set([projectSheet, devSheet]));
+  });
+
+  it("gives the two sheets distinct idempotency keys", async () => {
+    // The bug this guards: keyed on the revision alone, the second sheet's job
+    // collides with the first and is silently dropped by onConflictDoNothing —
+    // one sheet updates forever and the other quietly never does.
+    const userId = await makeUser({ name: "Ahmed" });
+    const projectId = await makeProject({ code: "TS-001" });
+    await makeConnection({ projectId, spreadsheetId: "p", headerHash: validHash });
+    await makeConnection({ userId, spreadsheetId: "d", headerHash: validHash });
+
+    const log = await makeWorkLog({ projectId, userId });
+    await db.transaction((tx) =>
+      enqueueSheetWrite(tx, {
+        projectId,
+        userId,
+        workLogId: log.id,
+        jobType: "append",
+        changeKey: `revision:${log.revisionId}`,
+      }),
+    );
+
+    const keys = await owner`
+      SELECT idempotency_key FROM sync_jobs WHERE work_log_id = ${log.id}`;
+    expect(keys).toHaveLength(2);
+    expect(
+      new Set(keys.map((k) => (k as { idempotency_key: string }).idempotency_key)),
+    ).toHaveProperty("size", 2);
+  });
+
+  it("still queues nothing when neither has a sheet", async () => {
+    const userId = await makeUser({ name: "Ahmed" });
+    const projectId = await makeProject({ code: "TS-001" });
+    const log = await makeWorkLog({ projectId, userId });
+
+    const queued = await db.transaction((tx) =>
+      enqueueSheetWrite(tx, {
+        projectId,
+        userId,
+        workLogId: log.id,
+        jobType: "append",
+        changeKey: `revision:${log.revisionId}`,
+      }),
+    );
+    expect(queued).toBe(0);
+  });
+
+  it("collects one person's work across every project into their sheet", async () => {
+    const userId = await makeUser({ name: "Ahmed" });
+    const projectA = await makeProject({ code: "AAA-1" });
+    const projectB = await makeProject({ code: "BBB-2" });
+    await makeConnection({ userId, spreadsheetId: "d", headerHash: validHash });
+
+    for (const projectId of [projectA, projectB]) {
+      const log = await makeWorkLog({ projectId, userId });
+      await db.transaction((tx) =>
+        enqueueSheetWrite(tx, {
+          projectId,
+          userId,
+          workLogId: log.id,
+          jobType: "append",
+          changeKey: `revision:${log.revisionId}`,
+        }),
+      );
+    }
+
+    const { client, calls } = fakeSheets({});
+    __setSheetsClientForTests(client);
+    await runSyncWorker();
+
+    // Both rows go to the one sheet, in one call, and each names its project.
+    const appends = calls.filter((c) => c.method === "append");
+    expect(appends).toHaveLength(1);
+    const rows = (
+      appends[0].args as { requestBody: { values: string[][] } }
+    ).requestBody.values;
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r[2]))).toEqual(
+      new Set(["Test Project", "Test Project"]),
+    );
   });
 });

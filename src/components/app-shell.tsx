@@ -76,6 +76,9 @@ export async function AppShell({
   if (can(role, "user.manage")) {
     management.push({ href: "/admin/users", label: "People", icon: "people" });
   }
+  if (can(role, "sheet.configure")) {
+    management.push({ href: "/admin/sheets", label: "Work log sheets", icon: "projects" });
+  }
   if (can(role, "audit.view")) {
     management.push({ href: "/audit", label: "Audit log", icon: "review" });
   }

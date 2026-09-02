@@ -163,7 +163,7 @@ export default async function ProjectPage({
   const activeTab: TabKey =
     requestedTab === "sheet" && !canConfigureSheet ? "overview" : requestedTab;
 
-  const sheetStatus = canConfigureSheet ? await sheetStatusFor(id) : null;
+  const sheetStatus = canConfigureSheet ? await sheetStatusFor({ scope: "project", projectId: id }) : null;
 
   const rawSession = await activeSessionFor(actor.id);
   // Dates cross the server/client boundary as ISO strings.
@@ -587,7 +587,7 @@ export default async function ProjectPage({
 
           {activeTab === "sheet" && canConfigureSheet && sheetStatus && (
             <SheetPanel
-              projectId={project.id}
+              owner={{ scope: "project", projectId: project.id }}
               status={sheetStatus}
               serviceAccountEmail={
                 process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null

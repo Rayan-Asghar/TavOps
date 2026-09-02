@@ -7,7 +7,7 @@ import {
   retryFailedSyncs,
   toggleSheetSync,
 } from "@/server/sheet-connection";
-import type { SheetStatus } from "@/server/sheet-queries";
+import type { SheetOwner, SheetStatus } from "@/server/sheet-queries";
 import { ActionButton, FormError, FormSuccess } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { Badge } from "./badges";
@@ -26,27 +26,29 @@ function fmtWhen(d: Date | null): string {
 }
 
 /**
- * The project's work-log sheet.
+ * A work-log sheet, allotted either to a project or to a person.
  *
- * One sheet per project, written one way. Developers never see this — they log
- * work and Tavren decides which sheet the entry belongs in from the project on
- * the task. Only whoever runs the project attaches it, once.
+ * Written one way. Developers never see this panel — they log work and Tavren
+ * decides which sheets the entry belongs in from the project on the task and
+ * from whose work it is. A project's sheet is attached by whoever runs that
+ * project; a person's is allotted by a head or an admin.
  *
  * The service-account address leads, because nothing works until the sheet is
  * shared with it and that is the step people forget.
  */
 export function SheetPanel({
-  projectId,
+  owner,
   status,
   serviceAccountEmail,
   templateCopyHref,
 }: {
-  projectId: string;
+  owner: SheetOwner;
   status: SheetStatus;
   serviceAccountEmail: string | null;
   /** Null when no template is configured on the server. */
   templateCopyHref: string | null;
 }) {
+  const isProject = owner.scope === "project";
   const [connectState, connectAction, connecting] = useActionState(
     connectSheet,
     initial,
@@ -63,7 +65,7 @@ export function SheetPanel({
         <p className="eyebrow m-0">WORK LOG SHEET</p>
         <p className="m-0 mt-2 text-[12px] text-fg-muted">
           Google Sheets is not configured on the server. An admin needs to set
-          the service account credentials before projects can attach a sheet.
+          the service account credentials before a sheet can be attached.
         </p>
       </section>
     );
@@ -75,8 +77,10 @@ export function SheetPanel({
         <p className="eyebrow m-0">STEP 1 — SHARE THE SHEET</p>
         <p className="m-0 mb-3 mt-1 text-[12px] text-fg-muted">
           Open the spreadsheet, press <b>Share</b>, and give this address{" "}
-          <b>Editor</b> access. Every project uses the same address, and nothing
-          syncs until this is done.
+          <b>Editor</b> access. Every sheet uses the same address, and nothing
+          syncs until this is done. Anyone else with Editor should be set to{" "}
+          <b>Viewer</b> — edits made in the sheet are never read back, and are
+          overwritten by the next correction.
         </p>
         <CopyField value={serviceAccountEmail} label="Share with" />
       </section>
@@ -135,7 +139,7 @@ export function SheetPanel({
               <div className="mt-2">
                 <ActionButton
                   action={retryFailedSyncs}
-                  fields={{ projectId }}
+                  fields={{ connectionId: conn!.id }}
                   pendingLabel="Retrying…"
                 >
                   Retry
@@ -147,8 +151,10 @@ export function SheetPanel({
           <div className="px-5 py-4">
             <p className="eyebrow m-0">WHAT GOES ACROSS</p>
             <p className="m-0 mt-1.5 text-[11px] text-fg-muted">
-              Every work log on this project, one row each: date, developer,
-              project, task, hours
+              {isProject
+                ? "Every work log on this project, one row each"
+                : "Every work log this person files, on any project, one row each"}
+              : date, developer, project, task, hours
               {conn!.visibility === "internal" ? ", what was done" : ""}, and
               status. Corrections update the row they belong to; a removed entry
               stays as a zero-hour row marked <b>Removed</b>.
@@ -170,7 +176,10 @@ export function SheetPanel({
           <div className="flex flex-wrap gap-2 border-t border-border px-5 py-4">
             <ActionButton
               action={toggleSheetSync}
-              fields={{ projectId, enabled: syncing ? "false" : "true" }}
+              fields={{
+                connectionId: conn!.id,
+                enabled: syncing ? "false" : "true",
+              }}
             >
               {syncing ? "Pause syncing" : "Resume syncing"}
             </ActionButton>
@@ -184,7 +193,7 @@ export function SheetPanel({
             <div className="ml-auto">
               <ActionButton
                 action={disconnectSheet}
-                fields={{ projectId }}
+                fields={{ connectionId: conn!.id }}
                 confirm="Disconnect?"
                 className="px-3 py-2 text-[11px] font-bold text-fg-muted hover:text-danger"
               >
@@ -219,7 +228,12 @@ export function SheetPanel({
           )}
 
           <form action={connectAction} className="mt-3 space-y-3">
-            <input type="hidden" name="projectId" value={projectId} />
+            <input type="hidden" name="scope" value={owner.scope} />
+            {owner.scope === "project" ? (
+              <input type="hidden" name="projectId" value={owner.projectId} />
+            ) : (
+              <input type="hidden" name="userId" value={owner.userId} />
+            )}
             <div>
               <label className="label" htmlFor="sheetUrl">
                 Google Sheet link

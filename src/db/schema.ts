@@ -156,7 +156,16 @@ export const notificationKind = pgEnum("notification_kind", [
   "timer_left_running",
 ]);
 
-/** One sheet per project. `shareable` withholds the work note — see sheetVisibility. */
+/**
+ * What a sheet collects.
+ *
+ * A `project` sheet answers "what did this project cost"; a `developer` sheet
+ * answers "what did this person do". An entry belongs to both, so it is written
+ * to both, and neither is derived from the other.
+ */
+export const sheetScope = pgEnum("sheet_scope", ["project", "developer"]);
+
+/** `shareable` withholds the work note — see sheetVisibility. */
 export const sheetVisibility = pgEnum("sheet_visibility", [
   "internal",
   "shareable",
@@ -669,9 +678,13 @@ export const sheetConnections = pgTable(
   "sheet_connections",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    projectId: uuid("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+    scope: sheetScope("scope").notNull(),
+    /** Set when scope is `project`; null otherwise. */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    /** Set when scope is `developer`; null otherwise. */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     spreadsheetId: varchar("spreadsheet_id", { length: 120 }).notNull(),
     spreadsheetUrl: text("spreadsheet_url").notNull(),
     tabName: varchar("tab_name", { length: 120 }).default("Sheet1").notNull(),
@@ -701,14 +714,27 @@ export const sheetConnections = pgTable(
       .notNull(),
   },
   (t) => [
-    // Both columns are NOT NULL, so unlike the index these replace, NULLs
-    // cannot make them silently permissive.
-    uniqueIndex("sheet_connections_project_unique").on(t.projectId),
-    // Partial: a disconnected project archives its row, and that must not
-    // reserve the spreadsheet forever against a project that wants it next.
+    /**
+     * One sheet per project and one per developer.
+     *
+     * Partial on IS NOT NULL rather than plain unique indexes: the owning
+     * column is null for the other scope, and NULLs being distinct would make a
+     * plain index permit any number of rows — the trap that made
+     * `sheet_connections_owner_unique` inert in the implementation this
+     * replaces.
+     */
+    uniqueIndex("sheet_connections_project_unique")
+      .on(t.projectId)
+      .where(sql`${t.projectId} IS NOT NULL`),
+    uniqueIndex("sheet_connections_user_unique")
+      .on(t.userId)
+      .where(sql`${t.userId} IS NOT NULL`),
+    // Partial: a disconnected owner archives its row, and that must not reserve
+    // the spreadsheet forever against whoever wants it next.
     uniqueIndex("sheet_connections_destination_unique")
       .on(t.spreadsheetId, t.tabName)
       .where(sql`${t.status} <> 'archived'`),
+    index("sheet_connections_scope_idx").on(t.scope, t.status),
   ],
 );
 
@@ -1010,6 +1036,10 @@ export const sheetConnectionsRelations = relations(
     project: one(projects, {
       fields: [sheetConnections.projectId],
       references: [projects.id],
+    }),
+    user: one(users, {
+      fields: [sheetConnections.userId],
+      references: [users.id],
     }),
     jobs: many(syncJobs),
     rowLinks: many(sheetRowLinks),
