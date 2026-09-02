@@ -156,10 +156,9 @@ export async function editWorkLog(input: EditWorkLogInput) {
 
     // The sheet row is corrected in place, addressed by the entry's id.
     queuedSync = await enqueueSheetWrite(tx, {
-        projectId: log.projectId,
-        userId: log.userId,
-        workLogId: log.id,
-        jobType: "update",
+      projectId: log.projectId,
+      workLogId: log.id,
+      jobType: "update",
       changeKey: `revision:${revision.id}`,
     });
 
@@ -237,10 +236,9 @@ export async function deleteWorkLog(input: DeleteWorkLogInput) {
     // The sheet keeps the row and blanks it: removing a row would shift every
     // row beneath it and invalidate every recorded position at once.
     queuedDelete = await enqueueSheetWrite(tx, {
-        projectId: log.projectId,
-        userId: log.userId,
-        workLogId: log.id,
-        jobType: "delete",
+      projectId: log.projectId,
+      workLogId: log.id,
+      jobType: "delete",
       changeKey: `delete:${log.id}`,
     });
 

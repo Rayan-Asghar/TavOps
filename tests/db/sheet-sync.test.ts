@@ -152,7 +152,6 @@ async function scenario(
   const projectId = await makeProject({ code: "TS-001" });
   const connectionId = await makeConnection({
     projectId,
-    userId,
     headerHash:
       overrides.headerHash === undefined ? validHash : overrides.headerHash,
     visibility: overrides.visibility,
@@ -478,67 +477,54 @@ describe("connection state", () => {
   });
 });
 
-describe("one sheet per person per project", () => {
-  /** Queues an entry the way recordWorkInTx does, and returns whether it landed. */
-  const enqueue = (projectId: string, userId: string, log: { id: string; revisionId: string }) =>
+describe("one sheet per project", () => {
+  /** Queues an entry the way recordWorkInTx does. */
+  const enqueue = (projectId: string, log: { id: string; revisionId: string }) =>
     db.transaction((tx) =>
       enqueueSheetWrite(tx, {
         projectId,
-        userId,
         workLogId: log.id,
         jobType: "append",
         changeKey: `revision:${log.revisionId}`,
       }),
     );
 
-  it("keeps two developers on one project in separate sheets", async () => {
-    // Ahmed must never appear in Ali's sheet, or the sheet stops being a record
-    // of what one person did.
+  it("collects both developers' work on a project into the one sheet", async () => {
+    // Who did it is on the work log and shown in the app; the sheet records
+    // what was done and how long it took.
     const ahmed = await makeUser({ name: "Ahmed" });
     const ali = await makeUser({ name: "Ali" });
     const projectId = await makeProject({ code: "TS-001" });
-    await makeConnection({ projectId, userId: ahmed, spreadsheetId: "ahmed-sheet", headerHash: validHash });
-    await makeConnection({ projectId, userId: ali, spreadsheetId: "ali-sheet", headerHash: validHash });
+    await makeConnection({ projectId, spreadsheetId: "project-sheet", headerHash: validHash });
 
-    const ahmedLog = await makeWorkLog({ projectId, userId: ahmed, hours: "3.00" });
-    const aliLog = await makeWorkLog({ projectId, userId: ali, hours: "5.00" });
-    expect(await enqueue(projectId, ahmed, ahmedLog)).toBe(true);
-    expect(await enqueue(projectId, ali, aliLog)).toBe(true);
+    const a = await makeWorkLog({ projectId, userId: ahmed, hours: "3.00" });
+    const b = await makeWorkLog({ projectId, userId: ali, hours: "5.00" });
+    expect(await enqueue(projectId, a)).toBe(true);
+    expect(await enqueue(projectId, b)).toBe(true);
 
     const { client, calls } = fakeSheets({});
     __setSheetsClientForTests(client);
     await runSyncWorker();
 
+    // One sheet, one call, both rows.
     const appends = calls.filter((c) => c.method === "append");
-    expect(appends).toHaveLength(2);
-
-    const bySheet = new Map(
-      appends.map((a) => {
-        const args = a.args as {
-          spreadsheetId: string;
-          requestBody: { values: string[][] };
-        };
-        return [args.spreadsheetId, args.requestBody.values];
-      }),
-    );
-    // Each sheet carries exactly one row, and it is that person's hours.
-    expect(bySheet.get("ahmed-sheet")).toHaveLength(1);
-    expect(bySheet.get("ahmed-sheet")![0][2]).toBe("3.00");
-    expect(bySheet.get("ali-sheet")).toHaveLength(1);
-    expect(bySheet.get("ali-sheet")![0][2]).toBe("5.00");
+    expect(appends).toHaveLength(1);
+    const rows = (
+      appends[0].args as { requestBody: { values: string[][] } }
+    ).requestBody.values;
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r[2]))).toEqual(new Set(["3.00", "5.00"]));
   });
 
-  it("keeps one developer's two projects in separate sheets", async () => {
+  it("keeps two projects' work apart", async () => {
     const ahmed = await makeUser({ name: "Ahmed" });
     const projectA = await makeProject({ code: "AAA-1" });
     const projectB = await makeProject({ code: "BBB-2" });
-    await makeConnection({ projectId: projectA, userId: ahmed, spreadsheetId: "a-sheet", headerHash: validHash });
-    await makeConnection({ projectId: projectB, userId: ahmed, spreadsheetId: "b-sheet", headerHash: validHash });
+    await makeConnection({ projectId: projectA, spreadsheetId: "a-sheet", headerHash: validHash });
+    await makeConnection({ projectId: projectB, spreadsheetId: "b-sheet", headerHash: validHash });
 
-    const logA = await makeWorkLog({ projectId: projectA, userId: ahmed, hours: "1.00" });
-    const logB = await makeWorkLog({ projectId: projectB, userId: ahmed, hours: "7.00" });
-    await enqueue(projectA, ahmed, logA);
-    await enqueue(projectB, ahmed, logB);
+    await enqueue(projectA, await makeWorkLog({ projectId: projectA, userId: ahmed, hours: "1.00" }));
+    await enqueue(projectB, await makeWorkLog({ projectId: projectB, userId: ahmed, hours: "7.00" }));
 
     const { client, calls } = fakeSheets({});
     __setSheetsClientForTests(client);
@@ -559,18 +545,23 @@ describe("one sheet per person per project", () => {
     expect(bySheet.get("b-sheet")![0][2]).toBe("7.00");
   });
 
-  it("queues nothing for a person with no sheet on that project", async () => {
-    // A colleague's sheet on the same project must not receive their work.
+  it("queues nothing for a project with no sheet", async () => {
     const ahmed = await makeUser({ name: "Ahmed" });
-    const ali = await makeUser({ name: "Ali" });
     const projectId = await makeProject({ code: "TS-001" });
-    await makeConnection({ projectId, userId: ali, headerHash: validHash });
-
     const log = await makeWorkLog({ projectId, userId: ahmed });
-    expect(await enqueue(projectId, ahmed, log)).toBe(false);
+    expect(await enqueue(projectId, log)).toBe(false);
+    expect(await owner`SELECT id FROM sync_jobs`).toHaveLength(0);
+  });
 
-    const jobs = await owner`SELECT id FROM sync_jobs`;
-    expect(jobs).toHaveLength(0);
+  it("does not send one project's work to another project's sheet", async () => {
+    const ahmed = await makeUser({ name: "Ahmed" });
+    const mine = await makeProject({ code: "AAA-1" });
+    const theirs = await makeProject({ code: "BBB-2" });
+    await makeConnection({ projectId: theirs, headerHash: validHash });
+
+    const log = await makeWorkLog({ projectId: mine, userId: ahmed });
+    expect(await enqueue(mine, log)).toBe(false);
+    expect(await owner`SELECT id FROM sync_jobs`).toHaveLength(0);
   });
 });
 

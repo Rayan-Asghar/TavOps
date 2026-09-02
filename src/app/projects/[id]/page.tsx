@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getActor } from "@/lib/auth";
@@ -21,8 +20,7 @@ import {
 } from "@/components/task-timer";
 import { ProjectTabs, type TabKey } from "@/components/project-tabs";
 import { SheetPanel } from "@/components/sheet-panel";
-import { ProjectSheets } from "@/components/project-sheets";
-import { memberSheetsFor, sheetStatusFor } from "@/server/sheet-queries";
+import { sheetStatusFor } from "@/server/sheet-queries";
 import { templateCopyUrl } from "@/lib/sheet-template";
 import { ProjectActivity } from "@/components/project-activity";
 import { ActionPanel, Disclosure } from "@/components/action-panel";
@@ -90,13 +88,13 @@ export default async function ProjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; person?: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const actor = await getActor();
   if (!actor) redirect("/login");
 
   const { id } = await params;
-  const { tab, person } = await searchParams;
+  const { tab } = await searchParams;
 
   // 404 rather than 403: a developer probing project ids should not be able to
   // learn which ones exist.
@@ -165,14 +163,8 @@ export default async function ProjectPage({
   const activeTab: TabKey =
     requestedTab === "sheet" && !canConfigureSheet ? "overview" : requestedTab;
 
-  // The sheet tab lists the project's people; ?person= opens one person's.
-  const memberSheets = canConfigureSheet ? await memberSheetsFor(id) : [];
-  const selectedPerson =
-    canConfigureSheet && person
-      ? (memberSheets.find((m) => m.userId === person) ?? null)
-      : null;
-  const selectedSheet = selectedPerson
-    ? await sheetStatusFor({ projectId: id, userId: selectedPerson.userId })
+  const sheetStatus = canConfigureSheet
+    ? await sheetStatusFor({ projectId: id })
     : null;
 
   const rawSession = await activeSessionFor(actor.id);
@@ -310,7 +302,7 @@ export default async function ProjectPage({
                 {
                   key: "sheet" as const,
                   label: "Sheet",
-                  count: memberSheets.reduce((n, m) => n + m.failed, 0),
+                  count: sheetStatus?.failed ?? 0,
                 },
               ]
             : []),
@@ -595,45 +587,20 @@ export default async function ProjectPage({
             />
           )}
 
-          {activeTab === "sheet" && canConfigureSheet && (
-            <>
-              {selectedPerson && selectedSheet ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Link
-                      href={`/projects/${project.id}?tab=sheet`}
-                      className="btn-secondary btn-sm"
-                    >
-                      Back
-                    </Link>
-                    <p className="m-0 text-[12px] text-fg-muted">
-                      Sheet for <b>{selectedPerson.name}</b> on {project.code}
-                    </p>
-                  </div>
-                  <SheetPanel
-                    owner={{ projectId: project.id, userId: selectedPerson.userId }}
-                    personName={selectedPerson.name}
-                    status={selectedSheet}
-                    serviceAccountEmail={
-                      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null
-                    }
-                    templateCopyHref={
-                      process.env.TAVREN_SHEET_TEMPLATE_ID
-                        ? templateCopyUrl(process.env.TAVREN_SHEET_TEMPLATE_ID)
-                        : null
-                    }
-                  />
-                </div>
-              ) : (
-                <ProjectSheets
-                  projectId={project.id}
-                  members={memberSheets}
-                  serviceAccountEmail={
-                    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null
-                  }
-                />
-              )}
-            </>
+          {activeTab === "sheet" && canConfigureSheet && sheetStatus && (
+            <SheetPanel
+              projectId={project.id}
+              projectLabel={`${project.code} — ${project.name}`}
+              status={sheetStatus}
+              serviceAccountEmail={
+                process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || null
+              }
+              templateCopyHref={
+                process.env.TAVREN_SHEET_TEMPLATE_ID
+                  ? templateCopyUrl(process.env.TAVREN_SHEET_TEMPLATE_ID)
+                  : null
+              }
+            />
           )}
 
           {activeTab === "activity" && (

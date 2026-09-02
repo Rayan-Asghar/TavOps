@@ -1,11 +1,6 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  projectMembers,
-  sheetConnections,
-  syncJobs,
-  users,
-} from "@/db/schema";
+import { sheetConnections, syncJobs } from "@/db/schema";
 
 /**
  * Read side of the work-log sheet panel.
@@ -14,8 +9,8 @@ import {
  * endpoint, and these are queries.
  */
 
-/** A sheet belongs to one person on one project; both identify it. */
-export type SheetOwner = { projectId: string; userId: string };
+/** A sheet belongs to a project. */
+export type SheetOwner = { projectId: string };
 
 export type SheetStatus = {
   connection: {
@@ -47,12 +42,7 @@ export async function sheetStatusFor(
   const [connection] = await db
     .select()
     .from(sheetConnections)
-    .where(
-      and(
-        eq(sheetConnections.projectId, owner.projectId),
-        eq(sheetConnections.userId, owner.userId),
-      ),
-    )
+    .where(eq(sheetConnections.projectId, owner.projectId))
     .limit(1);
 
   if (!connection || connection.status === "archived") return EMPTY;
@@ -96,72 +86,4 @@ export async function sheetStatusFor(
     synced: counts?.synced ?? 0,
     lastError: lastFailure?.lastError ?? null,
   };
-}
-
-export type MemberSheet = {
-  userId: string;
-  name: string;
-  role: string;
-  connectionId: string | null;
-  spreadsheetUrl: string | null;
-  status: "active" | "paused" | "error" | "archived" | null;
-  queued: number;
-  failed: number;
-};
-
-/**
- * Every person on a project, with the sheet they have been allotted.
- *
- * The project's own tab is where allotment happens, because the sheet is per
- * person per project and a project is where you can see both at once.
- */
-export async function memberSheetsFor(
-  projectId: string,
-): Promise<MemberSheet[]> {
-  const rows = await db
-    .select({
-      userId: users.id,
-      name: users.name,
-      role: projectMembers.role,
-      connectionId: sheetConnections.id,
-      spreadsheetUrl: sheetConnections.spreadsheetUrl,
-      status: sheetConnections.status,
-    })
-    .from(projectMembers)
-    .innerJoin(users, eq(projectMembers.userId, users.id))
-    .leftJoin(
-      sheetConnections,
-      and(
-        eq(sheetConnections.projectId, projectMembers.projectId),
-        eq(sheetConnections.userId, projectMembers.userId),
-        ne(sheetConnections.status, "archived"),
-      ),
-    )
-    .where(eq(projectMembers.projectId, projectId))
-    .orderBy(asc(users.name));
-
-  const ids = rows.map((r) => r.connectionId).filter(Boolean) as string[];
-  const counts = ids.length
-    ? await db
-        .select({
-          connectionId: syncJobs.connectionId,
-          queued: sql<number>`count(*) filter (where ${eq(syncJobs.status, "queued")})::int`,
-          failed: sql<number>`count(*) filter (where ${eq(syncJobs.status, "failed")})::int`,
-        })
-        .from(syncJobs)
-        .where(inArray(syncJobs.connectionId, ids))
-        .groupBy(syncJobs.connectionId)
-    : [];
-  const byConnection = new Map(counts.map((c) => [c.connectionId, c]));
-
-  return rows.map((r) => ({
-    userId: r.userId,
-    name: r.name,
-    role: r.role,
-    connectionId: r.connectionId,
-    spreadsheetUrl: r.spreadsheetUrl,
-    status: r.status,
-    queued: r.connectionId ? (byConnection.get(r.connectionId)?.queued ?? 0) : 0,
-    failed: r.connectionId ? (byConnection.get(r.connectionId)?.failed ?? 0) : 0,
-  }));
 }

@@ -20,9 +20,8 @@ export type SyncJobType = "append" | "update" | "delete";
 /**
  * Queues the sheet write for one entry, in the same transaction as the change.
  *
- * A sheet belongs to one person on one project, so an entry has exactly one
- * destination: the sheet for whose work it is and what it was on. Two
- * developers on a project keep two sheets and never appear in each other's.
+ * A sheet belongs to a project, so an entry has exactly one destination: the
+ * sheet for the project the work was on, whoever did it.
  *
  * The outbox pattern, and the reason a sheet cannot drift from the database: an
  * entry cannot be recorded without its write being queued, and a write cannot be
@@ -33,7 +32,6 @@ export async function enqueueSheetWrite(
   tx: Tx,
   input: {
     projectId: string;
-    userId: string;
     workLogId: string;
     jobType: SyncJobType;
     /**
@@ -50,7 +48,6 @@ export async function enqueueSheetWrite(
       and(
         eq(sheetConnections.status, "active"),
         eq(sheetConnections.projectId, input.projectId),
-        eq(sheetConnections.userId, input.userId),
       ),
     )
     .limit(1);

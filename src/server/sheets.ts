@@ -345,3 +345,30 @@ export async function ensureMonthTab(
 
   return sheetId;
 }
+
+/**
+ * Renames the spreadsheet, so it is findable in Drive without opening it.
+ *
+ * This is the Sheets API, not Drive: `updateSpreadsheetProperties` sets the
+ * title, and a spreadsheet's title IS its Drive file name. That matters here,
+ * because the Drive API is not enabled on this project and everything that
+ * needs it is unavailable — this is not.
+ */
+export async function renameSpreadsheet(
+  spreadsheetId: string,
+  title: string,
+): Promise<void> {
+  await sheetsClient().spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          updateSpreadsheetProperties: {
+            properties: { title },
+            fields: "title",
+          },
+        },
+      ],
+    },
+  });
+}

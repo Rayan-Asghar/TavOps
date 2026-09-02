@@ -267,21 +267,14 @@ async function failJobs(
  * becomes somebody's actionable inbox item rather than a log line.
  */
 async function notifyAdmins(connectionId: string, message: string) {
-  // Left join: a developer's sheet has no project, and an inner join would
-  // silently drop the alert for exactly those failures.
   const [connection] = await db
-    .select({
-      projectId: sheetConnections.projectId,
-      code: projects.code,
-      person: users.name,
-    })
+    .select({ projectId: sheetConnections.projectId, code: projects.code })
     .from(sheetConnections)
-    .leftJoin(projects, eq(sheetConnections.projectId, projects.id))
-    .leftJoin(users, eq(sheetConnections.userId, users.id))
+    .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
     .where(eq(sheetConnections.id, connectionId))
     .limit(1);
 
-  const which = connection?.code ?? connection?.person ?? null;
+  const which = connection?.code ?? null;
 
   const admins = await db
     .select({ id: users.id })
@@ -512,16 +505,11 @@ export async function runSyncWorker(limit = BATCH_SIZE) {
     );
 
     // The label heads column B and titles a new month's tab: what the sheet is
-    // about. A project's name for a project sheet, a person's for theirs.
+    // about, which is the project.
     const connectionRows = await db
-      .select({
-        connection: sheetConnections,
-        projectName: projects.name,
-        personName: users.name,
-      })
+      .select({ connection: sheetConnections, projectName: projects.name })
       .from(sheetConnections)
-      .leftJoin(projects, eq(sheetConnections.projectId, projects.id))
-      .leftJoin(users, eq(sheetConnections.userId, users.id))
+      .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
       .where(
         inArray(sheetConnections.id, [
           ...new Set(jobs.map((j) => j.connectionId)),
@@ -532,10 +520,7 @@ export async function runSyncWorker(limit = BATCH_SIZE) {
       connectionRows.map((r) => [r.connection.id, r.connection]),
     );
     const labels = new Map(
-      connectionRows.map((r) => [
-        r.connection.id,
-        r.projectName ?? r.personName ?? "Work log",
-      ]),
+      connectionRows.map((r) => [r.connection.id, r.projectName]),
     );
 
     const byConnection = new Map<string, ClaimedJob[]>();

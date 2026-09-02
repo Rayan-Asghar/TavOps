@@ -12,10 +12,10 @@ import { Badge } from "@/components/badges";
 /**
  * Every work-log sheet, across every project.
  *
- * Read-only on purpose. A sheet belongs to one person on one project, so it is
- * allotted where both are in view — the project's own Sheet tab. This page
- * answers the other question, the one no single project can: who is still
- * logging into nothing, and which sheets have stopped accepting writes.
+ * Read-only on purpose. A sheet belongs to a project and is attached on that
+ * project's own Sheet tab. This page answers the question no single project
+ * can: which projects are still logging into nothing, and which sheets have
+ * stopped accepting writes.
  */
 
 export default async function SheetsAdminPage() {
@@ -41,13 +41,11 @@ export default async function SheetsAdminPage() {
         projectId: projects.id,
         projectCode: projects.code,
         projectName: projects.name,
-        personName: users.name,
       })
       .from(sheetConnections)
       .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
-      .innerJoin(users, eq(sheetConnections.userId, users.id))
       .where(ne(sheetConnections.status, "archived"))
-      .orderBy(asc(projects.code), asc(users.name)),
+      .orderBy(asc(projects.code)),
     unresolvedCount(actor.id),
   ]);
 
@@ -61,10 +59,10 @@ export default async function SheetsAdminPage() {
       title="Work log sheets"
     >
       <SectionIntro
-        eyebrow="ONE SHEET PER PERSON PER PROJECT"
+        eyebrow="ONE SHEET PER PROJECT"
         title="Every sheet Tavren writes to"
-        description="Allotted on each project's Sheet tab, where the person and the project
-                     are both in view. This is the list, and what is broken."
+        description="Attached on each project's own Sheet tab. This page is the list, and
+                     what has stopped working."
       />
 
       {broken > 0 && (
@@ -87,8 +85,7 @@ export default async function SheetsAdminPage() {
         <div className="px-5 py-1">
           {rows.length === 0 ? (
             <p className="py-8 text-center text-[12px] text-fg-muted">
-              No sheets allotted yet. Open a project, go to its Sheet tab, and
-              allot one to each person working on it.
+              No sheets attached yet. Open a project and go to its Sheet tab.
             </p>
           ) : (
             rows.map((r) => (
@@ -97,10 +94,7 @@ export default async function SheetsAdminPage() {
                 className="flex flex-wrap items-center gap-3 border-b border-border py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-bold">
-                    {r.personName}{" "}
-                    <span className="text-fg-muted">on {r.projectCode}</span>
-                  </div>
+                  <div className="text-[12px] font-bold">{r.projectCode}</div>
                   <div className="truncate text-[9px] text-fg-subtle">
                     {r.projectName}
                   </div>

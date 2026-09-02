@@ -670,18 +670,16 @@ export const sheetConnections = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     /**
-     * A sheet belongs to one person on one project.
+     * A sheet belongs to a project, and collects everything done on it.
      *
-     * Two developers on a project keep two sheets; one developer on two
-     * projects keeps two sheets. Both columns are required, because a sheet
-     * with only one of them has no defined content.
+     * Not to a person: what the team needs from a sheet is what was done and
+     * how long it took, and on the rare project with two developers that is the
+     * same answer either way. Who did it is recorded on the work log and shown
+     * in the app — the sheet has no Developer column and needs none.
      */
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
     spreadsheetId: varchar("spreadsheet_id", { length: 120 }).notNull(),
     spreadsheetUrl: text("spreadsheet_url").notNull(),
     tabName: varchar("tab_name", { length: 120 }).default("Sheet1").notNull(),
@@ -712,10 +710,10 @@ export const sheetConnections = pgTable(
   },
   (t) => [
     /**
-     * One sheet per person per project. Both columns are NOT NULL, so unlike
-     * the index this replaces, NULLs cannot make it silently permissive.
+     * One sheet per project. NOT NULL, so unlike the index this replaces, a
+     * NULL cannot make it silently permissive.
      */
-    uniqueIndex("sheet_connections_pair_unique").on(t.projectId, t.userId),
+    uniqueIndex("sheet_connections_project_unique").on(t.projectId),
     /**
      * One owner per spreadsheet, not per tab.
      *
@@ -1031,10 +1029,6 @@ export const sheetConnectionsRelations = relations(
     project: one(projects, {
       fields: [sheetConnections.projectId],
       references: [projects.id],
-    }),
-    user: one(users, {
-      fields: [sheetConnections.userId],
-      references: [users.id],
     }),
     jobs: many(syncJobs),
     rowLinks: many(sheetRowLinks),

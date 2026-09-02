@@ -4,6 +4,8 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
+  clients,
+  projects,
   sheetConnections,
   sheetRowLinks,
   syncJobs,
@@ -24,6 +26,7 @@ import {
   readHeaderRow,
   readMeta,
   readOtherEditors,
+  renameSpreadsheet,
   writeIdHeading,
 } from "./sheets";
 import { scheduleDrain } from "./sheet-sync";
@@ -101,13 +104,10 @@ export async function connectSheet(
   formData: FormData,
 ): Promise<ActionState> {
   const projectId = String(formData.get("projectId") ?? "");
-  const userId = String(formData.get("userId") ?? "");
 
   try {
     if (!projectId) return { error: "No project given." };
-    if (!userId) return { error: "No person given." };
-    const owner = { projectId, userId };
-    await assertCanConfigure(owner);
+    await assertCanConfigure({ projectId });
 
     const spreadsheetId = parseSpreadsheetId(
       String(formData.get("sheetUrl") ?? ""),
@@ -116,6 +116,17 @@ export async function connectSheet(
       return {
         error:
           "That does not look like a Google Sheets link. Copy the whole URL from the address bar.",
+      };
+    }
+
+    // The commonest slip in this flow: click Copy, then paste the TEMPLATE's
+    // link back instead of the copy's. Connecting it would fill the template
+    // with one project's hours and rename it, and every later copy would carry
+    // them.
+    if (spreadsheetId === process.env.TAVREN_SHEET_TEMPLATE_ID) {
+      return {
+        error:
+          "That is the template itself, not a copy of it. Press “Copy the template”, name the copy, share it, then paste the copy’s link.",
       };
     }
 
@@ -150,17 +161,11 @@ export async function connectSheet(
     const [existing] = await db
       .select()
       .from(sheetConnections)
-      .where(
-        and(
-          eq(sheetConnections.projectId, projectId),
-          eq(sheetConnections.userId, userId),
-        ),
-      )
+      .where(eq(sheetConnections.projectId, projectId))
       .limit(1);
 
     const values = {
       projectId,
-      userId,
       spreadsheetId,
       spreadsheetUrl: sheetUrl(spreadsheetId),
       tabName: tab.title,
@@ -202,12 +207,17 @@ export async function connectSheet(
       return existing.id;
     });
 
+    // Named after what it holds, so it is findable in Drive without opening it.
+    // Never fatal: a sheet that syncs under the wrong name is still a working
+    // sheet, and the person can rename it themselves.
+    const named = await renameSheet(spreadsheetId, projectId);
+
     let backfilled = 0;
     if (formData.get("backfill") === "true") {
-      backfilled = await queueBackfill(owner, connectionId);
+      backfilled = await queueBackfill({ projectId }, connectionId);
     }
 
-    revalidateFor(owner);
+    revalidateFor({ projectId });
     if (backfilled > 0) scheduleDrain();
 
     // Whoever used to keep this sheet by hand still has Editor on it, and that
@@ -215,9 +225,10 @@ export async function connectSheet(
     // be discovered when a sync breaks.
     const editors = await otherEditorsOrNone(spreadsheetId);
 
+    const title = named ?? meta.title;
     const connected = backfilled
-      ? `Connected to "${meta.title}". Queued ${backfilled} existing ${backfilled === 1 ? "entry" : "entries"}.`
-      : `Connected to "${meta.title}". New work logs will appear here.`;
+      ? `Connected to "${title}". Queued ${backfilled} existing ${backfilled === 1 ? "entry" : "entries"}.`
+      : `Connected to "${title}". New work logs will appear here.`;
 
     return {
       ok: true,
@@ -239,6 +250,41 @@ export async function connectSheet(
 }
 
 /**
+ * Names the sheet after what it holds: `Tavren — <project> — <client>`.
+ *
+ * A Drive full of files called "Copy of Tavren" is unusable, and the name is
+ * the only thing visible without opening each one. The client is omitted when
+ * the project has none rather than leaving a dangling separator.
+ *
+ * Returns the new title, or null if the rename failed — never throwing, because
+ * a sheet syncing under an awkward name is still a working sheet and refusing
+ * the connection over cosmetics would be the wrong trade.
+ */
+async function renameSheet(
+  spreadsheetId: string,
+  projectId: string,
+): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ project: projects.name, client: clients.name })
+      .from(projects)
+      .leftJoin(clients, eq(projects.clientId, clients.id))
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!row) return null;
+
+    const title = ["Tavren", row.project, row.client]
+      .filter((part): part is string => !!part && part.trim() !== "")
+      .join(" — ");
+
+    await renameSpreadsheet(spreadsheetId, title);
+    return title;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Never fatal.
  *
  * The sharing list is advice. A service-account key issued before the Drive
@@ -256,8 +302,8 @@ async function otherEditorsOrNone(spreadsheetId: string): Promise<string[]> {
 /**
  * Queues the entries that already exist.
  *
- * A sheet allotted to somebody who has been working on the project for months
- * would otherwise start empty while the hand-kept one it replaces is full. The jobs are individual but the worker groups them per connection, so
+ * A sheet attached to a project that has been running for months would
+ * otherwise start empty while the hand-kept one it replaces is full. The jobs are individual but the worker groups them per connection, so
  * hundreds of entries cost one API call per drained batch rather than one each.
  *
  * Keyed on the entry's current revision plus this connection, exactly as a live
@@ -265,7 +311,7 @@ async function otherEditorsOrNone(spreadsheetId: string): Promise<string[]> {
  * already sent to it.
  */
 async function queueBackfill(
-  owner: { projectId: string; userId: string },
+  owner: { projectId: string },
   connectionId: string,
 ): Promise<number> {
   const entries = await db
@@ -275,7 +321,6 @@ async function queueBackfill(
       and(
         isNull(workLogs.deletedAt),
         eq(workLogs.projectId, owner.projectId),
-        eq(workLogs.userId, owner.userId),
       ),
     )
     .orderBy(asc(workLogs.workDate));

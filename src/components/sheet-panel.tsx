@@ -7,7 +7,7 @@ import {
   retryFailedSyncs,
   toggleSheetSync,
 } from "@/server/sheet-connection";
-import type { SheetOwner, SheetStatus } from "@/server/sheet-queries";
+import type { SheetStatus } from "@/server/sheet-queries";
 import { ActionButton, FormError, FormSuccess } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { Badge } from "./badges";
@@ -26,26 +26,25 @@ function fmtWhen(d: Date | null): string {
 }
 
 /**
- * One person's work-log sheet on one project.
+ * A project's work-log sheet.
  *
- * Written one way. The developer never sees this panel — they log work in
- * Tavren, and the entry goes to the sheet for that project and that person.
- * Two developers on a project keep two sheets and never appear in each
- * other's.
+ * Written one way. Developers never see this panel — they log work in Tavren
+ * and every entry on the project goes to its sheet, whoever filed it. Who did
+ * the work is on the log and in the app; the sheet records what and how long.
  *
  * The service-account address leads, because nothing works until the sheet is
  * shared with it and that is the step people forget.
  */
 export function SheetPanel({
-  owner,
-  personName,
+  projectId,
+  projectLabel,
   status,
   serviceAccountEmail,
   templateCopyHref,
 }: {
-  owner: SheetOwner;
-  /** Whose sheet this is, for the headings. */
-  personName: string;
+  projectId: string;
+  /** Shown in the headings, e.g. "BL-002 — Brightleaf WordPress Refresh". */
+  projectLabel: string;
   status: SheetStatus;
   serviceAccountEmail: string | null;
   /** Null when no template is configured on the server. */
@@ -153,8 +152,8 @@ export function SheetPanel({
           <div className="px-5 py-4">
             <p className="eyebrow m-0">WHAT GOES ACROSS</p>
             <p className="m-0 mt-1.5 text-[11px] text-fg-muted">
-              Every hour {personName} logs on this project, one row each: the
-              date and the hours
+              Every hour logged on this project, one row each: the date and
+              the hours
               {conn!.visibility === "internal" ? ", and what was done" : ""}.
               Entries go into the tab for their month, and Tavren adds each new
               month&rsquo;s tab itself. Corrections update the row they belong
@@ -206,7 +205,7 @@ export function SheetPanel({
         </section>
       ) : (
         <section className="panel p-5">
-          <p className="eyebrow m-0">STEP 2 — ATTACH {personName.toUpperCase()}&rsquo;S SHEET</p>
+          <p className="eyebrow m-0">STEP 2 — ATTACH THE SHEET</p>
 
           {templateCopyHref && (
             <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
@@ -214,9 +213,9 @@ export function SheetPanel({
                 Starting fresh? Take a copy of the Tavren template.
               </p>
               <p className="m-0 mt-1 text-[10px] text-fg-muted">
-                It opens in your own Google Drive, owned by you. Name it
-                something like <i>Client — Project — Work Log</i>, share it with
-                the address above, then paste its link below.
+                It opens in your own Google Drive, owned by you. Share it with
+                the address above and paste its link below — Tavren renames it
+                to <i>Tavren — {projectLabel}</i> once connected.
               </p>
               <a
                 href={templateCopyHref}
@@ -230,8 +229,7 @@ export function SheetPanel({
           )}
 
           <form action={connectAction} className="mt-3 space-y-3">
-            <input type="hidden" name="projectId" value={owner.projectId} />
-            <input type="hidden" name="userId" value={owner.userId} />
+            <input type="hidden" name="projectId" value={projectId} />
             <div>
               <label className="label" htmlFor="sheetUrl">
                 Google Sheet link
@@ -283,10 +281,10 @@ export function SheetPanel({
                 className="mt-0.5"
               />
               <span>
-                Add {personName}&rsquo;s existing work on this project
+                Add this project&rsquo;s existing work logs
                 <span className="block text-[10px] text-fg-subtle">
-                  Only their entries, only on this project. Otherwise the sheet
-                  starts empty and just new work appears.
+                  Everything logged on it so far. Otherwise the sheet starts
+                  empty and only new work appears.
                 </span>
               </span>
             </label>

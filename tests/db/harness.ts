@@ -159,10 +159,9 @@ export async function makeWorkLog(opts: {
   return { id, revisionId };
 }
 
-/** A sheet belongs to one person on one project; both are required. */
+/** A sheet belongs to a project. */
 export async function makeConnection(opts: {
   projectId: string;
-  userId: string;
   spreadsheetId?: string;
   headerHash?: string | null;
   visibility?: "internal" | "shareable";
@@ -171,10 +170,10 @@ export async function makeConnection(opts: {
   const id = randomUUID();
   const sheet = opts.spreadsheetId ?? `sheet-${id.slice(0, 8)}`;
   await owner`
-    INSERT INTO sheet_connections (id, project_id, user_id, spreadsheet_id,
+    INSERT INTO sheet_connections (id, project_id, spreadsheet_id,
                                    spreadsheet_url, tab_name, visibility,
                                    header_hash, status)
-    VALUES (${id}, ${opts.projectId}, ${opts.userId},
+    VALUES (${id}, ${opts.projectId},
             ${sheet}, ${`https://docs.google.com/spreadsheets/d/${sheet}/edit`},
             'September 2026', ${opts.visibility ?? "internal"},
             ${opts.headerHash ?? null}, ${opts.status ?? "active"})`;
