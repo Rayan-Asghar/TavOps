@@ -1,5 +1,32 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test:db)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm lint *)",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('drizzle/meta/_journal.json'\\)\\);[print\\(e['idx'],e['tag']\\) for e in d['entries'][-5:]]\")"
+    ]
+  },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "jq -r \".tool_input.command\" | grep -qE \"(^|[;&|][[:space:]]*)git[[:space:]]+(add[[:space:]]+(-A|--all|-u|\\.)([[:space:]]|$)|commit[[:space:]]+(-[a-zA-Z]*a|--all))\" && printf \"%s\" \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"The git index is shared with any concurrent Claude Code session in this repo, and bulk staging has already swept another session's unfinished work into a commit once. Stage explicit paths, then: git commit --only -F <msgfile> -- <paths>\\\"}}\" || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "jq -r \".tool_input.command\" | grep -qE \"(^|[;&|][[:space:]]*)git[[:space:]]+(clean[[:space:]]+[^|]*-[a-zA-Z]*f|reset[[:space:]]+[^|]*--hard|checkout[[:space:]]+(\\.|--[[:space:]]+\\.))\" && printf \"%s\" \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"ask\\\",\\\"permissionDecisionReason\\\":\\\"This discards uncommitted work in the whole tree. Another session may have work in progress here. Confirm nothing else is mid-flight first.\\\"}}\" || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
