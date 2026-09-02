@@ -283,9 +283,10 @@ export function SheetPanel({
                 className="mt-0.5"
               />
               <span>
-                Add this project&rsquo;s existing work logs to the sheet
+                Add {personName}&rsquo;s existing work on this project
                 <span className="block text-[10px] text-fg-subtle">
-                  Otherwise it starts empty and only new entries appear.
+                  Only their entries, only on this project. Otherwise the sheet
+                  starts empty and just new work appears.
                 </span>
               </span>
             </label>
