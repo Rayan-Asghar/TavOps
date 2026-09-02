@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "test:db": "vitest run --config vitest.db.config.mts",
-    "verify:all": "pnpm verify && pnpm test:db"
+    "verify:all": "pnpm verify && pnpm test:db",
+    "sheets:template": "tsx --env-file=.env.local scripts/make-template.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

@@ -33,6 +33,15 @@ let cachedDrive: drive_v3.Drive | null = null;
  */
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
+  /**
+   * The narrowest scope that can list a file's permissions, behind the warning
+   * about who else can edit a sheet.
+   *
+   * Requires the Drive API to be enabled on the Google Cloud project. It is not
+   * today, so `readOtherEditors` fails and the warning is skipped — deliberately
+   * non-fatal, because a missing warning must never stop a working sheet being
+   * connected. Enable the Drive API to turn it on.
+   */
   "https://www.googleapis.com/auth/drive.metadata.readonly",
 ];
 
