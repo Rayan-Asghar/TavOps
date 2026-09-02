@@ -26,29 +26,31 @@ function fmtWhen(d: Date | null): string {
 }
 
 /**
- * A work-log sheet, allotted either to a project or to a person.
+ * One person's work-log sheet on one project.
  *
- * Written one way. Developers never see this panel — they log work and Tavren
- * decides which sheets the entry belongs in from the project on the task and
- * from whose work it is. A project's sheet is attached by whoever runs that
- * project; a person's is allotted by a head or an admin.
+ * Written one way. The developer never sees this panel — they log work in
+ * Tavren, and the entry goes to the sheet for that project and that person.
+ * Two developers on a project keep two sheets and never appear in each
+ * other's.
  *
  * The service-account address leads, because nothing works until the sheet is
  * shared with it and that is the step people forget.
  */
 export function SheetPanel({
   owner,
+  personName,
   status,
   serviceAccountEmail,
   templateCopyHref,
 }: {
   owner: SheetOwner;
+  /** Whose sheet this is, for the headings. */
+  personName: string;
   status: SheetStatus;
   serviceAccountEmail: string | null;
   /** Null when no template is configured on the server. */
   templateCopyHref: string | null;
 }) {
-  const isProject = owner.scope === "project";
   const [connectState, connectAction, connecting] = useActionState(
     connectSheet,
     initial,
@@ -151,17 +153,17 @@ export function SheetPanel({
           <div className="px-5 py-4">
             <p className="eyebrow m-0">WHAT GOES ACROSS</p>
             <p className="m-0 mt-1.5 text-[11px] text-fg-muted">
-              {isProject
-                ? "Every work log on this project, one row each"
-                : "Every work log this person files, on any project, one row each"}
-              : date, developer, project, task, hours
-              {conn!.visibility === "internal" ? ", what was done" : ""}, and
-              status. Corrections update the row they belong to; a removed entry
-              stays as a zero-hour row marked <b>Removed</b>.
+              Every hour {personName} logs on this project, one row each: the
+              date and the hours
+              {conn!.visibility === "internal" ? ", and what was done" : ""}.
+              Entries go into the tab for their month, and Tavren adds each new
+              month&rsquo;s tab itself. Corrections update the row they belong
+              to; a removed entry stays as a zero-hour row.
             </p>
             <p className="m-0 mt-2 text-[10px] text-fg-subtle">
-              Tavren writes columns A–H only. Anything you keep to the right of
-              them is yours and is never touched.
+              Tavren fills the date, hours, notes and a hidden id. The project
+              column, the link column and the totals at the top are yours — it
+              never writes to them.
             </p>
             <a
               href={conn!.spreadsheetUrl}
@@ -204,7 +206,7 @@ export function SheetPanel({
         </section>
       ) : (
         <section className="panel p-5">
-          <p className="eyebrow m-0">STEP 2 — ATTACH THE SHEET</p>
+          <p className="eyebrow m-0">STEP 2 — ATTACH {personName.toUpperCase()}&rsquo;S SHEET</p>
 
           {templateCopyHref && (
             <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
@@ -228,12 +230,8 @@ export function SheetPanel({
           )}
 
           <form action={connectAction} className="mt-3 space-y-3">
-            <input type="hidden" name="scope" value={owner.scope} />
-            {owner.scope === "project" ? (
-              <input type="hidden" name="projectId" value={owner.projectId} />
-            ) : (
-              <input type="hidden" name="userId" value={owner.userId} />
-            )}
+            <input type="hidden" name="projectId" value={owner.projectId} />
+            <input type="hidden" name="userId" value={owner.userId} />
             <div>
               <label className="label" htmlFor="sheetUrl">
                 Google Sheet link

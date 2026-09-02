@@ -11,8 +11,9 @@ import {
 } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertProjectAccess, projectRoleOf } from "@/lib/access";
-import { assertCan, canInProject, ForbiddenError } from "@/lib/rbac";
+import { canInProject, ForbiddenError } from "@/lib/rbac";
 import {
+  HEADER_ROW,
   TEMPLATE_VERSION,
   checkHeaders,
   parseSpreadsheetId,
@@ -23,6 +24,7 @@ import {
   readHeaderRow,
   readMeta,
   readOtherEditors,
+  writeIdHeading,
 } from "./sheets";
 import { scheduleDrain } from "./sheet-sync";
 import { safeErrorMessage } from "./action-errors";
@@ -31,10 +33,10 @@ import type { ActionState } from "@/lib/action-state";
 /**
  * Allotting a work-log sheet.
  *
- * Two kinds. A **project** sheet collects everything done on one project; a
- * **developer** sheet collects everything one person did, across projects. An
- * entry belongs to both and is written to both — neither is a view of the
- * other, they are separate spreadsheets somebody was handed.
+ * A sheet belongs to one person on one project. Two developers on a project keep
+ * two sheets; one developer on two projects keeps two sheets. That is how the
+ * team's own trackers are organised — a file per person per engagement, a tab
+ * per month, the project named in the column heading.
  *
  * There is no "create it for us" path, and that is a constraint rather than an
  * omission: without Google Workspace there is no Shared Drive, so a sheet the
@@ -66,31 +68,23 @@ function explain(err: unknown): string {
 }
 
 /**
- * A project's sheet is attached by whoever runs that project; a person's sheet
- * is allotted by a head or an admin, since it spans every project they touch
- * and no single project owns it.
+ * Allotted by whoever runs the project, or by a head or admin.
+ *
+ * Never by the developer whose sheet it is: that is what "allotted" means, and
+ * it is why a developer cannot reach this tab at all.
  */
-async function assertCanConfigure(owner: {
-  projectId?: string | null;
-  userId?: string | null;
-}) {
+async function assertCanConfigure(owner: { projectId: string }) {
   const actor = await requireActor();
-
-  if (owner.projectId) {
-    await assertProjectAccess(actor, owner.projectId);
-    const projectRole = await projectRoleOf(actor, owner.projectId);
-    if (!canInProject(actor.globalRole, projectRole, "sheet.configure")) {
-      throw new ForbiddenError("sheet.configure");
-    }
-    return actor;
+  await assertProjectAccess(actor, owner.projectId);
+  const projectRole = await projectRoleOf(actor, owner.projectId);
+  if (!canInProject(actor.globalRole, projectRole, "sheet.configure")) {
+    throw new ForbiddenError("sheet.configure");
   }
-
-  assertCan(actor.globalRole, "sheet.configure");
   return actor;
 }
 
-function revalidateFor(owner: { projectId?: string | null }) {
-  if (owner.projectId) revalidatePath(`/projects/${owner.projectId}`);
+function revalidateFor(owner: { projectId: string }) {
+  revalidatePath(`/projects/${owner.projectId}`);
   revalidatePath("/admin/sheets");
 }
 
@@ -106,19 +100,13 @@ export async function connectSheet(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const scope =
-    String(formData.get("scope") ?? "project") === "developer"
-      ? ("developer" as const)
-      : ("project" as const);
-  const projectId =
-    scope === "project" ? String(formData.get("projectId") ?? "") : null;
-  const userId =
-    scope === "developer" ? String(formData.get("userId") ?? "") : null;
-  const owner = { projectId, userId };
+  const projectId = String(formData.get("projectId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
 
   try {
-    if (scope === "project" && !projectId) return { error: "No project given." };
-    if (scope === "developer" && !userId) return { error: "No person given." };
+    if (!projectId) return { error: "No project given." };
+    if (!userId) return { error: "No person given." };
+    const owner = { projectId, userId };
     await assertCanConfigure(owner);
 
     const spreadsheetId = parseSpreadsheetId(
@@ -140,8 +128,15 @@ export async function connectSheet(
     const check = checkHeaders(headers);
     if (!check.ok) {
       return {
-        error: `That sheet is not the Tavren work-log template. ${check.reason}`,
+        error: `That sheet is not the Tavren work-log layout. ${check.reason} The header row is row ${HEADER_ROW}, under the title and totals.`,
       };
+    }
+
+    // A sheet the team kept before Tavren existed has every column but the id.
+    // Writing the heading in is what lets it be adopted rather than refused
+    // over a column they never knew to add.
+    if (check.needsIdColumn) {
+      await writeIdHeading(spreadsheetId, tab.title);
     }
 
     // Cosmetic, and never fatal: a visible id column still syncs correctly, so
@@ -156,14 +151,14 @@ export async function connectSheet(
       .select()
       .from(sheetConnections)
       .where(
-        scope === "project"
-          ? eq(sheetConnections.projectId, projectId!)
-          : eq(sheetConnections.userId, userId!),
+        and(
+          eq(sheetConnections.projectId, projectId),
+          eq(sheetConnections.userId, userId),
+        ),
       )
       .limit(1);
 
     const values = {
-      scope,
       projectId,
       userId,
       spreadsheetId,
@@ -261,9 +256,8 @@ async function otherEditorsOrNone(spreadsheetId: string): Promise<string[]> {
 /**
  * Queues the entries that already exist.
  *
- * A sheet allotted to a live project — or to somebody who has been logging for
- * months — would otherwise start empty while the hand-kept one it replaces is
- * full. The jobs are individual but the worker groups them per connection, so
+ * A sheet allotted to somebody who has been working on the project for months
+ * would otherwise start empty while the hand-kept one it replaces is full. The jobs are individual but the worker groups them per connection, so
  * hundreds of entries cost one API call per drained batch rather than one each.
  *
  * Keyed on the entry's current revision plus this connection, exactly as a live
@@ -271,7 +265,7 @@ async function otherEditorsOrNone(spreadsheetId: string): Promise<string[]> {
  * already sent to it.
  */
 async function queueBackfill(
-  owner: { projectId?: string | null; userId?: string | null },
+  owner: { projectId: string; userId: string },
   connectionId: string,
 ): Promise<number> {
   const entries = await db
@@ -280,9 +274,8 @@ async function queueBackfill(
     .where(
       and(
         isNull(workLogs.deletedAt),
-        owner.projectId
-          ? eq(workLogs.projectId, owner.projectId)
-          : eq(workLogs.userId, owner.userId!),
+        eq(workLogs.projectId, owner.projectId),
+        eq(workLogs.userId, owner.userId),
       ),
     )
     .orderBy(asc(workLogs.workDate));

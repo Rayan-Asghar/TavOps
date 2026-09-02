@@ -3,112 +3,186 @@ import { createHash } from "node:crypto";
 /**
  * The Tavren work-log sheet layout.
  *
- * Fixed, and deliberately not configurable. The previous client-facing sync let
- * each project map its own columns, and every bug it produced came from a
- * mapping that had drifted from the sheet it described. A stale mapping cannot
- * exist if there is no mapping.
+ * Modelled on the tracker the team already keeps by hand, so a sheet Tavren
+ * fills looks like the ones they are used to reading: a title, a summary strip
+ * whose totals are live formulas, then the log itself.
  *
- * Pure and in `lib/` so the header rules are testable: a `"use server"` module
- * may only export async functions, and `server/` modules here import `@/db`,
- * which needs a live connection string at import time.
+ * The header is therefore NOT row 1. Everything that addresses the sheet has to
+ * go through the constants here rather than assuming a row, which is the whole
+ * reason they live in one place.
+ *
+ * Pure and in `lib/` so the rules are testable: a `"use server"` module may only
+ * export async functions, and `server/` modules import `@/db`, which needs a
+ * live connection string at import time.
  */
 
-export const TEMPLATE_VERSION = 1;
+export const TEMPLATE_VERSION = 2;
+
+/** The banner and summary block sit above the log. */
+export const HEADER_ROW = 8;
+export const FIRST_DATA_ROW = HEADER_ROW + 1;
 
 /**
- * Column H holds the work log's uuid and is what actually addresses a row.
+ * Column F holds the work log's uuid and is what actually addresses a row.
  * Hidden in the sheet, but present: a person sorting or inserting rows moves
  * every row number, and this is what survives that.
  */
-export const ID_COLUMN = "H";
+export const ID_COLUMN = "F";
+
+/** The range a full row occupies, for appends. */
+export const ROW_RANGE = `A${HEADER_ROW}:F`;
+
+/**
+ * Column B is a label, not data.
+ *
+ * On the team's own sheets it carries the project's name and every cell beneath
+ * it is empty — it says what the sheet is about rather than repeating itself on
+ * every line. Tavren writes the heading and then leaves the column alone.
+ */
+export const LABEL_COLUMN_INDEX = 1;
 
 export const TEMPLATE_HEADERS = [
   "Date",
-  "Developer",
-  "Project",
-  "Task",
+  "", // the project label, filled in per sheet
   "Hours",
-  "Work Done",
-  "Status",
+  "Notes — Work Done",
+  "Link (if any)",
   "Work Log ID",
 ] as const;
 
-/** The range a full row occupies, for appends. */
-export const ROW_RANGE = "A:H";
+/** Columns whose heading is fixed, by index. B is the sheet's own label. */
+const FIXED_HEADERS: { index: number; text: string }[] = TEMPLATE_HEADERS.map(
+  (text, index) => ({ index, text }),
+).filter((h) => h.index !== LABEL_COLUMN_INDEX);
 
 export type SheetRow = {
   date: string;
-  developer: string;
-  project: string;
-  task: string;
   hours: string;
   workDone: string;
-  status: string;
   workLogId: string;
 };
 
 /**
- * Row order must match TEMPLATE_HEADERS exactly. This is the single place that
- * pairs a value with its column, so the two cannot drift apart.
+ * One row, in column order.
+ *
+ * B (the label) and E (Link) are written as empty strings rather than skipped:
+ * an append positions values by offset from the start of the range, so a gap
+ * would shift everything after it one column left. They are the team's to fill.
  */
 export function toCells(row: SheetRow): string[] {
-  return [
-    row.date,
-    row.developer,
-    row.project,
-    row.task,
-    row.hours,
-    row.workDone,
-    row.status,
-    row.workLogId,
-  ];
+  return [row.date, "", row.hours, row.workDone, "", row.workLogId];
 }
 
 /**
- * Fingerprints the header row.
+ * `Sat, 01 Aug 2026` — the format the team's own sheets use.
  *
- * Compared on every drain. Somebody inserting a column would otherwise send
- * Hours quietly into the Status column and corrupt the sheet a row at a time
- * with nothing failing; the worker refuses to write on a mismatch instead.
- *
- * Case and surrounding whitespace are ignored. A person retyping "hours" as
- * "Hours " has not changed the layout, and treating that as drift would stop
- * syncing for no reason.
+ * Built from UTC parts rather than a locale string with a timezone, because a
+ * Tavren shift never crosses a UTC midnight and the work date is already the
+ * calendar day the team means.
  */
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+export function formatSheetDate(d: Date): string {
+  const day = DAYS[d.getUTCDay()];
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${day}, ${dd} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+const FULL_MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** `August 2026` — a month's tab name, and the key that decides where an entry goes. */
+export function monthTabName(d: Date): string {
+  return `${FULL_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * The rows above the log: title, blank, summary headings, live totals.
+ *
+ * The totals are formulas rather than values Tavren maintains. A number written
+ * once is wrong the moment anything below it changes, and nobody would know —
+ * a formula is right by construction and keeps working if somebody edits the
+ * sheet by hand.
+ */
+export function bannerRows(monthLabel: string, projectLabel: string): string[][] {
+  const first = FIRST_DATA_ROW;
+  return [
+    [`TAVREN — ${monthLabel.toUpperCase()} WORK LOG`],
+    ["Track daily project work, hours completed, notes, and supporting links."],
+    [],
+    [],
+    ["MONTH", "TOTAL HOURS", "DAYS LOGGED", "PROJECT ENTRIES"],
+    [
+      monthLabel,
+      `=TEXT(SUM(C${first}:C),"0.00")&" hrs"`,
+      `=COUNTUNIQUE(A${first}:A)`,
+      `=COUNTA(A${first}:A)`,
+    ],
+    [],
+    ["Date", projectLabel, "Hours", "Notes — Work Done", "Link (if any)", "Work Log ID"],
+  ];
+}
+
 export function headerHash(headers: readonly string[]): string {
-  const normalised = headers.map((h) => (h ?? "").trim().toLowerCase()).join(" ");
+  // Column B is the sheet's own label and differs per sheet by design, so it is
+  // excluded — including it would make every sheet's hash unique and the drift
+  // check meaningless.
+  const normalised = FIXED_HEADERS.map(
+    (h) => (headers[h.index] ?? "").trim().toLowerCase(),
+  ).join(" ");
   return createHash("sha256").update(normalised).digest("hex").slice(0, 32);
 }
 
 export type HeaderCheck =
-  | { ok: true; hash: string }
+  | { ok: true; hash: string; needsIdColumn: boolean }
   | { ok: false; reason: string };
 
 /**
- * Whether a sheet's first row is the Tavren template.
+ * Whether a sheet's header row is the Tavren layout.
  *
- * Reports the FIRST mismatch by column letter rather than "headers do not
- * match", because the person fixing it is looking at a spreadsheet and needs to
- * know which cell to change.
+ * Reports the FIRST mismatch by column letter, because the person fixing it is
+ * looking at a spreadsheet and needs to know which cell to change.
+ *
+ * A sheet kept by hand before Tavren existed will have every column but the id.
+ * That is reported as `needsIdColumn` rather than refused: the caller writes the
+ * heading in, and an otherwise-correct sheet is adopted instead of rejected over
+ * a column the team never knew to add.
  */
 export function checkHeaders(headers: readonly string[]): HeaderCheck {
   const seen = headers.map((h) => (h ?? "").trim());
+  const idIndex = TEMPLATE_HEADERS.length - 1;
+  let needsIdColumn = false;
 
-  for (let i = 0; i < TEMPLATE_HEADERS.length; i++) {
-    const expected = TEMPLATE_HEADERS[i];
-    const actual = seen[i] ?? "";
-    if (actual.toLowerCase() !== expected.toLowerCase()) {
-      const column = String.fromCharCode(65 + i);
+  for (const { index, text } of FIXED_HEADERS) {
+    const actual = seen[index] ?? "";
+
+    if (index === idIndex && actual === "") {
+      needsIdColumn = true;
+      continue;
+    }
+
+    if (actual.toLowerCase() !== text.toLowerCase()) {
+      const column = String.fromCharCode(65 + index);
       return {
         ok: false,
         reason: actual
-          ? `Column ${column} should be "${expected}" but says "${actual}".`
-          : `Column ${column} is empty; it should be "${expected}".`,
+          ? `Column ${column} should be "${text}" but says "${actual}".`
+          : `Column ${column} is empty; it should be "${text}".`,
       };
     }
   }
 
-  return { ok: true, hash: headerHash(seen.slice(0, TEMPLATE_HEADERS.length)) };
+  // Hash what the sheet WILL look like once the id heading is written, so the
+  // drift check does not trip on the very column we are about to add.
+  const settled = [...seen];
+  settled[idIndex] = TEMPLATE_HEADERS[idIndex];
+  return { ok: true, hash: headerHash(settled), needsIdColumn };
 }
 
 /**
@@ -161,7 +235,7 @@ export function locateRow(
   column: readonly string[],
   workLogId: string,
   hint: number | null,
-  firstDataRow = 2,
+  firstDataRow = FIRST_DATA_ROW,
 ): number | null {
   const at = (row: number) => (column[row - firstDataRow] ?? "").trim();
 

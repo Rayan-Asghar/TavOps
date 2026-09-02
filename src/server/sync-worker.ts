@@ -12,12 +12,14 @@ import {
 import { log } from "@/lib/logger";
 import {
   checkHeaders,
+  formatSheetDate,
   locateRow,
+  monthTabName,
   toCells,
-  type SheetRow,
 } from "@/lib/sheet-template";
 import {
   appendRows,
+  ensureMonthTab,
   isRetryableSheetsError,
   readHeaderRow,
   readIdColumn,
@@ -119,12 +121,18 @@ async function claimJobs(limit: number): Promise<ClaimedJob[]> {
 }
 
 /**
- * What a row needs, minus the note's final form.
+ * What a row needs.
  *
- * `workDone` is decided per connection by its visibility, so the entry carries
- * the raw note and the row builder settles it.
+ * `workDate` stays a Date because it decides which month's tab the entry belongs
+ * in as well as how the cell reads. The note is carried raw: whether it reaches
+ * the sheet at all depends on the connection's visibility.
  */
-type SheetEntry = Omit<SheetRow, "workDone"> & { notes: string };
+type SheetEntry = {
+  workLogId: string;
+  workDate: Date;
+  hours: string;
+  notes: string;
+};
 
 /** The current state of every entry in the batch, read fresh rather than stored. */
 async function loadEntries(
@@ -153,14 +161,10 @@ async function loadEntries(
     rows.map((r) => [
       r.id,
       {
-        date: r.workDate.toISOString().slice(0, 10),
-        developer: r.developer ?? "",
-        project: r.projectName,
-        task: r.taskTitle ?? "General project work",
+        workLogId: r.id,
+        workDate: r.workDate,
         hours: Number(r.hours).toFixed(2),
         notes: r.notes,
-        status: r.status ?? "",
-        workLogId: r.id,
       },
     ]),
   );
@@ -178,18 +182,26 @@ function rowFor(
   visibility: "internal" | "shareable",
 ): string[] {
   return toCells({
-    ...entry,
+    date: formatSheetDate(entry.workDate),
+    hours: entry.hours,
     workDone: visibility === "internal" ? entry.notes : "",
+    workLogId: entry.workLogId,
   });
 }
 
-/** A withdrawn entry keeps its row, at zero hours, marked as removed. */
+/**
+ * A withdrawn entry keeps its row, at zero hours, saying so.
+ *
+ * There is no status column on this layout, so the note carries it — a blank row
+ * would read as an entry somebody forgot to fill in rather than one withdrawn on
+ * purpose, and the hours total would still be right either way.
+ */
 function reversalRow(entry: SheetEntry): string[] {
   return toCells({
-    ...entry,
+    date: formatSheetDate(entry.workDate),
     hours: "0.00",
-    workDone: "",
-    status: "Removed",
+    workDone: "— removed —",
+    workLogId: entry.workLogId,
   });
 }
 
@@ -303,28 +315,60 @@ async function markDone(jobIds: string[], connectionId: string) {
   });
 }
 
-/** Everything for one sheet, in a fixed number of API calls. */
+/**
+ * Everything for one sheet, grouped by the month each entry belongs in.
+ *
+ * The team keeps a tab per month, so a batch that straddles the first of the
+ * month touches two tabs. Within a tab the cost is fixed regardless of how many
+ * entries it carries: one header read, one id-column read, one append, one
+ * batched update.
+ */
 async function drainConnection(
   connection: typeof sheetConnections.$inferSelect,
+  label: string,
   jobs: ClaimedJob[],
   entries: Map<string, SheetEntry>,
 ) {
-  // One header read per connection per drain. A column inserted by hand would
-  // otherwise send Hours quietly into the Status column, corrupting the sheet a
-  // row at a time with nothing failing.
-  const headers = await readHeaderRow(
-    connection.spreadsheetId,
-    connection.tabName,
-  );
+  // Route by the entry's own work date, not by today: a correction filed in
+  // September to August's work belongs in August's tab.
+  const byMonth = new Map<string, ClaimedJob[]>();
+  for (const job of jobs) {
+    const entry = job.workLogId ? entries.get(job.workLogId) : undefined;
+    if (!entry) continue;
+    const tab = monthTabName(entry.workDate);
+    const list = byMonth.get(tab) ?? [];
+    list.push(job);
+    byMonth.set(tab, list);
+  }
+
+  for (const [tabName, group] of byMonth) {
+    await drainMonth(connection, label, tabName, group, entries);
+  }
+}
+
+async function drainMonth(
+  connection: typeof sheetConnections.$inferSelect,
+  label: string,
+  tabName: string,
+  jobs: ClaimedJob[],
+  entries: Map<string, SheetEntry>,
+) {
+  // Creates the month's tab, banner and formulas if this is its first entry.
+  // Nobody has to remember on the first of the month.
+  await ensureMonthTab(connection.spreadsheetId, tabName, label);
+
+  // A column inserted by hand would otherwise send Hours quietly into the Notes
+  // column, corrupting the sheet a row at a time with nothing failing.
+  const headers = await readHeaderRow(connection.spreadsheetId, tabName);
   const check = checkHeaders(headers);
   if (!check.ok) {
     throw new NonRetryableSheetError(
-      `The sheet's columns have changed, so nothing was written. ${check.reason}`,
+      `The columns on "${tabName}" have changed, so nothing was written. ${check.reason}`,
     );
   }
   if (connection.headerHash && check.hash !== connection.headerHash) {
     throw new NonRetryableSheetError(
-      "The sheet's header row has changed since it was connected. Reconnect it to confirm the new layout.",
+      `The header row on "${tabName}" has changed since this sheet was connected. Reconnect it to confirm the new layout.`,
     );
   }
 
@@ -332,14 +376,16 @@ async function drainConnection(
   const corrections = jobs.filter((j) => j.jobType !== "append");
 
   // ---- appends: one call for the whole group ----
-  const appendable = appends.filter((j) => j.workLogId && entries.has(j.workLogId));
+  const appendable = appends.filter(
+    (j) => j.workLogId && entries.has(j.workLogId),
+  );
   if (appendable.length > 0) {
     const rows = appendable.map((j) =>
       rowFor(entries.get(j.workLogId!)!, connection.visibility),
     );
     const rowNumbers = await appendRows(
       connection.spreadsheetId,
-      connection.tabName,
+      tabName,
       rows,
     );
 
@@ -363,10 +409,7 @@ async function drainConnection(
 
   // ---- corrections: one id-column read, one batched write ----
   if (corrections.length > 0) {
-    const idColumn = await readIdColumn(
-      connection.spreadsheetId,
-      connection.tabName,
-    );
+    const idColumn = await readIdColumn(connection.spreadsheetId, tabName);
 
     const ids = corrections.map((j) => j.workLogId).filter(Boolean) as string[];
     const hints = new Map(
@@ -400,10 +443,13 @@ async function drainConnection(
         hints.get(job.workLogId) ?? null,
       );
       if (row === null) {
-        // Somebody deleted the row by hand. Skipping is the only safe move:
-        // writing to the remembered number would overwrite whatever is there now.
+        // Either a human deleted the row, or the entry's date was moved into a
+        // different month and its old row is in another tab. Skipping is the
+        // only safe move: writing to the remembered number would overwrite
+        // whatever now sits there.
         log.warn("sync.row_missing", {
           connectionId: connection.id,
+          tabName,
           workLogId: job.workLogId,
         });
         continue;
@@ -421,7 +467,7 @@ async function drainConnection(
       }
     }
 
-    await updateRows(connection.spreadsheetId, connection.tabName, updates);
+    await updateRows(connection.spreadsheetId, tabName, updates);
 
     for (const r of repairs) {
       await db
@@ -465,17 +511,31 @@ export async function runSyncWorker(limit = BATCH_SIZE) {
       [...new Set(jobs.map((j) => j.workLogId).filter(Boolean) as string[])],
     );
 
+    // The label heads column B and titles a new month's tab: what the sheet is
+    // about. A project's name for a project sheet, a person's for theirs.
+    const connectionRows = await db
+      .select({
+        connection: sheetConnections,
+        projectName: projects.name,
+        personName: users.name,
+      })
+      .from(sheetConnections)
+      .leftJoin(projects, eq(sheetConnections.projectId, projects.id))
+      .leftJoin(users, eq(sheetConnections.userId, users.id))
+      .where(
+        inArray(sheetConnections.id, [
+          ...new Set(jobs.map((j) => j.connectionId)),
+        ]),
+      );
+
     const connections = new Map(
-      (
-        await db
-          .select()
-          .from(sheetConnections)
-          .where(
-            inArray(sheetConnections.id, [
-              ...new Set(jobs.map((j) => j.connectionId)),
-            ]),
-          )
-      ).map((c) => [c.id, c]),
+      connectionRows.map((r) => [r.connection.id, r.connection]),
+    );
+    const labels = new Map(
+      connectionRows.map((r) => [
+        r.connection.id,
+        r.projectName ?? r.personName ?? "Work log",
+      ]),
     );
 
     const byConnection = new Map<string, ClaimedJob[]>();
@@ -532,7 +592,12 @@ export async function runSyncWorker(limit = BATCH_SIZE) {
       }
 
       try {
-        await drainConnection(connection, group, entries);
+        await drainConnection(
+          connection,
+          labels.get(connectionId) ?? "Work log",
+          group,
+          entries,
+        );
         await markDone(group.map((j) => j.id), connectionId);
         done += group.length;
       } catch (err) {

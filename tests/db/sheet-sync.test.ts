@@ -4,7 +4,11 @@ import { __setSheetsClientForTests } from "@/server/sheets";
 import { runSyncWorker } from "@/server/sync-worker";
 import { enqueueSheetWrite } from "@/server/sheet-sync";
 import { db } from "@/db";
-import { TEMPLATE_HEADERS, headerHash } from "@/lib/sheet-template";
+import {
+  FIRST_DATA_ROW,
+  formatSheetDate,
+  headerHash,
+} from "@/lib/sheet-template";
 import {
   jobStatuses,
   makeConnection,
@@ -30,15 +34,28 @@ import {
 /** Records every call so the test can assert on shape and on COUNT. */
 type Call = { method: string; args: Record<string, unknown> };
 
+/** The layout the team uses: a label in B, filled in per sheet. */
+const HEADERS = [
+  "Date",
+  "Dr V Clinic",
+  "Hours",
+  "Notes — Work Done",
+  "Link (if any)",
+  "Work Log ID",
+];
+
 function fakeSheets(opts: {
   headers?: string[];
   idColumn?: string[];
+  /** Tabs the spreadsheet already has. Anything else gets created. */
+  tabs?: string[];
   /** Thrown by the next write, to simulate Google refusing. */
   failWith?: { code: number; message: string };
 }) {
   const calls: Call[] = [];
-  const headers = opts.headers ?? [...TEMPLATE_HEADERS];
+  const headers = opts.headers ?? HEADERS;
   const idColumn = opts.idColumn ?? [];
+  const tabs = new Set(opts.tabs ?? ["September 2026"]);
 
   const maybeFail = () => {
     if (opts.failWith) {
@@ -50,27 +67,63 @@ function fakeSheets(opts: {
 
   const client = {
     spreadsheets: {
+      get: async () => {
+        calls.push({ method: "meta", args: {} });
+        return {
+          data: {
+            properties: { title: "Tracker" },
+            sheets: [...tabs].map((title, i) => ({
+              properties: { title, sheetId: i + 1 },
+            })),
+          },
+        };
+      },
+      // addSheet for a new month, and hiding the id column.
+      batchUpdate: async (args: { requestBody: { requests: unknown[] } }) => {
+        calls.push({ method: "sheetsBatchUpdate", args });
+        const add = (
+          args.requestBody.requests as {
+            addSheet?: { properties: { title: string } };
+          }[]
+        ).find((r) => r.addSheet);
+        if (add?.addSheet) {
+          tabs.add(add.addSheet.properties.title);
+          return {
+            data: {
+              replies: [
+                { addSheet: { properties: { sheetId: tabs.size + 10 } } },
+              ],
+            },
+          };
+        }
+        return { data: {} };
+      },
       values: {
         get: async (args: { range: string }) => {
           calls.push({ method: "get", args });
-          // Row 1 is the header read; anything else is the id column.
-          const isHeader = /!1:1$/.test(args.range);
+          // The header sits under the banner, on row 8.
+          const isHeader = /!8:8$/.test(args.range);
           return {
             data: {
               values: isHeader ? [headers] : idColumn.map((v) => [v]),
             },
           };
         },
+        // Writes the banner into a new tab, and the id heading into an adopted one.
+        update: async (args: unknown) => {
+          calls.push({ method: "update", args: args as Record<string, unknown> });
+          return { data: {} };
+        },
         append: async (args: { requestBody: { values: string[][] } }) => {
           calls.push({ method: "append", args });
           maybeFail();
           const n = args.requestBody.values.length;
-          // Google answers with the range it wrote; rows land after the header.
-          const first = idColumn.length + 2;
+          // Google answers with the range it wrote; entries start below the banner.
+          const first = idColumn.length + FIRST_DATA_ROW;
           return {
             data: {
               updates: {
-                updatedRange: `Sheet1!A${first}:H${first + n - 1}`,
+                updatedRange: `Sheet1!A${first}:F${first + n - 1}`,
               },
             },
           };
@@ -87,17 +140,21 @@ function fakeSheets(opts: {
   return { client: client as unknown as sheets_v4.Sheets, calls };
 }
 
-const validHash = headerHash([...TEMPLATE_HEADERS]);
+const validHash = headerHash(HEADERS);
 
-async function scenario(overrides: Parameters<typeof makeConnection>[0] extends never ? never : {
-  headerHash?: string | null;
-  visibility?: "internal" | "shareable";
-} = {}) {
+async function scenario(
+  overrides: {
+    headerHash?: string | null;
+    visibility?: "internal" | "shareable";
+  } = {},
+) {
   const userId = await makeUser({ name: "Ahmed" });
   const projectId = await makeProject({ code: "TS-001" });
   const connectionId = await makeConnection({
     projectId,
-    headerHash: overrides.headerHash === undefined ? validHash : overrides.headerHash,
+    userId,
+    headerHash:
+      overrides.headerHash === undefined ? validHash : overrides.headerHash,
     visibility: overrides.visibility,
   });
   return { userId, projectId, connectionId };
@@ -132,13 +189,14 @@ describe("appending", () => {
     const row = (append.args as { requestBody: { values: string[][] } })
       .requestBody.values[0];
 
-    expect(row[0]).toBe("2026-09-02");
-    expect(row[1]).toBe("Ahmed");
-    expect(row[4]).toBe("2.50");
-    expect(row[5]).toBe("Fixed responsive layout");
-    expect(row[6]).toBe("in_progress");
-    // Column H addresses the row for every later correction.
-    expect(row[7]).toBe(log.id);
+    // The team's layout: date, their project label, hours, notes, link, id.
+    expect(row[0]).toBe(formatSheetDate(new Date("2026-09-02T12:00:00Z")));
+    expect(row[1]).toBe(""); // the label column is theirs, not Tavren's
+    expect(row[2]).toBe("2.50");
+    expect(row[3]).toBe("Fixed responsive layout");
+    expect(row[4]).toBe(""); // "Link (if any)" is theirs too
+    // Column F addresses the row for every later correction.
+    expect(row[5]).toBe(log.id);
   });
 
   it("records where the row landed, so a correction can find it", async () => {
@@ -187,9 +245,9 @@ describe("appending", () => {
         requestBody: { values: string[][] };
       }
     ).requestBody.values[0];
-    expect(row[5]).toBe("");
-    // Everything else still goes across.
-    expect(row[1]).toBe("Ahmed");
+    expect(row[3]).toBe("");
+    // The hours still go across; only the note is withheld.
+    expect(row[2]).toBe("2.50");
   });
 });
 
@@ -200,7 +258,7 @@ describe("corrections", () => {
     const log = await makeWorkLog({ projectId, userId, hours: "3.00" });
     await owner`
       INSERT INTO sheet_row_links (connection_id, work_log_id, row_number)
-      VALUES (${connectionId}, ${log.id}, 2)`;
+      VALUES (${connectionId}, ${log.id}, ${FIRST_DATA_ROW})`;
     await queueJob({ connectionId, workLogId: log.id, jobType: "update" });
 
     const { client, calls } = fakeSheets({
@@ -213,14 +271,14 @@ describe("corrections", () => {
     const range = (
       update.args as { requestBody: { data: { range: string }[] } }
     ).requestBody.data[0].range;
-    // Third id in the column, so row 4 — not the remembered row 2.
-    expect(range).toContain("A4:H4");
+    // Third id in the column, so the third data row — not the remembered one.
+    expect(range).toContain(`A${FIRST_DATA_ROW + 2}:F${FIRST_DATA_ROW + 2}`);
 
     const [link] = (await owner`
       SELECT row_number FROM sheet_row_links WHERE work_log_id = ${log.id}`) as unknown as {
       row_number: number;
     }[];
-    expect(link.row_number).toBe(4);
+    expect(link.row_number).toBe(FIRST_DATA_ROW + 2);
   });
 
   it("blanks a removed entry instead of deleting its row", async () => {
@@ -230,7 +288,7 @@ describe("corrections", () => {
     const log = await makeWorkLog({ projectId, userId, hours: "4.00" });
     await owner`
       INSERT INTO sheet_row_links (connection_id, work_log_id, row_number)
-      VALUES (${connectionId}, ${log.id}, 2)`;
+      VALUES (${connectionId}, ${log.id}, ${FIRST_DATA_ROW})`;
     await queueJob({ connectionId, workLogId: log.id, jobType: "delete" });
 
     const { client, calls } = fakeSheets({ idColumn: [log.id] });
@@ -243,9 +301,10 @@ describe("corrections", () => {
       }
     ).requestBody.data[0].values[0];
 
-    expect(cells[4]).toBe("0.00");
-    expect(cells[6]).toBe("Removed");
-    expect(cells[7]).toBe(log.id);
+    expect(cells[2]).toBe("0.00");
+    // No status column on this layout, so the note says it was withdrawn.
+    expect(cells[3]).toContain("removed");
+    expect(cells[5]).toBe(log.id);
   });
 
   it("skips an entry whose row a human deleted, rather than guessing", async () => {
@@ -253,7 +312,7 @@ describe("corrections", () => {
     const log = await makeWorkLog({ projectId, userId });
     await owner`
       INSERT INTO sheet_row_links (connection_id, work_log_id, row_number)
-      VALUES (${connectionId}, ${log.id}, 5)`;
+      VALUES (${connectionId}, ${log.id}, ${FIRST_DATA_ROW + 3})`;
     await queueJob({ connectionId, workLogId: log.id, jobType: "update" });
 
     // The id is nowhere in the sheet any more.
@@ -278,7 +337,7 @@ describe("corrections", () => {
       ids.push(log.id);
       await owner`
         INSERT INTO sheet_row_links (connection_id, work_log_id, row_number)
-        VALUES (${connectionId}, ${log.id}, ${i + 2})`;
+        VALUES (${connectionId}, ${log.id}, ${i + FIRST_DATA_ROW})`;
       await queueJob({ connectionId, workLogId: log.id, jobType: "update" });
     }
 
@@ -301,7 +360,7 @@ describe("when the sheet stops being writable", () => {
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
     const { client, calls } = fakeSheets({
-      headers: ["Date", "Client", ...TEMPLATE_HEADERS.slice(1)],
+      headers: ["Date", "Dr V Clinic", "Client", "Hours", "Notes — Work Done"],
     });
     __setSheetsClientForTests(client);
     await runSyncWorker();
@@ -314,7 +373,9 @@ describe("when the sheet stops being writable", () => {
       error_message: string;
     }[];
     expect(conn.status).toBe("error");
-    expect(conn.error_message).toContain("Column B");
+    // B is the sheet's own label and is skipped, so the first fixed column
+    // that no longer lines up is C.
+    expect(conn.error_message).toContain("Column C");
   });
 
   it("stops when the header row is renamed after connecting", async () => {
@@ -417,71 +478,10 @@ describe("connection state", () => {
   });
 });
 
-describe("an entry belongs to two sheets", () => {
-  it("writes to the project's sheet AND the developer's", async () => {
-    // Neither is a view of the other: they are separate spreadsheets, one
-    // answering "what did this project cost", the other "what did Ahmed do".
-    const userId = await makeUser({ name: "Ahmed" });
-    const projectId = await makeProject({ code: "TS-001" });
-    const projectSheet = await makeConnection({
-      projectId,
-      spreadsheetId: "project-sheet",
-      headerHash: validHash,
-    });
-    const devSheet = await makeConnection({
-      userId,
-      spreadsheetId: "developer-sheet",
-      headerHash: validHash,
-    });
-
-    const log = await makeWorkLog({ projectId, userId, hours: "2.50" });
-    const queued = await db.transaction((tx) =>
-      enqueueSheetWrite(tx, {
-        projectId,
-        userId,
-        workLogId: log.id,
-        jobType: "append",
-        changeKey: `revision:${log.revisionId}`,
-      }),
-    );
-    expect(queued).toBe(2);
-
-    const { client, calls } = fakeSheets({});
-    __setSheetsClientForTests(client);
-    const result = await runSyncWorker();
-
-    expect(result).toMatchObject({ done: 2, failed: 0 });
-
-    // One append per sheet, each carrying the same entry.
-    const appends = calls.filter((c) => c.method === "append");
-    expect(appends).toHaveLength(2);
-    expect(
-      new Set(
-        appends.map(
-          (a) => (a.args as { spreadsheetId: string }).spreadsheetId,
-        ),
-      ),
-    ).toEqual(new Set(["project-sheet", "developer-sheet"]));
-
-    // And a position remembered in each, so a later correction finds both.
-    const links = await owner`
-      SELECT connection_id FROM sheet_row_links WHERE work_log_id = ${log.id}`;
-    expect(links).toHaveLength(2);
-    expect(new Set(links.map((l) => (l as { connection_id: string }).connection_id)))
-      .toEqual(new Set([projectSheet, devSheet]));
-  });
-
-  it("gives the two sheets distinct idempotency keys", async () => {
-    // The bug this guards: keyed on the revision alone, the second sheet's job
-    // collides with the first and is silently dropped by onConflictDoNothing —
-    // one sheet updates forever and the other quietly never does.
-    const userId = await makeUser({ name: "Ahmed" });
-    const projectId = await makeProject({ code: "TS-001" });
-    await makeConnection({ projectId, spreadsheetId: "p", headerHash: validHash });
-    await makeConnection({ userId, spreadsheetId: "d", headerHash: validHash });
-
-    const log = await makeWorkLog({ projectId, userId });
-    await db.transaction((tx) =>
+describe("one sheet per person per project", () => {
+  /** Queues an entry the way recordWorkInTx does, and returns whether it landed. */
+  const enqueue = (projectId: string, userId: string, log: { id: string; revisionId: string }) =>
+    db.transaction((tx) =>
       enqueueSheetWrite(tx, {
         projectId,
         userId,
@@ -491,63 +491,145 @@ describe("an entry belongs to two sheets", () => {
       }),
     );
 
-    const keys = await owner`
-      SELECT idempotency_key FROM sync_jobs WHERE work_log_id = ${log.id}`;
-    expect(keys).toHaveLength(2);
-    expect(
-      new Set(keys.map((k) => (k as { idempotency_key: string }).idempotency_key)),
-    ).toHaveProperty("size", 2);
-  });
-
-  it("still queues nothing when neither has a sheet", async () => {
-    const userId = await makeUser({ name: "Ahmed" });
+  it("keeps two developers on one project in separate sheets", async () => {
+    // Ahmed must never appear in Ali's sheet, or the sheet stops being a record
+    // of what one person did.
+    const ahmed = await makeUser({ name: "Ahmed" });
+    const ali = await makeUser({ name: "Ali" });
     const projectId = await makeProject({ code: "TS-001" });
-    const log = await makeWorkLog({ projectId, userId });
+    await makeConnection({ projectId, userId: ahmed, spreadsheetId: "ahmed-sheet", headerHash: validHash });
+    await makeConnection({ projectId, userId: ali, spreadsheetId: "ali-sheet", headerHash: validHash });
 
-    const queued = await db.transaction((tx) =>
-      enqueueSheetWrite(tx, {
-        projectId,
-        userId,
-        workLogId: log.id,
-        jobType: "append",
-        changeKey: `revision:${log.revisionId}`,
-      }),
-    );
-    expect(queued).toBe(0);
-  });
-
-  it("collects one person's work across every project into their sheet", async () => {
-    const userId = await makeUser({ name: "Ahmed" });
-    const projectA = await makeProject({ code: "AAA-1" });
-    const projectB = await makeProject({ code: "BBB-2" });
-    await makeConnection({ userId, spreadsheetId: "d", headerHash: validHash });
-
-    for (const projectId of [projectA, projectB]) {
-      const log = await makeWorkLog({ projectId, userId });
-      await db.transaction((tx) =>
-        enqueueSheetWrite(tx, {
-          projectId,
-          userId,
-          workLogId: log.id,
-          jobType: "append",
-          changeKey: `revision:${log.revisionId}`,
-        }),
-      );
-    }
+    const ahmedLog = await makeWorkLog({ projectId, userId: ahmed, hours: "3.00" });
+    const aliLog = await makeWorkLog({ projectId, userId: ali, hours: "5.00" });
+    expect(await enqueue(projectId, ahmed, ahmedLog)).toBe(true);
+    expect(await enqueue(projectId, ali, aliLog)).toBe(true);
 
     const { client, calls } = fakeSheets({});
     __setSheetsClientForTests(client);
     await runSyncWorker();
 
-    // Both rows go to the one sheet, in one call, and each names its project.
     const appends = calls.filter((c) => c.method === "append");
-    expect(appends).toHaveLength(1);
-    const rows = (
-      appends[0].args as { requestBody: { values: string[][] } }
-    ).requestBody.values;
-    expect(rows).toHaveLength(2);
-    expect(new Set(rows.map((r) => r[2]))).toEqual(
-      new Set(["Test Project", "Test Project"]),
+    expect(appends).toHaveLength(2);
+
+    const bySheet = new Map(
+      appends.map((a) => {
+        const args = a.args as {
+          spreadsheetId: string;
+          requestBody: { values: string[][] };
+        };
+        return [args.spreadsheetId, args.requestBody.values];
+      }),
     );
+    // Each sheet carries exactly one row, and it is that person's hours.
+    expect(bySheet.get("ahmed-sheet")).toHaveLength(1);
+    expect(bySheet.get("ahmed-sheet")![0][2]).toBe("3.00");
+    expect(bySheet.get("ali-sheet")).toHaveLength(1);
+    expect(bySheet.get("ali-sheet")![0][2]).toBe("5.00");
+  });
+
+  it("keeps one developer's two projects in separate sheets", async () => {
+    const ahmed = await makeUser({ name: "Ahmed" });
+    const projectA = await makeProject({ code: "AAA-1" });
+    const projectB = await makeProject({ code: "BBB-2" });
+    await makeConnection({ projectId: projectA, userId: ahmed, spreadsheetId: "a-sheet", headerHash: validHash });
+    await makeConnection({ projectId: projectB, userId: ahmed, spreadsheetId: "b-sheet", headerHash: validHash });
+
+    const logA = await makeWorkLog({ projectId: projectA, userId: ahmed, hours: "1.00" });
+    const logB = await makeWorkLog({ projectId: projectB, userId: ahmed, hours: "7.00" });
+    await enqueue(projectA, ahmed, logA);
+    await enqueue(projectB, ahmed, logB);
+
+    const { client, calls } = fakeSheets({});
+    __setSheetsClientForTests(client);
+    await runSyncWorker();
+
+    const bySheet = new Map(
+      calls
+        .filter((c) => c.method === "append")
+        .map((a) => {
+          const args = a.args as {
+            spreadsheetId: string;
+            requestBody: { values: string[][] };
+          };
+          return [args.spreadsheetId, args.requestBody.values];
+        }),
+    );
+    expect(bySheet.get("a-sheet")![0][2]).toBe("1.00");
+    expect(bySheet.get("b-sheet")![0][2]).toBe("7.00");
+  });
+
+  it("queues nothing for a person with no sheet on that project", async () => {
+    // A colleague's sheet on the same project must not receive their work.
+    const ahmed = await makeUser({ name: "Ahmed" });
+    const ali = await makeUser({ name: "Ali" });
+    const projectId = await makeProject({ code: "TS-001" });
+    await makeConnection({ projectId, userId: ali, headerHash: validHash });
+
+    const log = await makeWorkLog({ projectId, userId: ahmed });
+    expect(await enqueue(projectId, ahmed, log)).toBe(false);
+
+    const jobs = await owner`SELECT id FROM sync_jobs`;
+    expect(jobs).toHaveLength(0);
+  });
+});
+
+describe("monthly tabs", () => {
+  it("creates the month's tab, with its banner, on the first entry", async () => {
+    const { userId, projectId, connectionId } = await scenario();
+    // The sheet only has August; this entry is September's.
+    const log = await makeWorkLog({ projectId, userId, workDate: "2026-09-15" });
+    await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+
+    const { client, calls } = fakeSheets({ tabs: ["August 2026"] });
+    __setSheetsClientForTests(client);
+    await runSyncWorker();
+
+    const added = calls.find(
+      (c) =>
+        c.method === "sheetsBatchUpdate" &&
+        JSON.stringify(c.args).includes("September 2026"),
+    );
+    expect(added).toBeDefined();
+
+    // And the banner is written, with the totals as live formulas.
+    const banner = calls.find(
+      (c) => c.method === "update" && JSON.stringify(c.args).includes("SUM("),
+    );
+    expect(banner).toBeDefined();
+  });
+
+  it("routes an entry to the tab for its own work date, not for today", async () => {
+    // A correction filed in September to August's work belongs in August.
+    const { userId, projectId, connectionId } = await scenario();
+    const log = await makeWorkLog({ projectId, userId, workDate: "2026-08-14" });
+    await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+
+    const { client, calls } = fakeSheets({ tabs: ["August 2026", "September 2026"] });
+    __setSheetsClientForTests(client);
+    await runSyncWorker();
+
+    const append = calls.find((c) => c.method === "append")!;
+    expect((append.args as { range: string }).range).toContain("August 2026");
+  });
+
+  it("splits a batch that straddles a month boundary", async () => {
+    const { userId, projectId, connectionId } = await scenario();
+    for (const workDate of ["2026-08-31", "2026-09-01"]) {
+      const log = await makeWorkLog({ projectId, userId, workDate });
+      await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+    }
+
+    const { client, calls } = fakeSheets({ tabs: ["August 2026", "September 2026"] });
+    __setSheetsClientForTests(client);
+    const result = await runSyncWorker();
+
+    expect(result).toMatchObject({ done: 2 });
+    const ranges = calls
+      .filter((c) => c.method === "append")
+      .map((c) => (c.args as { range: string }).range);
+    expect(ranges).toHaveLength(2);
+    expect(ranges.some((r) => r.includes("August 2026"))).toBe(true);
+    expect(ranges.some((r) => r.includes("September 2026"))).toBe(true);
   });
 });

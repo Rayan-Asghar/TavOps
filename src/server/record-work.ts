@@ -157,5 +157,5 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     changeKey: `revision:${revision.id}`,
   });
 
-  return { entry, revision, queuedSync: queuedSync > 0 };
+  return { entry, revision, queuedSync };
 }

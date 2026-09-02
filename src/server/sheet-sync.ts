@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
 import type { Db } from "@/db";
 import { sheetConnections, syncJobs } from "@/db/schema";
@@ -18,65 +18,56 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export type SyncJobType = "append" | "update" | "delete";
 
 /**
- * Queues the sheet writes for one entry, in the same transaction as the change.
+ * Queues the sheet write for one entry, in the same transaction as the change.
  *
- * An entry belongs to two sheets at once: the project's, and the developer's.
- * Both are written, and neither is derived from the other — a developer sheet
- * is not a filtered view of a project sheet, it is a different spreadsheet
- * somebody was given.
+ * A sheet belongs to one person on one project, so an entry has exactly one
+ * destination: the sheet for whose work it is and what it was on. Two
+ * developers on a project keep two sheets and never appear in each other's.
  *
  * The outbox pattern, and the reason a sheet cannot drift from the database: an
- * entry cannot be recorded without its writes being queued, and a write cannot
- * be queued for work that was not recorded. Nothing here contacts Google, so a
- * slow or unreachable API never sits between a developer and their submit.
- *
- * Returns how many sheets the entry is bound for, which is zero for a project
- * and developer that both opted out.
+ * entry cannot be recorded without its write being queued, and a write cannot be
+ * queued for work that was not recorded. Nothing here contacts Google, so a slow
+ * or unreachable API never sits between a developer and their submit.
  */
 export async function enqueueSheetWrite(
   tx: Tx,
   input: {
     projectId: string;
-    /** Whose work it is; decides the developer sheet. */
     userId: string;
     workLogId: string;
     jobType: SyncJobType;
     /**
-     * Identifies the CHANGE, not the job. The connection id is appended per
-     * job below: two sheets receiving the same revision must not collide on one
-     * key, or the second sheet silently never gets its row.
+     * Deterministic, so a retry after a timeout collides with the unique index
+     * and becomes a no-op rather than a second row in the sheet.
      */
     changeKey: string;
   },
-): Promise<number> {
-  const connections = await tx
+): Promise<boolean> {
+  const [connection] = await tx
     .select({ id: sheetConnections.id })
     .from(sheetConnections)
     .where(
       and(
         eq(sheetConnections.status, "active"),
-        or(
-          eq(sheetConnections.projectId, input.projectId),
-          eq(sheetConnections.userId, input.userId),
-        ),
+        eq(sheetConnections.projectId, input.projectId),
+        eq(sheetConnections.userId, input.userId),
       ),
-    );
+    )
+    .limit(1);
 
-  if (connections.length === 0) return 0;
+  if (!connection) return false;
 
   await tx
     .insert(syncJobs)
-    .values(
-      connections.map((c) => ({
-        connectionId: c.id,
-        workLogId: input.workLogId,
-        jobType: input.jobType,
-        idempotencyKey: `${input.changeKey}:${c.id}`,
-      })),
-    )
+    .values({
+      connectionId: connection.id,
+      workLogId: input.workLogId,
+      jobType: input.jobType,
+      idempotencyKey: `${input.changeKey}:${connection.id}`,
+    })
     .onConflictDoNothing({ target: syncJobs.idempotencyKey });
 
-  return connections.length;
+  return true;
 }
 
 /**

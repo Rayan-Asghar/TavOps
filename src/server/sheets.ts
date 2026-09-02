@@ -1,5 +1,11 @@
 import { google, type drive_v3, type sheets_v4 } from "googleapis";
-import { ID_COLUMN, ROW_RANGE } from "@/lib/sheet-template";
+import {
+  FIRST_DATA_ROW,
+  HEADER_ROW,
+  ID_COLUMN,
+  ROW_RANGE,
+  bannerRows,
+} from "@/lib/sheet-template";
 
 /**
  * Google Sheets access for the project work-log mirror.
@@ -142,15 +148,29 @@ export async function readMeta(spreadsheetId: string): Promise<SheetMeta> {
   };
 }
 
+/** The header is under the banner and summary block, not on row 1. */
 export async function readHeaderRow(
   spreadsheetId: string,
   tabName: string,
 ): Promise<string[]> {
   const res = await sheetsClient().spreadsheets.values.get({
     spreadsheetId,
-    range: a1Range(tabName, "1:1"),
+    range: a1Range(tabName, `${HEADER_ROW}:${HEADER_ROW}`),
   });
   return (res.data.values?.[0] ?? []).map((v) => String(v ?? ""));
+}
+
+/** Writes the id heading into a sheet the team kept before Tavren existed. */
+export async function writeIdHeading(
+  spreadsheetId: string,
+  tabName: string,
+): Promise<void> {
+  await sheetsClient().spreadsheets.values.update({
+    spreadsheetId,
+    range: a1Range(tabName, `${ID_COLUMN}${HEADER_ROW}`),
+    valueInputOption: "RAW",
+    requestBody: { values: [["Work Log ID"]] },
+  });
 }
 
 /**
@@ -165,7 +185,7 @@ export async function readIdColumn(
 ): Promise<string[]> {
   const res = await sheetsClient().spreadsheets.values.get({
     spreadsheetId,
-    range: a1Range(tabName, `${ID_COLUMN}2:${ID_COLUMN}`),
+    range: a1Range(tabName, `${ID_COLUMN}${FIRST_DATA_ROW}:${ID_COLUMN}`),
   });
   return (res.data.values ?? []).map((r) => String(r?.[0] ?? ""));
 }
@@ -268,4 +288,51 @@ export async function hideIdColumn(
       ],
     },
   });
+}
+
+/**
+ * Makes sure the month's tab exists, creating it from the template if not.
+ *
+ * The team keeps a tab per month, so an entry has to land in the one its work
+ * date belongs to. Creating it here rather than asking somebody to remember is
+ * the difference between a sheet that stays current and one that quietly stops
+ * being filled in on the first of the month.
+ *
+ * Returns the tab's numeric id, which is what column-hiding needs.
+ */
+export async function ensureMonthTab(
+  spreadsheetId: string,
+  tabName: string,
+  projectLabel: string,
+): Promise<number> {
+  const meta = await readMeta(spreadsheetId);
+  const existing = meta.tabs.find((t) => t.title === tabName);
+  if (existing) return existing.sheetId;
+
+  const created = await sheetsClient().spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{ addSheet: { properties: { title: tabName } } }],
+    },
+  });
+
+  const sheetId =
+    created.data.replies?.[0]?.addSheet?.properties?.sheetId ?? 0;
+
+  // USER_ENTERED so the summary cells are stored as live formulas rather than
+  // as text that happens to start with "=".
+  await sheetsClient().spreadsheets.values.update({
+    spreadsheetId,
+    range: a1Range(tabName, `A1:F${HEADER_ROW}`),
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: bannerRows(tabName, projectLabel) },
+  });
+
+  try {
+    await hideIdColumn(spreadsheetId, sheetId);
+  } catch {
+    // Cosmetic; a visible id column still syncs correctly.
+  }
+
+  return sheetId;
 }
