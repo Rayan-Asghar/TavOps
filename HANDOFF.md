@@ -79,20 +79,19 @@ scale down to the prescribed ladder.
 - **Do not test `loading.tsx` by blocking the RSC request.** The loading UI is
   delivered *in* that stream, so blocking it suppresses the thing under test.
   Throttle instead.
-- **Three audit findings were measured and then deleted for failing verification** —
-  a 1.07:1 contrast reading, an "invisible" focus ring, and an element overlapping
-  Sign out. The first two were sampling artifacts (`color-mix`/oklab computed
-  backgrounds parse as near-black); the third is the Next.js dev indicator, which
-  appears in every dev-server screenshot.
-- **shadcn's Button was rejected**: it sets `outline:none` and substitutes a `ring`
-  box-shadow, opting out of the global focus outline and colliding with elevation;
-  its sizes are 24–36px against the 44px standard; it ships `dark:` variants.
-  **Sonner too** — it imports `next-themes`, which this app deliberately does not
-  use (theme is a server-read cookie, so there is no flash).
-- **A base Tailwind utility loses to a responsive one.** `max-w-[640px]` could not
-  override the dialog's `sm:max-w-lg`; it needed the `sm:` prefix.
-- **`setState` in an effect is a lint error here** (cascading renders). Client-only
+- **Findings get deleted when they fail verification.** Four so far were artifacts,
+  not defects: `color-mix`/oklab backgrounds parse as near-black, `sr-only` text is
+  1x1 rather than 0x0 so a naive visibility check counts it, and the Next.js dev
+  indicator appears in every dev-server screenshot.
+- **shadcn's Button and Sonner were rejected.** Button opts out of the global focus
+  outline for a `ring` box-shadow, is 24–36px against the 44px standard, and ships
+  `dark:` variants. Sonner needs `next-themes`, which this app deliberately avoids.
+- **A base Tailwind utility loses to a responsive one** (`max-w-[640px]` vs
+  `sm:max-w-lg`), and **`setState` in an effect is a lint error** — client-only
   values go through `useSyncExternalStore` with a server snapshot.
+- **A `RefObject` effect cannot see a conditionally-mounted form.** The draft hook
+  restored nothing until it became a callback ref: `/log` mounts its form only when
+  a row expands, so the effect ran once against `null` and never fired again.
 - The grid, CDP, `pkill -f` bracketing and Drive API notes in
   `.claude/handoff-history/2026-09-03_sheets-pre-grid.md` all still apply.
 
