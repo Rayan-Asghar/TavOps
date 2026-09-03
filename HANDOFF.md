@@ -5,85 +5,102 @@
 
 ## Goal
 
-A clean, strictly internal, Postgres-centred operations system:
-Web App → PostgreSQL (single source of truth) → reporting and one-way mirrors.
-Full history in PROGRESS.md; the five-phase refactor that preceded this is at
-`.claude/handoff-history/2026-09-01_session-close.md`.
+A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
+(single source of truth) → reporting and one-way mirrors. History in PROGRESS.md.
 
+## ⚠️ Everything below is UNCOMMITTED
+
+34 files, all of one session's work. **Commit before doing anything else**, with
+`git commit --only <paths>` — the index is shared with concurrent sessions and
+`git add` has swept another session's work into a commit before.
+`.claude/settings.json` carries older permission allowances; handle separately.
 ## Current State
 
-**Project work-log sheets are built, committed and green.** 216 unit + 47
-fixture tests, build clean. Six commits: `2a6f75e` → `a155744`.
+**An in-app spreadsheet over work logs, at `/timesheet`. Built, driven in a real
+browser, green.** 273 unit + 100 fixture tests, lint and build clean.
 
-- **One sheet per project.** Every entry on a project goes to its sheet,
-  whoever logged it. Who did the work lives on the work log, the activity feed
-  and `/reports` — the sheet records what and how long, and has no Developer
-  column, matching the team's own tracker.
-- **The team's layout, not a generic one.** Title banner, a summary strip whose
-  totals are live formulas, header on **row 8**, columns
-  `Date | <project> | Hours | Notes — Work Done | Link (if any) | Work Log ID`.
-  Tavren fills date, hours, notes and the hidden id; the label, link and totals
-  are the team's and are never written to.
-- **A tab per month**, created on demand with its banner. An entry routes to the
-  tab for its own work date, so a September correction to August work lands in
-  August.
-- **Rows are addressed by the work log's uuid** in hidden column F, not by row
-  number — a person sorting or inserting rows cannot cause a wrong-row write.
-  A delete blanks its row rather than removing it, because removing one shifts
-  every row beneath it.
-- **Connecting** validates the header row, adopts a sheet missing only the id
-  column, backfills existing entries, renames the file to
-  `Tavren — <project> — <client>`, and refuses the template's own link.
-- `pnpm sheets:template <url>` lays out a blank sheet you own as the template.
-  `TAVREN_SHEET_TEMPLATE_ID` is set; the Copy button works.
+One project × one month, with a person filter — the same slice as a tab of that
+project's sheet, so blocks round-trip between the two. Keyboard editing,
+copy/paste, a live timer row, CSV export. **No Save button**: every cell commits
+when you leave it. Rationale:
+`~/.claude/plans/ok-so-discussed-the-modular-token.md`.
 
-**Nothing is connected.** `sheet_connections` is empty — migrations `0015`/`0016`
-cleared the earlier keyings, which were never live. The first real allotment is
-the last unproven step end to end.
+**Four live bugs were fixed underneath it**, none introduced by this work:
+
+- `nextVersion` had no row lock — concurrent corrections collided on
+  `worklog_revisions_version_unique`. Now `FOR UPDATE OF work_logs`; the `OF`
+  matters, or the lock covers the joined project row and serialises every edit
+  on it. `tests/db/work-log-actions.test.ts` fails without it.
+- `loadForCorrection` read on a *different connection* than the write, so the
+  invoiced and already-removed checks were check-then-act. Now inside the tx.
+- `adjustTimer` had no status guard: it resurrected a completed session, and
+  finishing it again wrote a **second** work log, orphaning the first.
+- Nothing stopped a person having two open timers. **Migration `0017`** adds the
+  partial unique index and closes duplicates first. It runs on deploy.
+Full reasoning for all four is in PROGRESS.md.
+
+The shared write path is `server/work-log-writes.ts`, used by both the
+single-row actions and the batch save. The batch is one transaction with a
+SAVEPOINT per row, so a rejected row takes its revision, audit row and sheet job
+with it while the rest commits.
+
+Accessibility and design passes followed. Grid: emoji as structural icons (now
+`LockIcon`/`TimerIcon`); focus scrolling behind the 56px sticky header
+(`scroll-padding-top`, WCAG 2.2 AA); save status by colour alone; no live region
+for autosave; icons at 2.38:1 on `surface-2`. `prefers-reduced-motion` was
+absent app-wide. **`MetricCard`'s negative `change` used `brand` at 4.05:1 /
+4.30:1 — under the 4.5:1 floor; now `danger`, which also fixes `/sales`.** On an
+accent card both tokens invert together and collapse to 2.4-3.2:1, so there it
+uses the card's own foreground. The accent moved off "Your projects" (scope, not
+a metric) onto "Waiting on you" — what `/reports`, `/review` and `/sales`
+already do: accent the page's headline number.
+
+**Sheets are unchanged**; grid edits flow out through the same outbox. **Nothing
+is connected yet** — `sheet_connections` is empty.
 
 ## Next Steps
 
-1. **Attach a sheet to one project** — Sheet tab → Copy the template → name it →
-   share with the service account → paste the link. This exercises the rename,
-   the backfill and the first live write in one go.
-2. **Phase 0 — hosting and a scheduler. Still the only thing blocking every
-   automation**, and now the sheets sync too. `after()` drains after each
-   response, which covers the normal case but is not durable. Schedule
-   `/api/cron/sync` (2–5 min), `/api/cron/sweeps` (hourly),
-   `/api/cron/digest` (daily) with `CRON_SECRET`. Vercel Hobby is out.
-3. **Set `DIGEST_WEBHOOK_URLS`** or the digest builds and goes nowhere.
-4. **Delete the nine seed accounts** sharing `tavren123`.
-5. `.claude/settings.json` has uncommitted permission allowances from this
-   session — commit or discard.
+1. **Commit this work** (see the warning above).
+2. **Attach a sheet to one project** — the last unproven step end to end. Sheet
+   tab → Copy the template → name it → share with the service account → paste
+   the link.
+3. **Phase 0 — hosting and a scheduler. Still the only thing blocking every
+   automation**, and the grid makes the sheet mirror busier. Schedule
+   `/api/cron/sync` (2–5 min), `/api/cron/sweeps` (hourly), `/api/cron/digest`
+   (daily) with `CRON_SECRET`. Vercel Hobby is out.
+4. **Set `DIGEST_WEBHOOK_URLS`** or the digest builds and goes nowhere.
+5. **Delete the nine seed accounts** sharing `tavren123`.
+6. Grid: no `Ctrl+Z` undo; range selection is keyboard-only, no mouse drag.
 
 ## What Failed / Dead Ends
 
-- **The service account cannot create Drive files.** `spreadsheets.create`
-  returns 403. This is why the app offers Google's `/copy` link instead of a
-  "create it for me" button, and why the template is laid out in a sheet a
-  person already owns.
-- **The Drive API is not enabled** on Cloud project `authentic-root-471504-q1`.
-  So `readOtherEditors` always fails and the "who else can edit this sheet"
-  warning has never once fired. Deliberately non-fatal, which is why nobody
-  noticed. Enabling it is free, needs no billing and no OAuth verification.
-- **Renaming a spreadsheet does NOT need Drive.** `updateSpreadsheetProperties`
-  is the Sheets API and the title is the Drive filename. Verified live.
-- **`pkill`/`pgrep -f "next dev"` kills the agent's own shell.** Use a bracket
-  class: `pgrep -af "nex[t] dev"`.
-- **Browser harness: never use a global `input[name=…]` lookup** — the project
-  page's rail has its own log-work form. Anchor on a field only the target form
-  has, then `.closest('form')`.
-- **`requestSubmit()` silently no-ops on constraint violations.** Call
-  `form.checkValidity()` first or a blocked submit looks like a broken action.
-- **The git index is shared with concurrent sessions.** `git add` then
-  `git commit` swept another session's staged work into a commit once. Use
-  `git commit --only <paths>`.
-- **Deleting `.next` breaks `pnpm typecheck`** (`LayoutProps` is generated
-  there). Run `pnpm build` once to regenerate.
+- **The grid's columns and the sheet's are NOT the same shape.** The sheet has
+  six and no Person column; the grid renders Person third, so a six-wide block
+  pasted positionally puts hours into the notes cell. `planPaste` reads a
+  six-wide block anchored at column A in the sheet's order instead.
+- **A React state updater must not call another setState.** StrictMode invokes
+  updaters twice, so `setRows` inside a `setDraft` updater appended every new row
+  twice and doubled the hours in the totals.
+- **`pkill -f` matches the agent's own shell for ANY pattern** — the command line
+  containing the pattern is itself a match. Bracket every one:
+  `nex[t] dev`, `remote-debugging-port=922[2]`.
+- **Driving the app over CDP** (no Playwright; Node 24's built-in WebSocket
+  speaks to `google-chrome --headless`): never send `text` on `keyDown` *and* a
+  `char` event, or characters type twice. The keystroke that OPENS a cell editor
+  needs `keyDown` alone.
+- **The service account cannot create Drive files** (`spreadsheets.create` → 403);
+  the **Drive API is not enabled**, so `readOtherEditors` has never fired.
+- **Never use a global `input[name=…]` lookup** in a browser harness — the
+  project page's rail has its own log-work form. `requestSubmit()` also silently
+  no-ops on constraint violations; call `form.checkValidity()` first.
+- **Both `danger` and `fill-strong` invert between themes**, so a status colour
+  on an accent surface collapses to ~2.4-3.2:1 in *both*. Use the surface's own
+  foreground there and carry emphasis with weight.
 
 ## Open Questions / Blockers
 
-- **Hosting decision** — blocks step 2, which blocks everything automatic.
+- **Hosting decision** — blocks step 3, which blocks everything automatic.
 - **Discord/Slack webhook URL** for the digest.
-- The template must be shared "Anyone with the link → Viewer" or the Copy button
-  fails for colleagues. Unverifiable from here without the Drive API.
+- **Column E (Link) is read-only** in the grid; there is no `link` column on a
+  work log. Adding one is a product decision — it would make the sync write
+  column E, which the UI currently promises it never does.

@@ -4,6 +4,74 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-03 — A spreadsheet inside the app
+
+- **Shipped, UNCOMMITTED:** `/timesheet`, an editable grid over `work_logs` —
+  one project × one month with a person filter, keyboard editing, block
+  copy/paste, a live timer row and CSV export. 273 unit + 100 fixture tests,
+  build clean. Driven in a real browser, not only in tests.
+
+- **Why it exists:** an executive asked for the Google Sheets *experience* in
+  the app. The mirror shipped a week earlier is push-only and
+  `sheet-panel.tsx` says so outright — edits made in the sheet are never read
+  back, so anyone fixing their hours in Google watched Tavren overwrite them.
+  A grid whose cells *are* rows closes that without a two-way sync.
+
+- **Four live bugs found underneath the feature**, none introduced by it. Worth
+  more than the feature:
+  - `nextVersion` was an unlocked `max(version)+1`; two concurrent corrections
+    to one entry collided on `worklog_revisions_version_unique`. Now
+    `FOR UPDATE OF work_logs`. The `OF` is load-bearing — without it the lock
+    covers the joined `projects` row and every edit on the project serialises.
+  - `loadForCorrection` read on a different connection than the write, so the
+    invoiced and already-removed checks were check-then-act.
+  - `adjustTimer` had no status guard: it resurrected a completed session as
+    `paused`, and finishing it again wrote a second work log while overwriting
+    `work_log_id`, orphaning the first.
+  - No DB constraint on one open timer per person. Migration `0017`.
+
+- **Decisions:**
+  - **No Save button.** Every cell commits on leaving it, so there is never
+    more than one uncommitted value. That is what reconciles a client grid with
+    this app's rule that shareable UI state lives in the URL: project, person
+    and month decide *what is fetched and who may see it* and stay in the query
+    string; a half-typed "1.5" is neither, and stays in the client.
+  - **One transaction, a SAVEPOINT per row.** In Postgres any statement error
+    aborts the whole transaction, so "catch and continue" is only achievable
+    with savepoints — per-row transactions would let a reader see half a paste.
+    A rejected row takes its revision, audit row and sheet job with it.
+  - **`reason` is optional for your own corrections, mandatory for somebody
+    else's.** A grid that demands prose per cell produces "fix", "typo", "." —
+    worse than nothing, because it looks like documentation. The correction
+    form keeps its required reason.
+  - **The row's verdict crosses the wire, never the user id.** On a page where
+    `worklog.viewAll` may be false, sending `userId` would say who logged what.
+    The client gets `editable`, a closed-set `lock` reason, and `isMine`.
+  - **A pasted block carrying Work Log IDs is matched by id, not position** —
+    the same argument `locateRow` makes for the sheet: somebody sorting rows
+    invalidates every position at once, and the id survives it.
+
+- **The sheet and the grid are not the same shape**, and this nearly shipped
+  wrong. The sheet has six columns and no Person column; the grid renders
+  Person third. A six-wide sheet block pasted positionally put *hours into the
+  notes cell*. Found by driving a real paste, not by any test I had thought to
+  write. A block the sheet's width, pasted at column A, is now read in the
+  sheet's order.
+
+- **Driving the real app caught what tests did not.** Two bugs only a browser
+  showed: partial input into the blank row was discarded, and every new row
+  appeared twice — `setRows` called inside a `setDraft` updater, which
+  StrictMode invokes twice, doubling the hours in the totals. That last one is
+  precisely the class of wrong number this grid exists to stop people writing
+  down.
+
+- **Closed a standing gap:** there were no tests for any work-log action at
+  all. There are now 100 fixture tests, and the extraction into
+  `work-log-writes.ts` was landed against characterisation tests written
+  *first*, so the refactor is provably behaviour-preserving.
+
+---
+
 ### 2026-09-03 — Google Sheets, back but inverted
 
 - **Shipped:** a one-way work-log mirror, Tavren → Google Sheets, in the layout
