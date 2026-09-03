@@ -294,7 +294,8 @@ export default async function ReportsPage({
             newest {TIMESHEET_PREVIEW} shown · CSV has them all
           </span>
         </div>
-        <DataTable minWidth={680}>
+        {/* 60 rows: the only table here long enough to lose its own header. */}
+        <DataTable minWidth={680} maxHeight={520}>
             <thead>
               <tr>
                 <Th>Date</Th>

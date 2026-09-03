@@ -14,13 +14,26 @@ import type { ReactNode } from "react";
  *  box rather than pushing the page sideways. */
 export function DataTable({
   minWidth,
+  maxHeight,
   children,
 }: {
   minWidth?: number;
+  /** Cap the table's own height so its header can stick. Omit for short tables
+   *  that never need it — a scrollbar on a five-row table is noise. */
+  maxHeight?: number;
   children: ReactNode;
 }) {
   return (
-    <div className="w-full overflow-x-auto">
+    /* `overflow-x: auto` forces overflow-y to `auto` too, which makes THIS div the
+       sticky containing block — so a header stuck to the viewport silently does
+       nothing (measured: it slid from 1425px to 551px on scroll). The fix is to
+       let the container be the vertical scroller as well, and stick the header to
+       the top of it. Without a maxHeight the container never scrolls vertically
+       and the header simply behaves as before. */
+    <div
+      className="w-full overflow-auto"
+      style={maxHeight ? { maxHeight } : undefined}
+    >
       <table
         className="w-full border-collapse text-xs"
         style={minWidth ? { minWidth } : undefined}
@@ -45,10 +58,13 @@ export function Th({
   return (
     <th
       scope="col"
-      className={`h-[38px] border-b border-border px-4 text-2xs font-black uppercase
-                  tracking-[.1em] text-fg-label first:pl-5 last:pr-5 ${
-                    numeric ? "text-right" : "text-left"
-                  }`}
+      /* Sticks to the top of the scrolling container, not the viewport. Reports
+         lists 60 timesheet rows and the column names were gone by row 15; C4/C5
+         both ask for a sticky header. `bg-surface` is required — a transparent
+         sticky header lets rows scroll through it. */
+      className={`sticky top-0 z-10 h-[38px] border-b border-border bg-surface px-4
+                  text-2xs font-black uppercase tracking-[.1em] text-fg-label
+                  first:pl-5 last:pr-5 ${numeric ? "text-right" : "text-left"}`}
     >
       {srOnly ? <span className="sr-only">{children}</span> : children}
     </th>
