@@ -68,27 +68,37 @@ export default async function InboxPage() {
       />
 
       <MetricGrid>
+        {/* The accent marks the page's headline metric, as it does on
+            /reports, /review and /sales. Here that is what is waiting on you —
+            not the project count, which is scope rather than a number anyone
+            acts on, and which was previously the loudest thing on a page whose
+            whole premise is that only exceptions are worth looking at. The
+            accent is dropped entirely when the queue is empty: an inbox with
+            nothing in it should read as finished, not shout a zero. */}
         <MetricCard
           label="Waiting on you"
           value={String(actionable.length)}
           change={urgent > 0 ? `${urgent} urgent` : undefined}
           changeTone="negative"
+          accent={actionable.length > 0}
+          quiet={actionable.length === 0}
           note="Blockers, reviews and reporting gaps assigned to you."
         />
         <MetricCard
           label="Blockers to clear"
           value={String(myBlockers?.n ?? 0)}
+          quiet={(myBlockers?.n ?? 0) === 0}
           note="Routed to you because you can unblock them."
         />
         <MetricCard
           label="Your open tasks"
           value={String(myTasks?.n ?? 0)}
+          quiet={(myTasks?.n ?? 0) === 0}
           note="Assigned work that is not yet done."
         />
         <MetricCard
           label="Your projects"
           value={scope === null ? "All" : String(scope.length)}
-          accent
           note={
             scope === null
               ? "Your role sees every project."

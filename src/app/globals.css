@@ -216,6 +216,29 @@ body {
   }
 }
 
+/* The app shell's header is sticky at 56px. Without this, arrowing down a grid
+   or jumping to an anchor parks the focused element underneath it — WCAG 2.2
+   "Focus Not Obscured (Minimum)" is an AA requirement, and a cell you cannot
+   see is a cell you cannot check before typing over it. */
+html {
+  scroll-padding-top: 72px;
+}
+
+/* Vestibular disorders are not a niche: a pulsing indicator is decoration, and
+   the information it carries is already in the icon beside it and in the live
+   region. Motion is dropped rather than slowed, and `scroll-behavior` is reset
+   too so an anchor jump does not animate. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer components {
   /* Tiny uppercase kicker used above almost every heading in the reference. */
   .eyebrow {

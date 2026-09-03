@@ -75,6 +75,7 @@ export function MetricCard({
   changeTone,
   progress,
   accent = false,
+  quiet = false,
 }: {
   label: string;
   value: string;
@@ -83,6 +84,8 @@ export function MetricCard({
   changeTone?: "positive" | "negative";
   progress?: number;
   accent?: boolean;
+  /** A zero that means "nothing to do here". Recedes instead of competing. */
+  quiet?: boolean;
 }) {
   return (
     <article
@@ -100,19 +103,33 @@ export function MetricCard({
         </span>
         {change && (
           <span
-            className={`text-2xs font-semibold ${
-              changeTone === "positive"
-                ? "text-ok"
-                : changeTone === "negative"
-                  ? "text-brand"
-                  : "text-fg-muted"
+            className={`text-2xs ${
+              accent
+                ? // On the accent card the status colours are unusable: both
+                  // `danger` and `fill-strong` invert with the theme, so they
+                  // collapse to a similar lightness — 3.24:1 in light, 2.42:1
+                  // in dark. The card's own foreground is the only pairing that
+                  // holds, so emphasis is carried by weight instead of hue.
+                  "font-black text-fill-strong-fg"
+                : changeTone === "positive"
+                  ? "font-semibold text-ok"
+                  : changeTone === "negative"
+                    ? // `danger`, not `brand`: brand is an identity colour, and
+                      // at 11px it read 4.05:1 on a light card and 4.30:1 on a
+                      // dark one — both under the 4.5:1 small-text minimum.
+                      "font-semibold text-danger"
+                    : "font-semibold text-fg-muted"
             }`}
           >
             {change}
           </span>
         )}
       </div>
-      <strong className="mt-6 block text-5xl leading-none tracking-[-.055em]">
+      <strong
+        className={`mt-6 block text-5xl leading-none tracking-[-.055em] ${
+          quiet ? "text-fg-subtle" : ""
+        }`}
+      >
         {value}
       </strong>
       {typeof progress === "number" && (
