@@ -53,6 +53,9 @@ export async function AppShell({
   // signal in this system is downstream of hours actually being entered.
   if (can(role, "worklog.create")) {
     main.splice(1, 0, { href: "/log", label: "Log work", icon: "log" });
+    // The same hours, laid out like the project's sheet. /log is for one entry
+    // at a time; this is for a month at a time.
+    main.splice(2, 0, { href: "/timesheet", label: "Timesheet", icon: "log" });
   }
 
   if (can(role, "proposal.create")) {
