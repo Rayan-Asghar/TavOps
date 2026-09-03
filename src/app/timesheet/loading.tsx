@@ -10,7 +10,7 @@ export default function Loading() {
         <Skeleton w="260px" h={40} rounded="md" />
         <Skeleton w="180px" h={40} rounded="md" />
       </div>
-      <div className="mb-5 grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-border bg-border">
+      <div className="mb-5 grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-border bg-border">
         {[0, 1, 2].map((i) => (
           <div key={i} className="bg-surface p-4">
             <Skeleton h={10} w="50%" />
@@ -20,7 +20,7 @@ export default function Loading() {
           </div>
         ))}
       </div>
-      <div className="overflow-hidden rounded-[14px] border border-border">
+      <div className="overflow-hidden rounded-xl border border-border">
         <SkeletonRows rows={10} cols={5} rowH={32} />
       </div>
 

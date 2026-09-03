@@ -46,7 +46,7 @@ export function PasteReview({
           onCancel();
         }
       }}
-      className="mb-4 rounded-[14px] border border-border bg-surface"
+      className="mb-4 rounded-xl border border-border bg-surface"
     >
       <div className="border-b border-border px-4 py-3">
         <h2

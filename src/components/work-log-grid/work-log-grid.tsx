@@ -603,7 +603,7 @@ export function WorkLogGrid({
       />
 
       {monthLocked && (
-        <p className="mb-4 rounded-[10px] border border-border bg-surface-2 px-4 py-3 text-xs font-bold text-fg-muted">
+        <p className="mb-4 rounded-xl border border-border bg-surface-2 px-4 py-3 text-xs font-bold text-fg-muted">
           This month has been invoiced. Its entries are a record of what was
           charged and can no longer be changed.
         </p>
@@ -652,7 +652,7 @@ export function WorkLogGrid({
         />
       )}
 
-      <div className="w-full overflow-x-auto rounded-[14px] border border-border">
+      <div className="w-full overflow-x-auto rounded-xl border border-border">
         <table
           ref={tableRef}
           tabIndex={-1}

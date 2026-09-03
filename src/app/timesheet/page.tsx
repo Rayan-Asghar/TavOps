@@ -173,7 +173,7 @@ export default async function TimesheetPage({
       <GridMonthTabs months={grid.months} active={month} params={scoped} />
 
       {grid.truncated && (
-        <p className="mb-4 rounded-[10px] border border-warn bg-warn-soft px-4 py-3 text-xs font-bold text-fg">
+        <p className="mb-4 rounded-xl border border-warn bg-warn-soft px-4 py-3 text-xs font-bold text-fg">
           This month has more entries than the grid edits at once. Narrow it to
           one person, or use the CSV export.
         </p>

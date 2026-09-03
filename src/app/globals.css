@@ -167,8 +167,10 @@ body {
    `surface-2` for now; consolidating the ramp is a separate pass.
    --------------------------------------------------------------------------- */
 :root {
-  /* 3.2: one radius, 8px, with the scale derived from it. Replaces the five
-     literal radii that were in use (14px, 10px, 7px, 6px, 8px). */
+  /* 3.2: one radius, 8px, with the scale derived from it -- sm 4 / md 6 / lg 8 /
+     xl 12. Replaces the literal values that were in use (14px, 10px, 7px), which
+     were scale artifacts rather than decisions: a panel at 14 sat directly beside
+     a field at 7 and a button at 8. `rounded-full` stays as itself. */
   --radius: 0.5rem;
 }
 
@@ -351,14 +353,14 @@ html {
   }
 
   .panel {
-    @apply rounded-[14px] border border-border bg-surface;
+    @apply rounded-xl border border-border bg-surface;
   }
   .panel-head {
     @apply flex min-h-[76px] items-center justify-between gap-4 border-b border-border px-5 py-4;
   }
 
   .field {
-    @apply w-full min-h-[44px] rounded-[7px] border border-border bg-surface px-3 py-2.5
+    @apply w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 py-2.5
            text-base text-fg placeholder:text-fg-subtle focus:border-fg;
   }
   .field:focus-visible {

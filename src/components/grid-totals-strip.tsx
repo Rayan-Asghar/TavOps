@@ -25,7 +25,7 @@ export function GridTotalsStrip({
   ];
 
   return (
-    <div className="mb-5 overflow-hidden rounded-[14px] border border-border">
+    <div className="mb-5 overflow-hidden rounded-xl border border-border">
       <div className="grid grid-cols-3 gap-px bg-border">
         {cells.map((c) => (
           <div key={c.label} className="bg-surface px-4 py-3">
