@@ -16,7 +16,7 @@ import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { MetricCard, MetricGrid, HealthBadge } from "@/components/badges";
 
-import { hrs, pct } from "@/lib/format";
+import { fmtDate, hrs, pct } from "@/lib/format";
 import { DataTable, EmptyCell, Th } from "@/components/ui";
 
 export const metadata = { title: "Reports" };
@@ -168,7 +168,9 @@ export default async function ReportsPage({
             </thead>
             <tbody>
               {projectRows.length === 0 ? (
-                <EmptyCell colSpan={8}>No projects in scope.</EmptyCell>
+                <EmptyCell colSpan={8}>
+                  {`No projects logged time between ${fmtDate(range.from)} and ${fmtDate(range.to)}.`}
+                </EmptyCell>
               ) : (
                 projectRows.map((p) => {
                   const budget = budgets.get(p.projectId) ?? 0;
@@ -305,7 +307,9 @@ export default async function ReportsPage({
             </thead>
             <tbody>
               {sheet.length === 0 ? (
-                <EmptyCell colSpan={6}>Nothing logged in this range.</EmptyCell>
+                <EmptyCell colSpan={6}>
+                  {`No entries between ${fmtDate(range.from)} and ${fmtDate(range.to)}. Widen the range above to see more.`}
+                </EmptyCell>
               ) : (
                 sheet.map((r, i) => (
                   <tr

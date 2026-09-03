@@ -177,8 +177,14 @@ export default async function InboxPage() {
           </ul>
         </section>
       ) : (
-        <EmptyState className="mb-4">Nothing is waiting on you. Anything that needs a decision will
-            appear here.</EmptyState>
+        <EmptyState
+          variant="cleared"
+          title="You're All Clear"
+          className="mb-4"
+        >
+          Nothing needs a decision from you right now. Blockers, reviews and
+          reporting gaps land here the moment they are routed to you.
+        </EmptyState>
       )}
 
       {informational.length > 0 && (

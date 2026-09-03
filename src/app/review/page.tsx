@@ -126,8 +126,10 @@ export default async function ReviewPage() {
       </MetricGrid>
 
       {queue.length === 0 ? (
-        <EmptyState>Nothing waiting for review. When a developer marks work ready, it
-            lands here.</EmptyState>
+        <EmptyState variant="cleared" title="Review Queue Is Empty">
+          Every submission has been through you. Work arrives here the moment a
+          developer marks it ready.
+        </EmptyState>
       ) : (
         <ul className="space-y-3">
           {queue.map((t) => (

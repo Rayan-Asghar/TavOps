@@ -169,11 +169,37 @@ export default async function ProjectsPage({
       </ListFilters>
 
       {rows.length === 0 ? (
-        <EmptyState>
-          {list.q
-            ? `Nothing matches “${list.q}”.`
-            : "No projects assigned to you yet."}
-        </EmptyState>
+        list.q ? (
+          /* no-results must never be a dead end (r41): the way back out of the
+             filter is the action, and the query is quoted so it is obvious what
+             was searched. */
+          <EmptyState
+            variant="no-results"
+            title="No Matching Projects"
+            action={
+              <Link href="/projects" className="btn-secondary btn-sm">
+                Clear search
+              </Link>
+            }
+          >
+            {`Nothing matches “${list.q}”. Try a project code, a client name, or clear the search to see everything you can access.`}
+          </EmptyState>
+        ) : (
+          <EmptyState
+            variant="blank-slate"
+            title="No Projects Yet"
+            action={
+              can(me?.globalRole ?? "developer", "project.create") ? (
+                <Link href="/projects/new" className="btn-primary btn-sm">
+                  Create project
+                </Link>
+              ) : undefined
+            }
+          >
+            Projects you own or are assigned to appear here, with hours logged
+            against estimate and anything currently blocking them.
+          </EmptyState>
+        )
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => {

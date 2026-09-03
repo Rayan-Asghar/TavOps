@@ -1,5 +1,6 @@
 "use client";
 
+import { CloseIcon } from "../icons";
 import {
   createContext,
   useCallback,
@@ -34,7 +35,8 @@ export type ToastInput = {
   message: string;
   tone?: ToastTone;
   undo?: ToastUndo;
-  /** Defaults to 5s, or 10s when the toast offers an undo. */
+  /** Defaults to 5s. Ignored for toasts that carry an undo or an error tone:
+   *  those persist until dismissed (4.6 r45). Pass a number to force a timer. */
   durationMs?: number;
 };
 
@@ -110,9 +112,19 @@ function ToastRow({
   onDismiss: () => void;
 }) {
   const [undoing, startUndo] = useTransition();
-  const life = toast.durationMs ?? (toast.undo ? 10_000 : 5_000);
+
+  /* A toast that carries an action must not time out, and a critical message must
+     never be timer-dismissed (DESIGN-STANDARD 4.6 r45, from Carbon's notification
+     pattern). This previously did the opposite of the rule: an Undo toast was given
+     a LONGER timer (10s) rather than none, so the one toast whose action the user
+     might still need was the one that expired while they were reading it. An error
+     that appears only as a timed toast is also a [FAIL IF] -- errors stay until
+     dismissed. Both now persist; everything routine still clears itself. */
+  const persists = Boolean(toast.undo) || toast.tone === "error";
+  const life = toast.durationMs ?? (persists ? null : 5_000);
 
   useEffect(() => {
+    if (life === null) return;
     const id = window.setTimeout(onDismiss, life);
     return () => window.clearTimeout(id);
   }, [life, onDismiss]);
@@ -150,9 +162,11 @@ function ToastRow({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss notification"
-        className="shrink-0 text-2xs font-bold text-fg-subtle hover:text-fg"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-fg-muted
+                   transition-[color,background-color] duration-150 ease-out-quad
+                   hover:bg-surface-2 hover:text-fg"
       >
-        ✕
+        <CloseIcon />
       </button>
     </div>
   );
