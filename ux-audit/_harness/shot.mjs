@@ -1,0 +1,13 @@
+import { chromium } from "@playwright/test";
+const [route="/", name="shot", theme="light"] = process.argv.slice(2);
+const b=await chromium.launch(); const c=await b.newContext({viewport:{width:1440,height:900}});
+const p=await c.newPage();
+await p.goto("http://localhost:3000/login",{waitUntil:"networkidle"});
+await p.fill('input[name="email"]',"contact@tavren.io"); await p.fill('input[name="password"]',"tavren123");
+await Promise.all([p.waitForURL(u=>!u.pathname.startsWith("/login")).catch(()=>{}),p.click('button[type="submit"]')]);
+await c.addCookies([{name:"tavren_theme",value:theme,url:"http://localhost:3000"}]);
+await p.goto("http://localhost:3000"+route,{waitUntil:"networkidle"});
+await p.waitForTimeout(500);
+await p.screenshot({path:`/tmp/claude-1000/-home-rayan-Desktop-TavrenOPS/cc516926-a772-4cbe-a2e0-6b5ea4ee3a75/scratchpad/${name}.png`,fullPage:true});
+console.log("shot",route,theme);
+await b.close();

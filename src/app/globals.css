@@ -112,6 +112,18 @@
      start is exactly what 5.3 says to avoid entirely for UI. */
   --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+
+  /* Loading placeholders appear only after 300ms. 4.6 r42: under a second, show
+     no skeleton at all -- Next renders `loading.tsx` the instant navigation
+     starts, so without the delay every fast page flashes one. The `both` fill
+     holds it invisible through the delay. Under reduced motion the app's global
+     rule collapses the 120ms fade but leaves the delay, which is the part doing
+     the work. */
+  --animate-sk-appear: sk-appear 120ms var(--ease-out-quad) 300ms both;
+  @keyframes sk-appear {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 
 /* 3.1 makes this a [FAIL IF]: proportional figures make a column of hours visibly
