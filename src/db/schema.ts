@@ -627,6 +627,26 @@ export const notifications = pgTable(
     isActionable: boolean("is_actionable").default(false).notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     seenAt: timestamp("seen_at", { withTimezone: true }),
+    /**
+     * Snooze, the fourth exit from the queue.
+     *
+     * Hidden until this instant, then back in the inbox on its own. It is NOT a
+     * resolution: `resolved_at` stays null, so nothing is lost and the item is
+     * still queryable from Reports — which matters, because a defer people
+     * cannot audit is a defer people stop trusting.
+     *
+     * It also wakes early on new activity: `notify()` clears this whenever the
+     * same deduped condition recurs, so snoozing "the sheet sync failed" for a
+     * day does not hide the next, different failure. That pairing — a time OR an
+     * event — is what makes an honestly empty queue possible.
+     */
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+    snoozedAt: timestamp("snoozed_at", { withTimezone: true }),
+    /**
+     * Why it was dismissed. Optional, because r21 forbids a confirm step on a
+     * routine action — asking for a reason every time would be one.
+     */
+    dismissNote: text("dismiss_note"),
     /** Collapses repeat sweeps into one row instead of nagging daily. */
     dedupeKey: varchar("dedupe_key", { length: 200 }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -634,7 +654,7 @@ export const notifications = pgTable(
       .notNull(),
   },
   (t) => [
-    index("notifications_user_idx").on(t.userId, t.resolvedAt),
+    index("notifications_user_idx").on(t.userId, t.resolvedAt, t.snoozedUntil),
     /**
      * NULLs are distinct here on purpose — this is not the trap that made
      * `sheet_connections_owner_unique` inert.

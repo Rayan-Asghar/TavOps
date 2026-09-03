@@ -5,9 +5,11 @@ import { db } from "@/db";
 import { blockers, tasks, users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
-import { inboxFor, unresolvedCount } from "@/server/notifications";
+import { inboxFor, snoozedFor, unresolvedCount } from "@/server/notifications";
 import { recentProjectsFor } from "@/server/recent";
 import { DismissButton } from "@/components/dismiss-button";
+import { SnoozeButton } from "@/components/snooze-button";
+import { UnsnoozeButton } from "@/components/unsnooze-button";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, HealthBadge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
 import { ArrowRightIcon } from "@/components/icons";
@@ -31,11 +33,12 @@ export default async function InboxPage() {
     .where(eq(users.id, actor.id))
     .limit(1);
 
-  const [items, count, scope, recents] = await Promise.all([
+  const [items, count, scope, recents, snoozed] = await Promise.all([
     inboxFor(actor.id),
     unresolvedCount(actor.id),
     accessibleProjectIds(actor),
     recentProjectsFor(actor, 4),
+    snoozedFor(actor.id),
   ]);
 
   const [myBlockers] = await db
@@ -171,6 +174,7 @@ export default async function InboxPage() {
                         </Link>
                       )
                     )}
+                    <SnoozeButton id={n.id} title={n.title} />
                     <DismissButton id={n.id} title={n.title} />
                   </div>
                 </li>
@@ -187,6 +191,45 @@ export default async function InboxPage() {
           Nothing needs a decision from you right now. Blockers, reviews and
           reporting gaps land here the moment they are routed to you.
         </EmptyState>
+      )}
+
+      {/* 2.6: a queue you cannot look behind is one nobody trusts enough to
+          empty, so what is deferred stays visible and reversible in one click.
+          Collapsed by default -- it is not work for today. */}
+      {snoozed.length > 0 && (
+        <details className="panel group mb-4">
+          <summary
+            className="flex min-h-[52px] cursor-pointer list-none items-center gap-2.5 px-4
+                       text-xs font-bold text-fg-muted
+                       transition-[color,background-color] duration-150 ease-out-quad
+                       hover:bg-surface-hover hover:text-fg"
+          >
+            <span
+              aria-hidden
+              className="inline-block transition-transform duration-150 ease-out-quad group-open:rotate-90"
+            >
+              &rsaquo;
+            </span>
+            {snoozed.length} snoozed
+            <span className="font-medium text-fg-subtle">
+              &mdash; back on its own, or sooner if it happens again
+            </span>
+          </summary>
+          <ul className="border-t border-border">
+            {snoozed.map((n) => (
+              <li
+                key={n.id}
+                className="flex items-center gap-3 border-b border-border px-4 py-3 text-xs last:border-b-0"
+              >
+                <span className="min-w-0 flex-1 truncate">{n.title}</span>
+                <span className="tabular shrink-0 text-2xs text-fg-subtle">
+                  {n.snoozedUntil ? `back ${timeAgo(n.snoozedUntil)}` : ""}
+                </span>
+                <UnsnoozeButton id={n.id} title={n.title} />
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {/* r12 makes recent work required on the dashboard, not optional, and NN/g
