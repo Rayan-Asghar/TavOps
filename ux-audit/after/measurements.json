@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T19:53:17.805Z",
+  "capturedAt": "2026-09-03T20:25:47.714Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -7,46 +7,48 @@
   "routes": {
     "/": {
       "fontSizes": {
-        "14px": 38,
-        "18px": 1,
-        "11px": 13,
+        "14px": 45,
+        "18px": 2,
+        "11px": 27,
         "13px": 52,
-        "12px": 9,
+        "12px": 12,
         "44px": 1,
         "43px": 4
       },
       "fontWeights": {
-        "400": 44,
+        "400": 57,
         "500": 52,
-        "700": 13,
-        "800": 4,
-        "900": 5
+        "700": 18,
+        "800": 5,
+        "900": 11
       },
       "spacings": {
-        "16px": 4,
+        "16px": 9,
         "14px": 1,
-        "6px": 7,
-        "10px": 20,
+        "6px": 10,
+        "10px": 23,
         "5px": 1,
-        "4px": 2,
-        "8px": 11,
-        "20px": 10,
-        "12px": 7,
+        "4px": 3,
+        "8px": 12,
+        "20px": 11,
+        "12px": 9,
         "2px": 3,
         "28px": 4,
+        "1px": 1,
         "24px": 3,
-        "48px": 1,
-        "-1px": 1
+        "48px": 1
       },
       "radii": {
-        "8px": 11,
+        "8px": 12,
         "6px": 3,
         "3.35544e+07px": 2,
-        "14px": 1
+        "4px": 1,
+        "14px": 2
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 13
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 14,
+        "color, background-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 2
       },
       "contrast": [
         {
@@ -258,6 +260,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -438,6 +460,96 @@
           "required": 4.5,
           "pass": true,
           "cls": "m-0 max-w-[46ch] text-sm text-fg-muted"
+        },
+        {
+          "text": "PICK UP WHERE YOU LEFT OFF",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "800",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "eyebrow"
+        },
+        {
+          "text": "Recent projects",
+          "ratio": 18.88,
+          "fontSize": 18,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "m-0 text-xl tracking-[-.035em]"
+        },
+        {
+          "text": "Last touched by you",
+          "ratio": 6.69,
+          "fontSize": 12,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "text-xs text-fg-muted"
+        },
+        {
+          "text": "BL-002",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "shrink-0 font-mono text-2xs text-fg-muted"
+        },
+        {
+          "text": "Brightleaf WordPress Refresh",
+          "ratio": 18.88,
+          "fontSize": 12,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "min-w-0 flex-1 truncate text-xs font-bold"
+        },
+        {
+          "text": "1d ago",
+          "ratio": 5.49,
+          "fontSize": 11,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "tabular shrink-0 text-2xs text-fg-subtle"
+        },
+        {
+          "text": "NW-001",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "shrink-0 font-mono text-2xs text-fg-muted"
+        },
+        {
+          "text": "Northwind Shopify Rebuild",
+          "ratio": 18.88,
+          "fontSize": 12,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "min-w-0 flex-1 truncate text-xs font-bold"
+        },
+        {
+          "text": "2d ago",
+          "ratio": 5.49,
+          "fontSize": 11,
+          "weight": "400",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "tabular shrink-0 text-2xs text-fg-subtle"
         }
       ],
       "rowMetrics": [],
@@ -476,6 +588,13 @@
           "label": "Sign out",
           "inRow": false,
           "passAA": true
+        },
+        {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
         }
       ],
       "focusRing": null,
@@ -490,18 +609,18 @@
     },
     "/log": {
       "fontSizes": {
-        "14px": 44,
+        "14px": 43,
         "18px": 2,
-        "11px": 10,
+        "11px": 13,
         "13px": 55,
         "12px": 11,
         "44px": 1
       },
       "fontWeights": {
-        "400": 51,
+        "400": 50,
         "500": 52,
         "600": 3,
-        "700": 11,
+        "700": 14,
         "800": 5,
         "900": 1
       },
@@ -509,27 +628,28 @@
         "16px": 9,
         "14px": 1,
         "6px": 8,
-        "10px": 20,
+        "10px": 21,
         "5px": 1,
-        "4px": 2,
-        "8px": 11,
+        "4px": 3,
+        "8px": 12,
         "20px": 3,
         "12px": 9,
         "2px": 3,
         "28px": 4,
+        "1px": 1,
         "24px": 2,
-        "48px": 1,
-        "-1px": 1
+        "48px": 1
       },
       "radii": {
-        "8px": 11,
+        "8px": 12,
         "6px": 3,
         "3.35544e+07px": 2,
+        "4px": 1,
         "14px": 2
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 13
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 14
       },
       "contrast": [
         {
@@ -741,6 +861,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -939,6 +1079,13 @@
           "label": "Sign out",
           "inRow": false,
           "passAA": true
+        },
+        {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
         }
       ],
       "focusRing": null,
@@ -953,17 +1100,17 @@
     },
     "/timesheet": {
       "fontSizes": {
-        "14px": 40,
+        "14px": 38,
         "18px": 1,
-        "11px": 26,
+        "11px": 29,
         "13px": 51,
-        "12px": 49,
+        "12px": 48,
         "44px": 1
       },
       "fontWeights": {
-        "400": 80,
+        "400": 78,
         "500": 52,
-        "700": 14,
+        "700": 16,
         "800": 9,
         "900": 13
       },
@@ -971,27 +1118,28 @@
         "16px": 8,
         "14px": 1,
         "6px": 12,
-        "10px": 20,
+        "10px": 21,
         "5px": 1,
-        "4px": 8,
-        "8px": 16,
+        "4px": 9,
+        "8px": 17,
         "20px": 5,
         "12px": 28,
         "2px": 3,
         "28px": 4,
+        "1px": 2,
         "24px": 1,
-        "-1px": 4,
-        "1px": 1
+        "-1px": 1
       },
       "radii": {
-        "8px": 13,
+        "8px": 14,
         "6px": 6,
         "3.35544e+07px": 3,
+        "4px": 1,
         "14px": 2
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 17,
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 18,
         "transform, translate, scale, rotate 0.15s cubic-bezier(0.4, 0, 0.2, 1)": 1
       },
       "contrast": [
@@ -1206,6 +1354,26 @@
           "cls": "min-w-0 truncate text-fg"
         },
         {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
+        },
+        {
           "text": "THURSDAY · SEP 03",
           "ratio": 2.64,
           "fontSize": 11,
@@ -1374,16 +1542,6 @@
           "required": 4.5,
           "pass": true,
           "cls": "transition-transform group-open:rotate-90"
-        },
-        {
-          "text": "Status",
-          "ratio": 15.96,
-          "fontSize": 12,
-          "weight": "700",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
         },
         {
           "text": "Date",
@@ -1612,6 +1770,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 60,
           "h": 34,
           "label": "Show",
@@ -1644,18 +1809,18 @@
     },
     "/projects": {
       "fontSizes": {
-        "14px": 48,
+        "14px": 47,
         "18px": 1,
-        "11px": 39,
+        "11px": 42,
         "13px": 51,
         "12px": 9,
         "44px": 1,
         "20px": 3
       },
       "fontWeights": {
-        "400": 67,
+        "400": 66,
         "500": 52,
-        "700": 13,
+        "700": 16,
         "800": 9,
         "900": 11
       },
@@ -1663,27 +1828,28 @@
         "16px": 9,
         "14px": 1,
         "6px": 16,
-        "10px": 22,
+        "10px": 23,
         "5px": 1,
-        "4px": 2,
-        "8px": 16,
+        "4px": 3,
+        "8px": 17,
         "20px": 8,
         "12px": 6,
         "2px": 3,
         "28px": 4,
-        "24px": 4,
-        "-1px": 1
+        "1px": 1,
+        "24px": 4
       },
       "radii": {
-        "8px": 16,
+        "8px": 17,
         "6px": 3,
         "3.35544e+07px": 2,
+        "4px": 1,
         "7px": 2,
         "14px": 3
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 18
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 19
       },
       "contrast": [
         {
@@ -1895,6 +2061,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -2255,6 +2441,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 60,
           "h": 34,
           "label": "Apply",
@@ -2274,9 +2467,9 @@
     },
     "/reports": {
       "fontSizes": {
-        "14px": 50,
+        "14px": 49,
         "18px": 1,
-        "11px": 58,
+        "11px": 61,
         "13px": 51,
         "12px": 189,
         "44px": 1,
@@ -2284,9 +2477,9 @@
         "16px": 3
       },
       "fontWeights": {
-        "400": 227,
+        "400": 226,
         "500": 52,
-        "700": 36,
+        "700": 39,
         "800": 9,
         "900": 33
       },
@@ -2294,27 +2487,28 @@
         "16px": 27,
         "14px": 1,
         "6px": 17,
-        "10px": 91,
+        "10px": 92,
         "5px": 1,
-        "4px": 2,
-        "8px": 71,
+        "4px": 3,
+        "8px": 72,
         "20px": 60,
         "12px": 96,
         "2px": 3,
         "28px": 4,
-        "24px": 3,
-        "-1px": 1
+        "1px": 1,
+        "24px": 3
       },
       "radii": {
-        "8px": 13,
+        "8px": 14,
         "6px": 3,
         "3.35544e+07px": 1,
+        "4px": 1,
         "7px": 2,
         "14px": 3
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 15
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 16
       },
       "contrast": [
         {
@@ -2526,6 +2720,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -4348,6 +4562,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 60,
           "h": 34,
           "label": "Apply",
@@ -4385,18 +4606,18 @@
     },
     "/review": {
       "fontSizes": {
-        "14px": 52,
+        "14px": 51,
         "18px": 1,
-        "11px": 15,
+        "11px": 18,
         "13px": 51,
         "12px": 19,
         "44px": 1,
         "43px": 4
       },
       "fontWeights": {
-        "400": 60,
+        "400": 59,
         "500": 52,
-        "700": 20,
+        "700": 23,
         "800": 6,
         "900": 5
       },
@@ -4404,26 +4625,27 @@
         "16px": 5,
         "14px": 1,
         "6px": 11,
-        "10px": 20,
+        "10px": 21,
         "5px": 1,
-        "4px": 4,
-        "8px": 15,
+        "4px": 5,
+        "8px": 16,
         "20px": 14,
         "12px": 13,
         "2px": 3,
         "28px": 4,
-        "24px": 2,
-        "-1px": 1
+        "1px": 1,
+        "24px": 2
       },
       "radii": {
-        "8px": 15,
+        "8px": 16,
         "6px": 3,
         "3.35544e+07px": 1,
+        "4px": 1,
         "14px": 2
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 17
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 18
       },
       "contrast": [
         {
@@ -4635,6 +4857,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -4955,6 +5197,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 188,
           "h": 15,
           "label": "Brightleaf WordPress Refresh",
@@ -5009,9 +5258,9 @@
     },
     "/sales": {
       "fontSizes": {
-        "14px": 137,
+        "14px": 136,
         "18px": 2,
-        "11px": 38,
+        "11px": 41,
         "13px": 52,
         "12px": 64,
         "44px": 1,
@@ -5019,10 +5268,10 @@
         "16px": 1
       },
       "fontWeights": {
-        "400": 159,
+        "400": 158,
         "500": 52,
         "600": 2,
-        "700": 56,
+        "700": 59,
         "800": 11,
         "900": 19
       },
@@ -5030,27 +5279,28 @@
         "16px": 36,
         "14px": 1,
         "6px": 27,
-        "10px": 28,
+        "10px": 29,
         "5px": 1,
-        "4px": 18,
-        "8px": 64,
+        "4px": 19,
+        "8px": 65,
         "20px": 13,
         "12px": 34,
         "2px": 3,
         "28px": 4,
-        "24px": 2,
-        "-1px": 1
+        "1px": 1,
+        "24px": 2
       },
       "radii": {
-        "8px": 14,
+        "8px": 15,
         "6px": 16,
         "3.35544e+07px": 15,
+        "4px": 1,
         "14px": 3,
         "7px": 6
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 16
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 17
       },
       "contrast": [
         {
@@ -5262,6 +5512,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -6172,6 +6442,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 67,
           "h": 16.8,
           "label": "Open job ↗",
@@ -6300,17 +6577,17 @@
     },
     "/audit": {
       "fontSizes": {
-        "14px": 121,
+        "14px": 120,
         "18px": 1,
-        "11px": 224,
+        "11px": 227,
         "13px": 51,
         "12px": 44,
         "44px": 1
       },
       "fontWeights": {
-        "400": 335,
+        "400": 334,
         "500": 52,
-        "700": 48,
+        "700": 51,
         "800": 6,
         "900": 1
       },
@@ -6318,27 +6595,28 @@
         "16px": 4,
         "14px": 1,
         "6px": 12,
-        "10px": 22,
+        "10px": 23,
         "5px": 1,
-        "4px": 3,
-        "8px": 30,
+        "4px": 4,
+        "8px": 31,
         "20px": 4,
         "12px": 46,
         "2px": 42,
         "28px": 4,
-        "24px": 1,
-        "-1px": 1
+        "1px": 1,
+        "24px": 1
       },
       "radii": {
-        "8px": 14,
+        "8px": 15,
         "6px": 3,
         "3.35544e+07px": 1,
+        "4px": 1,
         "7px": 2,
         "14px": 1
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 16
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 17
       },
       "contrast": [
         {
@@ -6550,6 +6828,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -8620,6 +8918,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 60,
           "h": 34,
           "label": "Apply",
@@ -8725,18 +9030,18 @@
     },
     "/admin/users": {
       "fontSizes": {
-        "14px": 107,
+        "14px": 105,
         "18px": 1,
-        "11px": 24,
+        "11px": 27,
         "13px": 52,
         "12px": 46,
         "44px": 1
       },
       "fontWeights": {
-        "400": 121,
+        "400": 119,
         "500": 61,
         "600": 1,
-        "700": 28,
+        "700": 31,
         "800": 9,
         "900": 11
       },
@@ -8744,27 +9049,28 @@
         "16px": 34,
         "14px": 1,
         "6px": 31,
-        "10px": 25,
+        "10px": 26,
         "5px": 1,
-        "4px": 2,
-        "8px": 50,
+        "4px": 3,
+        "8px": 51,
         "20px": 4,
         "12px": 26,
         "2px": 3,
         "28px": 4,
-        "24px": 1,
-        "-1px": 2
+        "1px": 1,
+        "24px": 1
       },
       "radii": {
-        "8px": 31,
+        "8px": 32,
         "6px": 3,
         "3.35544e+07px": 11,
+        "4px": 1,
         "14px": 10,
         "7px": 5
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 33
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 34
       },
       "contrast": [
         {
@@ -8978,6 +9284,26 @@
           "cls": "min-w-0 truncate text-fg"
         },
         {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
+        },
+        {
           "text": "THURSDAY · SEP 03",
           "ratio": 2.64,
           "fontSize": 11,
@@ -9026,16 +9352,6 @@
           "required": 4.5,
           "pass": true,
           "cls": "btn-secondary btn-sm"
-        },
-        {
-          "text": "Existing accounts",
-          "ratio": 17.3,
-          "fontSize": 14,
-          "weight": "400",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
         },
         {
           "text": "Abdur Rehman",
@@ -9736,6 +10052,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 69,
           "h": 34,
           "label": "Teams",
@@ -9881,18 +10204,18 @@
     },
     "/admin/teams": {
       "fontSizes": {
-        "14px": 70,
+        "14px": 65,
         "18px": 1,
-        "11px": 25,
+        "11px": 28,
         "13px": 51,
         "12px": 51,
         "44px": 1,
         "16px": 5
       },
       "fontWeights": {
-        "400": 109,
+        "400": 104,
         "500": 52,
-        "700": 26,
+        "700": 29,
         "800": 8,
         "900": 9
       },
@@ -9900,27 +10223,28 @@
         "16px": 9,
         "14px": 1,
         "6px": 14,
-        "10px": 27,
+        "10px": 28,
         "5px": 1,
-        "4px": 27,
-        "8px": 48,
+        "4px": 28,
+        "8px": 49,
         "20px": 12,
         "12px": 29,
         "2px": 7,
         "28px": 4,
-        "24px": 1,
-        "-1px": 5
+        "1px": 1,
+        "24px": 1
       },
       "radii": {
-        "8px": 16,
+        "8px": 17,
         "6px": 7,
         "3.35544e+07px": 19,
+        "4px": 1,
         "14px": 6,
         "7px": 3
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 18
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 19
       },
       "contrast": [
         {
@@ -10134,6 +10458,26 @@
           "cls": "min-w-0 truncate text-fg"
         },
         {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
+        },
+        {
           "text": "THURSDAY · SEP 03",
           "ratio": 2.64,
           "fontSize": 11,
@@ -10212,16 +10556,6 @@
           "required": 4.5,
           "pass": true,
           "cls": "m-0 mt-0.5 text-xs text-fg-muted"
-        },
-        {
-          "text": "Change lead",
-          "ratio": 18.88,
-          "fontSize": 14,
-          "weight": "400",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
         },
         {
           "text": "Set lead",
@@ -10312,16 +10646,6 @@
           "required": 4.5,
           "pass": true,
           "cls": "m-0 mt-0.5 text-xs text-fg-muted"
-        },
-        {
-          "text": "Change lead",
-          "ratio": 18.88,
-          "fontSize": 14,
-          "weight": "400",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
         },
         {
           "text": "Set lead",
@@ -10434,16 +10758,6 @@
           "cls": "m-0 mt-0.5 text-xs text-fg-muted"
         },
         {
-          "text": "Change lead",
-          "ratio": 18.88,
-          "fontSize": 14,
-          "weight": "400",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
-        },
-        {
           "text": "Set lead",
           "ratio": 18.88,
           "fontSize": 11,
@@ -10552,16 +10866,6 @@
           "required": 4.5,
           "pass": true,
           "cls": "m-0 mt-0.5 text-xs text-fg-muted"
-        },
-        {
-          "text": "Change lead",
-          "ratio": 18.88,
-          "fontSize": 14,
-          "weight": "400",
-          "large": false,
-          "required": 4.5,
-          "pass": true,
-          "cls": "sr-only"
         },
         {
           "text": "Set lead",
@@ -10722,6 +11026,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 65,
           "h": 30,
           "label": "Set lead",
@@ -10832,18 +11143,18 @@
     },
     "/admin/sheets": {
       "fontSizes": {
-        "14px": 31,
+        "14px": 30,
         "18px": 1,
-        "11px": 12,
+        "11px": 15,
         "13px": 51,
         "12px": 7,
         "44px": 1,
         "9px": 1
       },
       "fontWeights": {
-        "400": 34,
+        "400": 33,
         "500": 52,
-        "700": 11,
+        "700": 14,
         "800": 5,
         "900": 2
       },
@@ -10851,26 +11162,27 @@
         "16px": 5,
         "14px": 1,
         "6px": 9,
-        "10px": 20,
+        "10px": 21,
         "5px": 1,
-        "4px": 3,
-        "8px": 12,
+        "4px": 4,
+        "8px": 13,
         "20px": 4,
         "12px": 5,
         "2px": 3,
         "28px": 4,
-        "24px": 1,
-        "-1px": 1
+        "1px": 1,
+        "24px": 1
       },
       "radii": {
-        "8px": 12,
+        "8px": 13,
         "6px": 3,
         "3.35544e+07px": 2,
+        "4px": 1,
         "14px": 1
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 14
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 15
       },
       "contrast": [
         {
@@ -11084,6 +11396,26 @@
           "cls": "min-w-0 truncate text-fg"
         },
         {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
+        },
+        {
           "text": "THURSDAY · SEP 03",
           "ratio": 2.64,
           "fontSize": 11,
@@ -11232,6 +11564,13 @@
           "passAA": true
         },
         {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
+        },
+        {
           "w": 30,
           "h": 15.9,
           "label": "Open",
@@ -11258,17 +11597,17 @@
     },
     "/projects/new": {
       "fontSizes": {
-        "14px": 50,
+        "14px": 49,
         "18px": 1,
-        "11px": 28,
+        "11px": 31,
         "13px": 51,
         "12px": 15,
         "44px": 1
       },
       "fontWeights": {
-        "400": 66,
+        "400": 65,
         "500": 52,
-        "700": 12,
+        "700": 15,
         "800": 15,
         "900": 1
       },
@@ -11276,27 +11615,28 @@
         "16px": 5,
         "14px": 1,
         "6px": 19,
-        "10px": 30,
+        "10px": 31,
         "5px": 1,
-        "4px": 2,
-        "8px": 15,
+        "4px": 3,
+        "8px": 16,
         "20px": 2,
         "12px": 15,
         "2px": 3,
         "28px": 4,
-        "24px": 3,
-        "-1px": 1
+        "1px": 1,
+        "24px": 3
       },
       "radii": {
-        "8px": 13,
+        "8px": 14,
         "6px": 3,
         "3.35544e+07px": 1,
+        "4px": 1,
         "14px": 1,
         "7px": 10
       },
       "transitions": {
         "transform, translate, scale, rotate 0.2s cubic-bezier(0.4, 0, 0.2, 1)": 1,
-        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 15
+        "color, background-color, border-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)": 16
       },
       "contrast": [
         {
@@ -11528,6 +11868,26 @@
           "required": 4.5,
           "pass": false,
           "cls": "min-w-0 truncate text-fg"
+        },
+        {
+          "text": "Search",
+          "ratio": 6.69,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": ""
+        },
+        {
+          "text": "Ctrl K",
+          "ratio": 4.64,
+          "fontSize": 11,
+          "weight": "700",
+          "large": false,
+          "required": 4.5,
+          "pass": true,
+          "cls": "rounded border border-border bg-surface-2 px-1 py-px font-sa"
         },
         {
           "text": "THURSDAY · SEP 03",
@@ -11823,6 +12183,13 @@
           "label": "Projects",
           "inRow": true,
           "passAA": false
+        },
+        {
+          "w": 112,
+          "h": 34,
+          "label": "Open command palette",
+          "inRow": false,
+          "passAA": true
         },
         {
           "w": 16,

@@ -56,7 +56,17 @@ const MEASURE = () => {
     contrast: [], rowMetrics: [], hitTargets: [], focusRing: null, tabularNums: { with: 0, without: 0, numericLooking: [] },
   };
   const bump = (o, k) => { o[k] = (o[k] || 0) + 1; };
-  const VISIBLE = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  // sr-only text is clipped to a 1x1 box and never painted, so its contrast is
+  // meaningless -- but a naive width/height check counts it. Excluding it here
+  // rather than filtering downstream, so the reported number is the real one.
+  const VISIBLE = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) return false;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden" || cs.display === "none") return false;
+    if (cs.clipPath && cs.clipPath !== "none" && /inset\(\s*50%/.test(cs.clipPath)) return false;
+    return true;
+  };
 
   for (const el of document.querySelectorAll("body *")) {
     if (!VISIBLE(el)) continue;
