@@ -47,7 +47,7 @@ export function ActionPanel({
               aria-pressed={active === o.key}
               aria-controls="quick-action-form"
               onClick={() => setActive(o.key)}
-              className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition-[color,background-color,border-color] duration-150 ease-out-quad ${
                 active === o.key
                   ? "bg-surface text-fg shadow-sm"
                   : "text-fg-muted hover:text-fg"

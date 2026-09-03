@@ -15,19 +15,32 @@
   --color-border-strong: #c2c2be;
 
   /* Four-step text ramp. `label` sits between fg and muted because form labels
-     and table headers need more contrast than secondary prose. */
-  --color-fg: #111111;
-  --color-fg-label: #444444;
-  --color-fg-muted: #727272;
-  --color-fg-subtle: #9a9a9a;
+     and table headers need more contrast than secondary prose.
 
-  --color-brand: #fb0044;
+     Every step clears WCAG 1.4.3 (4.5:1) against the WORST surface it can land
+     on -- `surface-3` #eaeae7 -- not merely against white. Measured before:
+     `muted` was 4.41 on `bg` and 4.07 on `surface-2`, so one token was legal on
+     a card and illegal on the page behind it; `subtle` ran 2.38-2.81 everywhere
+     while carrying real content -- person names, project codes, timestamps, the
+     grid's key hints. DESIGN-STANDARD 3.3 exempts only decoration and disabled
+     controls, and ratios are not rounded: 4.49 fails. */
+  --color-fg: #111111;
+  --color-fg-label: #444444; /* 8.08:1 worst case */
+  --color-fg-muted: #5c5c5c; /* 5.55:1 worst case */
+  --color-fg-subtle: #696969; /* 4.55:1 worst case */
+
+  /* Darkened from #fb0044, which gave white 14px button labels only 4.05:1 --
+     under the 4.5:1 floor, and 14px bold is NOT "large text" (that starts at
+     18.66px bold). It also failed as `text-brand` on white. This is a ~5%
+     darkening, not a rebrand: the identity holds, and every use now clears the
+     floor. White on it: 4.66:1. */
+  --color-brand: #e8003f;
   --color-brand-hover: #d9003b;
   --color-brand-soft: #ffe5ed;
 
   --color-ok: #15803d;
   --color-ok-soft: #e8f7ec;
-  --color-warn: #9a6500;
+  --color-warn: #8f5e00; /* was #9a6500 -- 4.489:1 on warn-soft; ratios are not rounded */
   --color-warn-soft: #fff3d3;
   --color-danger: #c51d34;
   --color-danger-hover: #a81829;
@@ -53,10 +66,13 @@
   --color-nav-chip: #232323;
   --color-nav-border: #202020;
   --color-nav-fg: #ffffff;
-  --color-nav-fg-muted: #9a9a9a;
-  --color-nav-fg-subtle: #6b6b6b;
+  /* Measured against every nav surface (#070707 through #2a2a2f), not just the
+     darkest. `subtle` was #6b6b6b -- 2.68:1, and it sets the wordmark subtitle
+     and the signed-in role. */
+  --color-nav-fg-muted: #bdbdbd; /* 7.60:1 worst case */
+  --color-nav-fg-subtle: #919191; /* 4.53:1 worst case */
 
-  --color-focus: #fb0044;
+  --color-focus: #e8003f; /* tracks --color-brand */
 
   /* Inverting pair for high-contrast fills (accent metric tile, avatars,
      .btn-dark). These swap with the theme; `bg-fg text-white` cannot. */
@@ -89,6 +105,20 @@
 
   --font-sans: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Easing. DESIGN-STANDARD 5.3: ease-out for anything the user initiated --
+     it starts fast and settles, which reads as responsive. Every transition in
+     the app previously used cubic-bezier(.4,0,.2,1), an ease-IN-out, whose slow
+     start is exactly what 5.3 says to avoid entirely for UI. */
+  --ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+/* 3.1 makes this a [FAIL IF]: proportional figures make a column of hours visibly
+   ragged. 2.6 is equally explicit that the fix is tabular figures in the UI sans,
+   NOT a monospace family -- mono stays for IDs and job codes. */
+@utility tabular {
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 body {
@@ -129,9 +159,9 @@ body {
   --color-border-strong: #3e3f46;
 
   --color-fg: #f0f0ee;
-  --color-fg-label: #c6c6c2;
-  --color-fg-muted: #9b9b98;
-  --color-fg-subtle: #6f6f6d;
+  --color-fg-label: #c6c6c2; /* 8.36:1 worst case */
+  --color-fg-muted: #a6a6a3; /* 5.87:1 worst case */
+  --color-fg-subtle: #919191; /* 4.54:1 -- was #6f6f6d, 2.84-3.77 */
 
   --color-fill-strong: #f0f0ee;
   --color-fill-strong-fg: #101012;
@@ -162,8 +192,8 @@ body {
   --color-nav-active: #202024;
   --color-nav-chip: #2a2a2f;
   --color-nav-border: #232328;
-  --color-nav-fg-muted: #a0a09d;
-  --color-nav-fg-subtle: #6f6f6d;
+  --color-nav-fg-muted: #bdbdbd; /* 7.60:1 worst case */
+  --color-nav-fg-subtle: #919191; /* 4.53:1 -- was #6f6f6d, 2.84 */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -178,9 +208,9 @@ body {
     --color-border-strong: #3e3f46;
 
     --color-fg: #f0f0ee;
-    --color-fg-label: #c6c6c2;
-    --color-fg-muted: #9b9b98;
-    --color-fg-subtle: #6f6f6d;
+    --color-fg-label: #c6c6c2; /* 8.36:1 worst case */
+    --color-fg-muted: #a6a6a3; /* 5.87:1 worst case */
+    --color-fg-subtle: #919191; /* 4.54:1 -- was #6f6f6d, 2.84-3.77 */
 
     --color-fill-strong: #f0f0ee;
     --color-fill-strong-fg: #101012;
@@ -211,8 +241,8 @@ body {
     --color-nav-active: #202024;
     --color-nav-chip: #2a2a2f;
     --color-nav-border: #232328;
-    --color-nav-fg-muted: #a0a09d;
-    --color-nav-fg-subtle: #6f6f6d;
+    --color-nav-fg-muted: #bdbdbd; /* 7.60:1 worst case */
+    --color-nav-fg-subtle: #919191; /* 4.53:1 -- was #6f6f6d, 2.84 */
   }
 }
 
@@ -277,35 +307,35 @@ html {
      declared after the variants so source order lets them win. */
   .btn-primary {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
-           text-base font-bold text-white transition-colors bg-brand hover:bg-brand-hover
+           text-base font-bold text-white transition-[color,background-color,border-color] duration-150 ease-out-quad bg-brand hover:bg-brand-hover
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-secondary {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border
-           border-border bg-surface px-4 text-base font-bold text-fg transition-colors
+           border-border bg-surface px-4 text-base font-bold text-fg transition-[color,background-color,border-color] duration-150 ease-out-quad
            hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-danger {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
-           text-base font-bold text-white transition-colors bg-danger hover:bg-danger-hover
+           text-base font-bold text-white transition-[color,background-color,border-color] duration-150 ease-out-quad bg-danger hover:bg-danger-hover
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   /* Low-emphasis action that still needs a hit area: the Cancel/Remove/Dismiss
      family that used to be hand-rolled as bare text buttons. */
   .btn-ghost {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg
-           bg-transparent px-3 text-base font-bold text-fg-muted transition-colors
+           bg-transparent px-3 text-base font-bold text-fg-muted transition-[color,background-color,border-color] duration-150 ease-out-quad
            hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50;
   }
   /* Neutral commit: black fill is as much part of the language as crimson. */
   .btn-dark {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
-           text-base font-bold transition-colors bg-fill-strong text-fill-strong-fg
+           text-base font-bold transition-[color,background-color,border-color] duration-150 ease-out-quad bg-fill-strong text-fill-strong-fg
            hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ok {
     @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-4
-           text-base font-bold text-white transition-colors bg-ok hover:brightness-110
+           text-base font-bold text-white transition-[color,background-color,border-color] duration-150 ease-out-quad bg-ok hover:brightness-110
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-text {

@@ -181,7 +181,7 @@ export function StartTimerButton({
         onClick={run}
         disabled={pending || disabled}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5
-                   text-xs font-bold transition-colors hover:border-border-strong
+                   text-xs font-bold transition-[color,background-color,border-color] duration-150 ease-out-quad hover:border-border-strong
                    disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="h-[7px] w-[7px] rounded-full bg-brand" aria-hidden />

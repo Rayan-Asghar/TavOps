@@ -45,7 +45,7 @@ export function TimerChip({
     <Link
       href={`/projects/${projectId}`}
       className="flex min-h-[34px] shrink-0 items-center gap-2 rounded-lg border border-border
-                 bg-surface px-2.5 transition-colors hover:border-border-strong"
+                 bg-surface px-2.5 transition-[color,background-color,border-color] duration-150 ease-out-quad hover:border-border-strong"
       title={`${status === "running" ? "Timing" : "Paused"}: ${taskTitle}`}
     >
       <span

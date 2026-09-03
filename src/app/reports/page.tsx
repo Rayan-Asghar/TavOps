@@ -186,27 +186,27 @@ export default async function ReportsPage({
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono">
+                      <td className="px-3 py-2.5 text-right tabular">
                         {hrs(p.loggedHours)}
                       </td>
                       <td
-                        className={`px-3 py-2.5 text-right font-mono ${over ? "text-danger" : ""}`}
+                        className={`px-3 py-2.5 text-right tabular ${over ? "text-danger" : ""}`}
                       >
                         {hrs(p.loggedHoursAllTime)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-fg-muted">
+                      <td className="px-3 py-2.5 text-right tabular text-fg-muted">
                         {p.estimatedHours > 0 ? hrs(p.estimatedHours) : "—"}
                       </td>
                       {seesMoney && (
-                        <td className="px-3 py-2.5 text-right font-mono text-fg-muted">
+                        <td className="px-3 py-2.5 text-right tabular text-fg-muted">
                           {budget > 0 ? hrs(budget) : "—"}
                         </td>
                       )}
-                      <td className="px-3 py-2.5 text-right font-mono text-fg-muted">
+                      <td className="px-3 py-2.5 text-right tabular text-fg-muted">
                         {p.tasksDone}/{p.tasksTotal}
                       </td>
                       <td
-                        className={`px-3 py-2.5 text-right font-mono ${p.openBlockers > 0 ? "text-danger" : "text-fg-muted"}`}
+                        className={`px-3 py-2.5 text-right tabular ${p.openBlockers > 0 ? "text-danger" : "text-fg-muted"}`}
                       >
                         {p.openBlockers || "—"}
                       </td>
@@ -257,18 +257,18 @@ export default async function ReportsPage({
                       {p.name}{" "}
                       <span className="text-2xs text-fg-subtle">{p.role}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono">
+                    <td className="px-3 py-2.5 text-right tabular">
                       {hrs(p.loggedHours)}
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-fg-muted">
+                    <td className="px-3 py-2.5 text-right tabular text-fg-muted">
                       {hrs(p.capacityHours)}
                     </td>
                     <td
-                      className={`px-3 py-2.5 text-right font-mono font-bold ${utilTone(p.utilisation)}`}
+                      className={`px-3 py-2.5 text-right tabular font-bold ${utilTone(p.utilisation)}`}
                     >
                       {pct(p.utilisation)}
                     </td>
-                    <td className="px-5 py-2.5 text-right font-mono text-fg-muted">
+                    <td className="px-5 py-2.5 text-right tabular text-fg-muted">
                       {p.projectCount || "—"}
                     </td>
                     </tr>
@@ -312,7 +312,7 @@ export default async function ReportsPage({
                     key={`${toISODate(r.workDate)}-${i}`}
                     className="border-b border-border last:border-b-0"
                   >
-                    <td className="px-5 py-2 font-mono whitespace-nowrap">
+                    <td className="px-5 py-2 tabular whitespace-nowrap">
                       {toISODate(r.workDate)}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{r.personName}</td>
@@ -322,7 +322,7 @@ export default async function ReportsPage({
                     <td className="px-3 py-2 text-fg-muted">
                       {r.taskTitle ?? "General project work"}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono">
+                    <td className="px-3 py-2 text-right tabular">
                       {hrs(r.hours)}
                     </td>
                     <td className="max-w-[320px] truncate px-5 py-2 text-fg-muted">

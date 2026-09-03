@@ -37,7 +37,7 @@ export default function GlobalError({
               fontSize: 10,
               fontWeight: 800,
               letterSpacing: ".14em",
-              color: "#fb0044",
+              color: "#e8003f",
             }}
           >
             TAVRENOPS
@@ -45,7 +45,7 @@ export default function GlobalError({
           <h1 style={{ fontSize: 26, margin: "8px 0 12px", fontWeight: 800 }}>
             The app failed to start
           </h1>
-          <p style={{ fontSize: 13, color: "#727272", margin: "0 0 24px" }}>
+          <p style={{ fontSize: 13, color: "#5c5c5c", margin: "0 0 24px" }}>
             This is not a page-level problem. If it persists, an admin should
             check the server logs.
           </p>
@@ -54,7 +54,7 @@ export default function GlobalError({
               style={{
                 fontFamily: "ui-monospace, monospace",
                 fontSize: 12,
-                color: "#9a9a9a",
+                color: "#696969",
                 margin: "0 0 24px",
               }}
             >
@@ -65,7 +65,7 @@ export default function GlobalError({
             type="button"
             onClick={() => retry()}
             style={{
-              background: "#fb0044",
+              background: "#e8003f",
               color: "#fff",
               border: 0,
               padding: "10px 18px",

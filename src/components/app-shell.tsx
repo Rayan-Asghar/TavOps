@@ -101,7 +101,7 @@ export async function AppShell({
           <form action={logoutAction}>
             <button
               type="submit"
-              className="w-full rounded-lg py-2 text-left text-xs font-medium text-nav-fg-subtle transition-colors hover:text-white"
+              className="w-full rounded-lg py-2 text-left text-xs font-medium text-nav-fg-subtle transition-[color,background-color,border-color] duration-150 ease-out-quad hover:text-white"
             >
               Sign out
             </button>
@@ -125,7 +125,7 @@ export async function AppShell({
                   <li className="shrink-0">
                     <Link
                       href={parent.href}
-                      className="text-fg-muted transition-colors hover:text-fg"
+                      className="text-fg-muted transition-[color,background-color,border-color] duration-150 ease-out-quad hover:text-fg"
                     >
                       {parent.label}
                     </Link>

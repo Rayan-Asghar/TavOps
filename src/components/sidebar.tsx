@@ -48,7 +48,7 @@ function NavLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={`grid min-h-[44px] grid-cols-[24px_1fr_auto] items-center gap-2.5 rounded-lg px-2.5
-                  text-sm font-medium transition-colors
+                  text-sm font-medium transition-[color,background-color,border-color] duration-150 ease-out-quad
                   ${active ? "bg-nav-active text-white" : "text-nav-fg-muted hover:bg-nav-hover hover:text-white"}`}
     >
       <Icon />
@@ -58,7 +58,7 @@ function NavLink({
       </span>
       {typeof entry.count === "number" && entry.count > 0 && (
         <span
-          className={`grid h-5 min-w-[22px] place-items-center rounded-full px-1.5 text-xs font-extrabold
+          className={`tabular grid h-5 min-w-[22px] place-items-center rounded-full px-1.5 text-xs font-extrabold
                       ${entry.danger ? "bg-brand text-white" : "bg-nav-chip text-nav-fg-muted"}`}
         >
           {entry.count}
@@ -220,7 +220,7 @@ export function Sidebar({
 
         {management.length > 0 && (
           <div className="mt-7 border-t border-nav-border pt-5">
-            <p className="mx-2.5 mb-2 text-2xs font-extrabold tracking-[.14em] text-neutral">
+            <p className="mx-2.5 mb-2 text-2xs font-extrabold tracking-[.14em] text-nav-fg-subtle">
               MANAGEMENT
             </p>
             <div className="grid gap-1">

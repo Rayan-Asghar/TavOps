@@ -126,7 +126,7 @@ export function MetricCard({
         )}
       </div>
       <strong
-        className={`mt-6 block text-5xl leading-none tracking-[-.055em] ${
+        className={`tabular mt-6 block text-5xl leading-none tracking-[-.055em] ${
           quiet ? "text-fg-subtle" : ""
         }`}
       >

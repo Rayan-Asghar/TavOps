@@ -24,7 +24,7 @@ export function ThemeToggle({ current }: { current: Theme }) {
             name="theme"
             value={t}
             aria-pressed={active}
-            className={`min-h-[26px] rounded-md text-2xs font-bold transition-colors ${
+            className={`min-h-[26px] rounded-md text-2xs font-bold transition-[color,background-color,border-color] duration-150 ease-out-quad ${
               active
                 ? "bg-nav-active text-nav-fg"
                 : "text-nav-fg-subtle hover:text-nav-fg-muted"

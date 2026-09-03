@@ -45,7 +45,7 @@ export function GridMonthTabs({
               href={listHref("/timesheet", params, { month: m.month })}
               scroll={false}
               aria-current={isActive ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold transition-colors
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold transition-[color,background-color,border-color] duration-150 ease-out-quad
                 ${
                   isActive
                     ? "border-brand text-fg"
@@ -56,7 +56,7 @@ export function GridMonthTabs({
               <LinkPending />
               {m.entries > 0 && (
                 <span
-                  className={`grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-black
+                  className={`grid tabular h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-black
                     ${isActive ? "bg-brand text-white" : "bg-surface-2 text-fg-muted"}`}
                 >
                   {m.entries}
