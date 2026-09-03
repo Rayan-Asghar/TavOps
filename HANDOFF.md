@@ -12,7 +12,7 @@ A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
 
 - `main` — 19 commits ahead of `origin/main`. **Nothing is pushed.**
 - `timesheet-grid` — the grid work, committed by a concurrent session as 5 commits.
-- `redesign` ← **you are here**, branched off `timesheet-grid`. 10 commits.
+- `redesign` ← **you are here**, branched off `timesheet-grid`. 17 commits.
 
 The tree is clean and `pnpm verify && pnpm build` is green. **Build needs
 `NODE_OPTIONS=--max-old-space-size=4096`** since Radix landed, or it dies with 137.
@@ -28,7 +28,7 @@ shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
 authority; `.claude/commands/uxaudit.md` is `/uxaudit`, which scores the app against
 it and writes `ux-audit/`.
 
-**Baseline 35/92; Wave 1 plus the palette puts it near 52.** Re-run `/uxaudit` for a
+**Baseline 35/92; Wave 1 and most of Wave 2 put it near 60.** Re-run `/uxaudit` for a
 real number — that estimate was scored by the session that did the work.
 
 Measured, before → after (`ux-audit/_harness/`, re-runnable):
@@ -37,8 +37,11 @@ Measured, before → after (`ux-audit/_harness/`, re-runnable):
 |---|--:|--:|
 | Contrast failures | 285 | 0 |
 | Numeric nodes with tabular figures | 2 | 73 |
+| Distinct font sizes / weights | 10 / 6 | 5 / 4 |
+| Arbitrary `text-[Npx]` values | 21 | 0 |
 | Transitions on an ease-in-out | 218 | 13 |
 | `loading.tsx` across 14 blocking pages | 0 | 11 |
+| Exits from the triage queue | 1 | 3 |
 
 Shipped: the contrast ramps (both themes, measured against the *worst* surface each
 token lands on, not white); brand `#fb0044` → `#e8003f`; tabular figures with mono
@@ -46,18 +49,22 @@ demoted to IDs; ease-out everywhere; typed empty states (blank-slate / no-result
 cleared); toasts with an action no longer self-dismiss; 11 loading files with real
 row heights and a 300ms delay; sticky table headers; shadcn Dialog/Sheet/Command/
 Tooltip behind a token bridge; ⌘K with `G`-then-letter jumps; recent projects on the
-dashboard and in the palette.
+dashboard and in the palette; **snooze-with-wake** on the queue (migration `0018`);
+`J`/`K`/`E`/`S`/`Enter` triage; log-work drafts that survive navigation; the type
+scale down to the prescribed ladder.
 
 ## Next Steps
 
 1. **Re-run `/uxaudit`** for an honest score before doing more.
-2. **Wave 2 remainder** — the rows still at 1–2: `C1` Needs Attention needs four
-   exits and snooze-with-wake (new column + sweep); `C5` Reports needs the Stripe
-   reconciliation strip with drill-down and a stated date basis; `A5` needs
-   item-level `J`/`K`/`E`; `C2` log-work drafts must survive navigation.
-3. **Parked, and cheapest done together** — ten font sizes with four adjacent pairs
-   under the 25% floor, six font weights, five surfaces where §3.3 allows three.
-   All three are one pass over the type and surface tokens.
+2. **Wave 2 remainder** — `C5` Reports needs the Stripe reconciliation strip with
+   drill-down and a stated date basis (**blocked**: no `billable` column, see below);
+   `C1` still wants 2–3 named streams so zero is reachable per-stream, and bulk
+   select; `C4` Projects wants a density control; `B2` still has three row heights
+   on one page (53 / 37 / 33px) where §1.1 asks for 32–40.
+3. **`0016` and `0017` have no drizzle snapshots.** `0018`'s snapshot repairs the
+   base, so `db:generate` works now — but check any generated migration against the
+   database before applying it, because that is how a migration that re-dropped
+   already-dropped columns got produced.
 4. **Everything below is still true and still blocking**: attach a sheet to one
    project (unproven end to end); Phase 0 hosting + scheduler for `/api/cron/*`
    with `CRON_SECRET`; set `DIGEST_WEBHOOK_URLS`; delete the nine seed accounts
