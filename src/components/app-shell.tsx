@@ -7,6 +7,8 @@ import { Sidebar, type NavEntry } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { TimerChip } from "./timer-chip";
 import { ToastProvider } from "./ui/toast";
+import { CommandPalette, type PaletteDestination } from "./command-palette";
+import { recentProjectsFor } from "@/server/recent";
 import { getActor } from "@/lib/auth";
 import { activeSessionFor } from "@/server/timer";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
@@ -36,7 +38,9 @@ export async function AppShell({
   // Fetched here rather than threaded through eleven call sites. getActor()
   // reads the JWT and costs no query; the session lookup is one indexed row.
   const actor = await getActor();
-  const timer = actor ? await activeSessionFor(actor.id) : null;
+  const [timer, recents] = actor
+    ? await Promise.all([activeSessionFor(actor.id), recentProjectsFor(actor, 5)])
+    : [null, []];
 
   const main: NavEntry[] = [
     {
@@ -87,6 +91,38 @@ export async function AppShell({
   }
   // Teams no longer drive blocker routing, so there is nothing they change from
   // day to day. The tables and the page remain; the nav slot does not.
+
+  /* r13: the palette is a shortcut, never the only path — so its destinations are
+     derived from the nav that is already on screen rather than listed separately,
+     which also means a role can never be offered something the sidebar withholds.
+     /review is the one addition: it is deliberately not a nav slot (see above),
+     which makes it exactly the kind of place a palette is for. The letters are the
+     `G`-then-letter jumps 2.1 describes. */
+  const JUMP: Record<string, string> = {
+    "/": "I",
+    "/log": "L",
+    "/timesheet": "T",
+    "/projects": "P",
+    "/reports": "R",
+    "/sales": "S",
+    "/review": "V",
+    "/audit": "A",
+  };
+  const destinations: PaletteDestination[] = [...main, ...management].map((e) => ({
+    href: e.href,
+    label: e.label,
+    jump: JUMP[e.href],
+  }));
+  // The same capability /review itself gates on, so the palette can never offer
+  // a destination that would 404 on arrival.
+  if (can(role, "review.approve")) {
+    destinations.push({ href: "/review", label: "Review queue", jump: JUMP["/review"] });
+  }
+
+  const actions: PaletteDestination[] = [];
+  if (can(role, "project.create")) {
+    actions.push({ href: "/projects/new", label: "New project" });
+  }
 
   return (
     <ToastProvider>
@@ -142,6 +178,16 @@ export async function AppShell({
           </nav>
 
           <div className="flex shrink-0 items-center gap-3">
+            <CommandPalette
+              destinations={destinations}
+              actions={actions}
+              recents={recents.map((r) => ({
+                id: r.id,
+                code: r.code,
+                name: r.name,
+                health: r.health,
+              }))}
+            />
             {timer && (
               <TimerChip
                 projectId={timer.projectId}
