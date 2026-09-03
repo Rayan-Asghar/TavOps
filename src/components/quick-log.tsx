@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useFormDraft } from "@/components/ui/use-form-draft";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
 import { FormError, FormSuccess } from "@/components/ui";
 
@@ -28,17 +29,24 @@ export type QuickLogTask = {
 export function QuickLogRow({ task }: { task: QuickLogTask }) {
   const [state, action, pending] = useActionState(logWorkFormAction, initial);
   const [open, setOpen] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
+
+  /* r32. This row is the 1am phone case the comment above describes, which is
+     exactly when an entry gets interrupted. Keyed per task so two half-written
+     notes never overwrite each other. */
+  const { formRef, form } = useFormDraft(
+    `quick-log:${task.taskId ?? task.projectId}`,
+    Boolean(state.ok),
+  );
 
   // Collapse on success so the list reads as "done" rather than staying open
   // with stale values in it.
   useEffect(() => {
     if (state.ok) {
-      formRef.current?.reset();
+      form?.reset();
       const t = setTimeout(() => setOpen(false), 1200);
       return () => clearTimeout(t);
     }
-  }, [state.ok]);
+  }, [state.ok, form]);
 
   const estimate = task.estimatedHours ? Number(task.estimatedHours) : null;
   const logged = Number(task.loggedHours || 0);
@@ -80,7 +88,8 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
             <input type="hidden" name="taskId" value={task.taskId} />
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* r24: single column. Hours and status were side by side. */}
+          <div className="space-y-3">
             <div>
               <label className="label" htmlFor={`h-${task.taskId ?? task.projectId}`}>
                 Hours

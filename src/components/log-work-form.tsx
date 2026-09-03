@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect } from "react";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
 import { FormError, FormSuccess } from "@/components/ui";
+import { useFormDraft } from "@/components/ui/use-form-draft";
 
 const initial: FormState = {};
 
@@ -14,12 +15,17 @@ export function LogWorkForm({
   tasks: { id: string; title: string }[];
 }) {
   const [state, action, pending] = useActionState(logWorkFormAction, initial);
-  const formRef = useRef<HTMLFormElement>(null);
+  /* r32: an interrupted entry has to survive navigation. Keyed per project, so
+     a half-written note on one project is not restored onto another. */
+  const { formRef, form } = useFormDraft(
+    `log-work:${projectId}`,
+    Boolean(state.ok),
+  );
 
   // Clear the fields on success so a second entry does not resubmit the first.
   useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state.ok]);
+    if (state.ok) form?.reset();
+  }, [state.ok, form]);
 
   return (
     <form ref={formRef} action={action} className="panel p-4">
@@ -39,7 +45,10 @@ export function LogWorkForm({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* r24 is unconditional: single column, no multi-column form layouts.
+            Hours and Move-to were side by side, which puts two unrelated
+            decisions on one line and halves the target width of both. */}
+        <div className="space-y-3">
           <div>
             <label className="label" htmlFor="hours">Hours</label>
             <input
