@@ -120,6 +120,13 @@
       "when": 1788379727581,
       "tag": "0016_sheet_per_project",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788466127581,
+      "tag": "0017_one_open_timer_per_person",
+      "breakpoints": true
     }
   ]
 }

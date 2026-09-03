@@ -246,6 +246,9 @@ export async function finishTimer(
 
     revalidatePath(`/projects/${session.projectId}`);
     revalidatePath("/");
+    // The grid shows the same hours; without this a finished timer does not
+    // appear there until something else forces a render.
+    revalidatePath("/timesheet");
     return { ok: true, message: `Logged ${hours.toFixed(2)}h.` };
   } catch (err) {
     return fail(err);
@@ -271,6 +274,14 @@ export async function adjustTimer(
 
     const session = await loadOwnSession(data.sessionId, actor.id);
     if (!session) return { error: "Timer not found." };
+    // Without this a completed session flips back to `paused`, `finishTimer`
+    // accepts it again, and the second finish writes a SECOND work log while
+    // overwriting `work_log_id` — orphaning the first. The grid shows both,
+    // which is how this surfaced.
+    if (session.status === "completed") {
+      return { error: "That timer has already been logged. Correct the entry instead." };
+    }
+    await assertProjectAccess(actor, session.projectId);
 
     const corrected = data.minutes * 60;
 

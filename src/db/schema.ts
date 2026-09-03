@@ -845,6 +845,13 @@ export const timeSessions = pgTable(
   },
   (t) => [
     index("time_sessions_user_idx").on(t.userId, t.status),
+    // One open timer per person. The application check in `startTimer` is a
+    // read-then-write that two concurrent starts both pass; this is what
+    // actually holds the invariant up, and what stops `activeSessionFor`'s
+    // LIMIT 1 from having to choose between two open rows.
+    uniqueIndex("time_sessions_one_open_per_user")
+      .on(t.userId)
+      .where(sql`${t.status} <> 'completed'`),
     index("time_sessions_task_idx").on(t.taskId),
   ],
 );
