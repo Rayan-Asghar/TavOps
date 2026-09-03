@@ -1,16 +1,5 @@
 {
   "/": {
-    "tabStops": 15,
-    "focusOrderMatchesVisual": false,
-    "invisibleFocusCount": 1,
-    "invisibleSamples": [
-      "nextjs-portal \"\""
-    ],
-    "firstStop": "a \"TTAVRENINTERNAL OS\"",
-    "skipToContentLink": false,
-    "cmdKChangedDom": false
-  },
-  "/log": {
     "tabStops": 18,
     "focusOrderMatchesVisual": false,
     "invisibleFocusCount": 1,
@@ -19,7 +8,18 @@
     ],
     "firstStop": "a \"TTAVRENINTERNAL OS\"",
     "skipToContentLink": false,
-    "cmdKChangedDom": false
+    "cmdKChangedDom": true
+  },
+  "/log": {
+    "tabStops": 19,
+    "focusOrderMatchesVisual": false,
+    "invisibleFocusCount": 1,
+    "invisibleSamples": [
+      "nextjs-portal \"\""
+    ],
+    "firstStop": "a \"TTAVRENINTERNAL OS\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": true
   },
   "/timesheet": {
     "tabStops": 28,
@@ -28,10 +28,10 @@
     "invisibleSamples": [],
     "firstStop": "td \"Rayan\"",
     "skipToContentLink": false,
-    "cmdKChangedDom": false
+    "cmdKChangedDom": true
   },
   "/projects": {
-    "tabStops": 22,
+    "tabStops": 23,
     "focusOrderMatchesVisual": false,
     "invisibleFocusCount": 1,
     "invisibleSamples": [
@@ -39,10 +39,10 @@
     ],
     "firstStop": "a \"TTAVRENINTERNAL OS\"",
     "skipToContentLink": false,
-    "cmdKChangedDom": false
+    "cmdKChangedDom": true
   },
   "/reports": {
-    "tabStops": 25,
+    "tabStops": 26,
     "focusOrderMatchesVisual": false,
     "invisibleFocusCount": 3,
     "invisibleSamples": [
@@ -52,6 +52,6 @@
     ],
     "firstStop": "a \"TTAVRENINTERNAL OS\"",
     "skipToContentLink": false,
-    "cmdKChangedDom": false
+    "cmdKChangedDom": true
   }
 }
