@@ -8,99 +8,94 @@
 A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
 (single source of truth) → reporting and one-way mirrors. History in PROGRESS.md.
 
-## ⚠️ Everything below is UNCOMMITTED
+## Branch topology — read this first
 
-34 files, all of one session's work. **Commit before doing anything else**, with
-`git commit --only <paths>` — the index is shared with concurrent sessions and
-`git add` has swept another session's work into a commit before.
-`.claude/settings.json` carries older permission allowances; handle separately.
+- `main` — 19 commits ahead of `origin/main`. **Nothing is pushed.**
+- `timesheet-grid` — the grid work, committed by a concurrent session as 5 commits.
+- `redesign` ← **you are here**, branched off `timesheet-grid`. 10 commits.
+
+The tree is clean and `pnpm verify && pnpm build` is green. **Build needs
+`NODE_OPTIONS=--max-old-space-size=4096`** since Radix landed, or it dies with 137.
+
+⚠️ **Up to six Claude sessions have run against this repo at once.** The index is
+shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
+`git add -A` — a PreToolUse hook denies bulk staging for exactly this reason.
+
 ## Current State
 
-**An in-app spreadsheet over work logs, at `/timesheet`. Built, driven in a real
-browser, green.** 273 unit + 100 fixture tests, lint and build clean.
+**The UI is being rebuilt against a rubric, not against taste.**
+`docs/DESIGN-STANDARD.md` (47 rules, a motion spec, a 24-row scorecard /92) is the
+authority; `.claude/commands/uxaudit.md` is `/uxaudit`, which scores the app against
+it and writes `ux-audit/`.
 
-One project × one month, with a person filter — the same slice as a tab of that
-project's sheet, so blocks round-trip between the two. Keyboard editing,
-copy/paste, a live timer row, CSV export. **No Save button**: every cell commits
-when you leave it. Rationale:
-`~/.claude/plans/ok-so-discussed-the-modular-token.md`.
+**Baseline was 35/92. Wave 1 plus the palette puts it near 52.** Re-run `/uxaudit`
+for a real number rather than trusting that estimate — it was scored by the same
+session that did the work.
 
-**Four live bugs were fixed underneath it**, none introduced by this work:
+Measured, before → after (`ux-audit/_harness/`, re-runnable):
 
-- `nextVersion` had no row lock — concurrent corrections collided on
-  `worklog_revisions_version_unique`. Now `FOR UPDATE OF work_logs`; the `OF`
-  matters, or the lock covers the joined project row and serialises every edit
-  on it. `tests/db/work-log-actions.test.ts` fails without it.
-- `loadForCorrection` read on a *different connection* than the write, so the
-  invoiced and already-removed checks were check-then-act. Now inside the tx.
-- `adjustTimer` had no status guard: it resurrected a completed session, and
-  finishing it again wrote a **second** work log, orphaning the first.
-- Nothing stopped a person having two open timers. **Migration `0017`** adds the
-  partial unique index and closes duplicates first. It runs on deploy.
-Full reasoning for all four is in PROGRESS.md.
+| | was | now |
+|---|--:|--:|
+| Contrast failures | 285 | 0 |
+| Numeric nodes with tabular figures | 2 | 73 |
+| Transitions on an ease-in-out | 218 | 13 |
+| `loading.tsx` across 14 blocking pages | 0 | 11 |
 
-The shared write path is `server/work-log-writes.ts`, used by both the
-single-row actions and the batch save. The batch is one transaction with a
-SAVEPOINT per row, so a rejected row takes its revision, audit row and sheet job
-with it while the rest commits.
-
-Accessibility and design passes followed. Grid: emoji as structural icons (now
-`LockIcon`/`TimerIcon`); focus scrolling behind the 56px sticky header
-(`scroll-padding-top`, WCAG 2.2 AA); save status by colour alone; no live region
-for autosave; icons at 2.38:1 on `surface-2`. `prefers-reduced-motion` was
-absent app-wide. **`MetricCard`'s negative `change` used `brand` at 4.05:1 /
-4.30:1 — under the 4.5:1 floor; now `danger`, which also fixes `/sales`.** On an
-accent card both tokens invert together and collapse to 2.4-3.2:1, so there it
-uses the card's own foreground. The accent moved off "Your projects" (scope, not
-a metric) onto "Waiting on you" — what `/reports`, `/review` and `/sales`
-already do: accent the page's headline number.
-
-**Sheets are unchanged**; grid edits flow out through the same outbox. **Nothing
-is connected yet** — `sheet_connections` is empty.
+Shipped: the contrast ramps (both themes, measured against the *worst* surface each
+token lands on, not white); brand `#fb0044` → `#e8003f`; tabular figures with mono
+demoted to IDs; ease-out everywhere; typed empty states (blank-slate / no-results /
+cleared); toasts with an action no longer self-dismiss; 11 loading files with real
+row heights and a 300ms delay; sticky table headers; shadcn Dialog/Sheet/Command/
+Tooltip behind a token bridge; ⌘K with `G`-then-letter jumps; recent projects on the
+dashboard and in the palette.
 
 ## Next Steps
 
-1. **Commit this work** (see the warning above).
-2. **Attach a sheet to one project** — the last unproven step end to end. Sheet
-   tab → Copy the template → name it → share with the service account → paste
-   the link.
-3. **Phase 0 — hosting and a scheduler. Still the only thing blocking every
-   automation**, and the grid makes the sheet mirror busier. Schedule
-   `/api/cron/sync` (2–5 min), `/api/cron/sweeps` (hourly), `/api/cron/digest`
-   (daily) with `CRON_SECRET`. Vercel Hobby is out.
-4. **Set `DIGEST_WEBHOOK_URLS`** or the digest builds and goes nowhere.
-5. **Delete the nine seed accounts** sharing `tavren123`.
-6. Grid: no `Ctrl+Z` undo; range selection is keyboard-only, no mouse drag.
+1. **Re-run `/uxaudit`** for an honest score before doing more.
+2. **Wave 2 remainder** — the rows still at 1–2: `C1` Needs Attention needs four
+   exits and snooze-with-wake (new column + sweep); `C5` Reports needs the Stripe
+   reconciliation strip with drill-down and a stated date basis; `A5` needs
+   item-level `J`/`K`/`E`; `C2` log-work drafts must survive navigation.
+3. **Parked, and cheapest done together** — ten font sizes with four adjacent pairs
+   under the 25% floor, six font weights, five surfaces where §3.3 allows three.
+   All three are one pass over the type and surface tokens.
+4. **Everything below is still true and still blocking**: attach a sheet to one
+   project (unproven end to end); Phase 0 hosting + scheduler for `/api/cron/*`
+   with `CRON_SECRET`; set `DIGEST_WEBHOOK_URLS`; delete the nine seed accounts
+   sharing `tavren123`.
 
 ## What Failed / Dead Ends
 
-- **The grid's columns and the sheet's are NOT the same shape.** The sheet has
-  six and no Person column; the grid renders Person third, so a six-wide block
-  pasted positionally puts hours into the notes cell. `planPaste` reads a
-  six-wide block anchored at column A in the sheet's order instead.
-- **A React state updater must not call another setState.** StrictMode invokes
-  updaters twice, so `setRows` inside a `setDraft` updater appended every new row
-  twice and doubled the hours in the totals.
-- **`pkill -f` matches the agent's own shell for ANY pattern** — the command line
-  containing the pattern is itself a match. Bracket every one:
-  `nex[t] dev`, `remote-debugging-port=922[2]`.
-- **Driving the app over CDP** (no Playwright; Node 24's built-in WebSocket
-  speaks to `google-chrome --headless`): never send `text` on `keyDown` *and* a
-  `char` event, or characters type twice. The keystroke that OPENS a cell editor
-  needs `keyDown` alone.
-- **The service account cannot create Drive files** (`spreadsheets.create` → 403);
-  the **Drive API is not enabled**, so `readOtherEditors` has never fired.
-- **Never use a global `input[name=…]` lookup** in a browser harness — the
-  project page's rail has its own log-work form. `requestSubmit()` also silently
-  no-ops on constraint violations; call `form.checkValidity()` first.
-- **Both `danger` and `fill-strong` invert between themes**, so a status colour
-  on an accent surface collapses to ~2.4-3.2:1 in *both*. Use the surface's own
-  foreground there and carry emphasis with weight.
+- **`overflow-x-auto` forces `overflow-y:auto`**, making that wrapper the sticky
+  containing block — so a header stuck to the viewport silently does nothing. The
+  container has to become the vertical scroller. The **grid** therefore has no
+  sticky header: the fix would move geometry its roving-tabindex model depends on.
+- **Do not test `loading.tsx` by blocking the RSC request.** The loading UI is
+  delivered *in* that stream, so blocking it suppresses the thing under test.
+  Throttle instead.
+- **Three audit findings were measured and then deleted for failing verification** —
+  a 1.07:1 contrast reading, an "invisible" focus ring, and an element overlapping
+  Sign out. The first two were sampling artifacts (`color-mix`/oklab computed
+  backgrounds parse as near-black); the third is the Next.js dev indicator, which
+  appears in every dev-server screenshot.
+- **shadcn's Button was rejected**: it sets `outline:none` and substitutes a `ring`
+  box-shadow, opting out of the global focus outline and colliding with elevation;
+  its sizes are 24–36px against the 44px standard; it ships `dark:` variants.
+  **Sonner too** — it imports `next-themes`, which this app deliberately does not
+  use (theme is a server-read cookie, so there is no flash).
+- **A base Tailwind utility loses to a responsive one.** `max-w-[640px]` could not
+  override the dialog's `sm:max-w-lg`; it needed the `sm:` prefix.
+- **`setState` in an effect is a lint error here** (cascading renders). Client-only
+  values go through `useSyncExternalStore` with a server snapshot.
+- Everything in `.claude/handoff-history/2026-09-03_sheets-pre-grid.md` about the
+  grid, CDP, `pkill -f` bracketing and the Drive API still applies.
 
 ## Open Questions / Blockers
 
-- **Hosting decision** — blocks step 3, which blocks everything automatic.
+- **Hosting decision** — blocks the scheduler, which blocks every automation.
 - **Discord/Slack webhook URL** for the digest.
-- **Column E (Link) is read-only** in the grid; there is no `link` column on a
-  work log. Adding one is a product decision — it would make the sync write
-  column E, which the UI currently promises it never does.
+- **No `billable` column exists**, and `userRates` is unread and RLS-guarded. The
+  reconciliation strip's "Billable · Unbilled" cannot be built until that is a
+  product decision.
+- **Column E (Link) is read-only** in the grid; adding a `link` column would make
+  the sync write column E, which the UI currently promises it never does.
