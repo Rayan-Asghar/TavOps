@@ -31,17 +31,9 @@ it and writes `ux-audit/`.
 **Baseline 35/92; Wave 1 and most of Wave 2 put it near 60.** Re-run `/uxaudit` for a
 real number — that estimate was scored by the session that did the work.
 
-Measured, before → after (`ux-audit/_harness/`, re-runnable):
-
-| | was | now |
-|---|--:|--:|
-| Contrast failures | 285 | 0 |
-| Numeric nodes with tabular figures | 2 | 73 |
-| Distinct font sizes / weights | 10 / 6 | 5 / 4 |
-| Arbitrary `text-[Npx]` values | 21 | 0 |
-| Transitions on an ease-in-out | 218 | 13 |
-| `loading.tsx` across 14 blocking pages | 0 | 11 |
-| Exits from the triage queue | 1 | 3 |
+Measured before/after in `ux-audit/AUDIT.md`; the harness in `ux-audit/_harness/`
+re-runs it. Headlines: contrast failures 285 → 0, font sizes 10 → 5, weights 6 → 4,
+`loading.tsx` 0 → 11, queue exits 1 → 3.
 
 Shipped: the contrast ramps (both themes, measured against the *worst* surface each
 token lands on, not white); brand `#fb0044` → `#e8003f`; tabular figures with mono
