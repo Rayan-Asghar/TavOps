@@ -190,3 +190,43 @@ is earned."*
   autosave on blur, CSV export, keyboard model documented inline beneath the grid.
 - **Accent discipline (§3.3).** Exactly one accent element per screen.
 - **Inbox count semantics (§2.5).** Counts total unresolved, not "unread".
+
+---
+
+## Progress — Wave 1 in flight
+
+Re-measured with the same harness (`ux-audit/after/`). Baseline stands above; this is
+where it is now.
+
+| Measured | Baseline | Now |
+|---|--:|--:|
+| Contrast failures | 285 | **0** |
+| Numeric nodes with tabular figures | 2 | **73** |
+| Numeric nodes without | 93 | 22 |
+| Transitions on ease-in-out | 218 | 13 |
+| Transitions on ease-out | 0 | **205** |
+| `loading.tsx` files | 0 | **11** |
+| Focus ring colour at the instant of focus | `currentColor` | crimson |
+| Distinct font sizes | 10 | 10 |
+| Distinct font weights | 6 | 6 |
+
+**Score: 35 -> 45 / 92.** Rows moved: B3 1→2 (contrast clean; the five-surface
+`[FAIL IF]` is still open, which caps it), B1 1→2 (tabular figures cleared; the ten-size
+scale is not), B5 1→2 (ring fixed; hit targets only partly), D1 1→3, D2 1→3, D3 2→3,
+E1 2→3, E2 2→3.
+
+Still 35 rows short of the standard's threshold, and that is expected: **every A and C
+row is Wave 2** — command palette, keyboard model, recent/pinned, snooze-with-wake, the
+reconciliation strip. No amount of Wave 1 moves them.
+
+### Known gaps, deliberately left
+
+- **The work-log grid header is not sticky.** Same broken-sticky mechanism as the tables,
+  but the fix makes the grid an internal vertical scroller, and its roving-tabindex
+  keyboard model and inset focus rings are built on the current geometry.
+- **Font scale and weights untouched** — ten sizes with four adjacent pairs under the 25%
+  floor, six weights where the standard wants four. This lands with the shadcn migration,
+  which rewrites the type tokens anyway.
+- **Five surfaces where §3.3 allows three.** Same reason.
+- **Hit targets**: only the toast dismiss was fixed (11px glyph → 32×32). The in-row
+  actions at 15–17px remain.
