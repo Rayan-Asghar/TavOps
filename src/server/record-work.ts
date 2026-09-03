@@ -23,6 +23,14 @@ export type RecordWorkInput = {
   internalNotes: string;
   resultingStatus?: TaskStatus | null;
   workDate?: Date;
+  /**
+   * Who is doing the recording, when that is not the person the work belongs
+   * to. Defaults to `userId`, which is the case for the log form and the timer
+   * — both only ever record your own work. A lead typing into somebody else's
+   * timesheet is the case this exists for: the revision and the audit row must
+   * name the lead, not the person whose day it was.
+   */
+  actorId?: string;
 };
 
 /**
@@ -80,7 +88,7 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       hours: entry.hours,
       statusAfter: input.resultingStatus ?? null,
       internalNotes: input.internalNotes,
-      changedByUserId: input.userId,
+      changedByUserId: input.actorId ?? input.userId,
       source: "ui",
     })
     .returning();
@@ -134,7 +142,7 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
   }
 
   await writeAudit(tx, {
-    actorId: input.userId,
+    actorId: input.actorId ?? input.userId,
     projectId: input.projectId,
     entityType: "work_log",
     entityId: entry.id,

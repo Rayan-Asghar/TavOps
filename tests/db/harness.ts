@@ -199,3 +199,111 @@ export async function jobStatuses(connectionId: string) {
     SELECT status, last_error FROM sync_jobs WHERE connection_id = ${connectionId}`;
   return rows as unknown as { status: string; last_error: string | null }[];
 }
+
+/** Locks everything dated on or before `date`. Null clears the lock. */
+export async function setInvoicedThrough(
+  projectId: string,
+  date: string | null,
+) {
+  await owner`
+    UPDATE projects SET invoiced_through = ${date} WHERE id = ${projectId}`;
+}
+
+export async function makeTask(opts: {
+  projectId: string;
+  title?: string;
+  assigneeId?: string | null;
+  status?: string;
+}) {
+  const id = randomUUID();
+  await owner`
+    INSERT INTO tasks (id, project_id, title, assignee_id, status)
+    VALUES (${id}, ${opts.projectId}, ${opts.title ?? "Test Task"},
+            ${opts.assigneeId ?? null}, ${opts.status ?? "todo"})`;
+  return id;
+}
+
+/** The revision chain for one entry, oldest first. */
+export async function revisionsFor(workLogId: string) {
+  const rows = await owner`
+    SELECT version, work_date::text AS work_date, hours, internal_notes,
+           is_reversal, changed_by_user_id, reason, source
+      FROM worklog_revisions
+     WHERE work_log_id = ${workLogId}
+     ORDER BY version`;
+  return rows as unknown as {
+    version: number;
+    work_date: string;
+    hours: string;
+    internal_notes: string | null;
+    is_reversal: boolean;
+    changed_by_user_id: string | null;
+    reason: string | null;
+    source: string;
+  }[];
+}
+
+/** Audit rows for one entity, oldest first. */
+export async function auditFor(entityId: string) {
+  const rows = await owner`
+    SELECT action, actor_id, before, after
+      FROM audit_log WHERE entity_id = ${entityId} ORDER BY ts`;
+  return rows as unknown as {
+    action: string;
+    actor_id: string | null;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+  }[];
+}
+
+/** The mirrored columns, as the app reads them. */
+export async function logRow(workLogId: string) {
+  const [row] = await owner`
+    SELECT hours, internal_notes, work_date::date::text AS work_date,
+           current_revision_id, deleted_at, task_id, user_id
+      FROM work_logs WHERE id = ${workLogId}`;
+  return row as unknown as {
+    hours: string;
+    internal_notes: string;
+    work_date: string;
+    current_revision_id: string | null;
+    deleted_at: Date | null;
+    task_id: string | null;
+    user_id: string;
+  };
+}
+
+/** Live entries on a project, oldest first. */
+export async function logsFor(projectId: string, userId?: string) {
+  const rows = userId
+    ? await owner`
+        SELECT id, hours, internal_notes, work_date::date::text AS work_date
+          FROM work_logs
+         WHERE project_id = ${projectId} AND user_id = ${userId}
+           AND deleted_at IS NULL
+         ORDER BY work_date, created_at`
+    : await owner`
+        SELECT id, hours, internal_notes, work_date::date::text AS work_date
+          FROM work_logs
+         WHERE project_id = ${projectId} AND deleted_at IS NULL
+         ORDER BY work_date, created_at`;
+  return rows as unknown as {
+    id: string;
+    hours: string;
+    internal_notes: string;
+    work_date: string;
+  }[];
+}
+
+/** Queued sheet writes for one entry. */
+export async function jobsFor(workLogId: string) {
+  const rows = await owner`
+    SELECT job_type, idempotency_key, status
+      FROM sync_jobs WHERE work_log_id = ${workLogId}
+     ORDER BY created_at`;
+  return rows as unknown as {
+    job_type: string;
+    idempotency_key: string;
+    status: string;
+  }[];
+}

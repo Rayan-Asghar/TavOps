@@ -1,18 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, sql } from "drizzle-orm";
-import { db, type Db } from "@/db";
-import { projects, workLogs, worklogRevisions } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { projects } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
-import {
-  assertProjectAccess,
-  canAccessProject,
-  type Actor,
-} from "@/lib/access";
-import { assertCan } from "@/lib/rbac";
+import { assertProjectAccess } from "@/lib/access";
+import { assertCan, can } from "@/lib/rbac";
 import { UserFacingError } from "@/lib/errors";
-import { isInvoiced } from "@/lib/billing-lock";
 import {
   logWorkSchema,
   editWorkLogSchema,
@@ -22,10 +17,21 @@ import {
   type DeleteWorkLogInput,
 } from "./schemas";
 import { recordWorkInTx } from "./record-work";
-import { writeAudit } from "./audit";
-import { enqueueSheetWrite, scheduleDrain } from "./sheet-sync";
-
-type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+import {
+  loadForCorrectionInTx,
+  assertEditable,
+  assertRemovable,
+  editWorkLogInTx,
+  deleteWorkLogInTx,
+  applyGridRowsInTx,
+} from "./work-log-writes";
+import {
+  saveGridEnvelopeSchema,
+  summarise,
+  type GridSaveState,
+} from "./grid-schemas";
+import { safeErrorMessage } from "./action-errors";
+import { scheduleDrain } from "./sheet-sync";
 
 /**
  * The wedge: one submission from a developer fans out to everything else.
@@ -55,49 +61,8 @@ export async function logWork(input: LogWorkInput) {
 
   revalidatePath(`/projects/${data.projectId}`);
   revalidatePath("/");
+  revalidatePath("/timesheet");
   return result;
-}
-
-/**
- * Loads an entry along with the facts the edit and delete rules need.
- *
- * A log the actor cannot reach is reported as missing rather than forbidden,
- * matching the 404-not-403 rule the project pages follow: "that entry exists
- * but is not yours" is itself information about another project.
- */
-async function loadForCorrection(workLogId: string, actor: Actor) {
-  const [row] = await db
-    .select({
-      log: workLogs,
-      invoicedThrough: projects.invoicedThrough,
-    })
-    .from(workLogs)
-    .innerJoin(projects, eq(workLogs.projectId, projects.id))
-    .where(eq(workLogs.id, workLogId))
-    .limit(1);
-
-  if (!row || !(await canAccessProject(actor, row.log.projectId))) {
-    throw new UserFacingError("That entry no longer exists.");
-  }
-  if (row.log.deletedAt) {
-    throw new UserFacingError("That entry has already been removed.");
-  }
-  // Your own mistakes are yours to fix. Correcting somebody else's entry
-  // changes what their day is recorded as having contained, so it is a
-  // separate grant rather than a side effect of being able to read it.
-  if (row.log.userId !== actor.id) {
-    assertCan(actor.globalRole, "worklog.edit");
-  }
-  return row;
-}
-
-/** The version this log's next revision gets. */
-async function nextVersion(tx: Tx, workLogId: string): Promise<number> {
-  const [{ max }] = await tx
-    .select({ max: sql<number>`coalesce(max(${worklogRevisions.version}), 0)::int` })
-    .from(worklogRevisions)
-    .where(eq(worklogRevisions.workLogId, workLogId));
-  return max + 1;
 }
 
 /**
@@ -110,83 +75,38 @@ async function nextVersion(tx: Tx, workLogId: string): Promise<number> {
 export async function editWorkLog(input: EditWorkLogInput) {
   const actor = await requireActor();
   const data = editWorkLogSchema.parse(input);
-  const { log, invoicedThrough } = await loadForCorrection(data.workLogId, actor);
 
-  const newDate = data.workDate ?? log.workDate;
-
-  // Checked on both dates: moving an entry OUT of a billed period is as much a
-  // rewrite of that invoice as changing its hours.
-  if (isInvoiced(log.workDate, invoicedThrough) || isInvoiced(newDate, invoicedThrough)) {
-    throw new UserFacingError(
-      "That work has already been invoiced and can no longer be changed.",
-    );
-  }
-
-  const hours = data.hours.toFixed(2);
+  let projectId = "";
   let queuedSync = false;
 
+  // The load sits inside the transaction so the row lock it takes covers the
+  // invoiced check, the already-removed check and the version allocation. Read
+  // on a separate connection, all three were check-then-act.
   await db.transaction(async (tx) => {
-    const version = await nextVersion(tx, log.id);
+    const { log, invoicedThrough } = await loadForCorrectionInTx(
+      tx,
+      data.workLogId,
+      actor,
+    );
+    projectId = log.projectId;
+    assertEditable(log.workDate, data.workDate ?? log.workDate, invoicedThrough);
 
-    const [revision] = await tx
-      .insert(worklogRevisions)
-      .values({
-        workLogId: log.id,
-        version,
-        taskId: log.taskId,
-        workDate: newDate.toISOString().slice(0, 10),
-        hours,
-        statusAfter: log.resultingStatus,
-        internalNotes: data.internalNotes,
-        changedByUserId: actor.id,
-        source: "ui",
-        reason: data.reason,
-      })
-      .returning();
-
-    await tx
-      .update(workLogs)
-      .set({
-        hours,
-        internalNotes: data.internalNotes,
-        workDate: newDate,
-        currentRevisionId: revision.id,
-      })
-      .where(eq(workLogs.id, log.id));
-
-    // The sheet row is corrected in place, addressed by the entry's id.
-    queuedSync = await enqueueSheetWrite(tx, {
-      projectId: log.projectId,
-      workLogId: log.id,
-      jobType: "update",
-      changeKey: `revision:${revision.id}`,
+    const result = await editWorkLogInTx(tx, {
+      log,
+      actor,
+      hours: data.hours,
+      internalNotes: data.internalNotes,
+      workDate: data.workDate ?? null,
+      reason: data.reason,
     });
-
-    await writeAudit(tx, {
-      actorId: actor.id,
-      projectId: log.projectId,
-      entityType: "work_log",
-      entityId: log.id,
-      action: "work_log.edit",
-      before: {
-        hours: log.hours,
-        internalNotes: log.internalNotes,
-        workDate: log.workDate.toISOString().slice(0, 10),
-      },
-      after: {
-        hours,
-        internalNotes: data.internalNotes,
-        workDate: newDate.toISOString().slice(0, 10),
-        version,
-        reason: data.reason,
-      },
-    });
+    queuedSync = result.queuedSync;
   });
 
   if (queuedSync) scheduleDrain();
 
-  revalidatePath(`/projects/${log.projectId}`);
+  revalidatePath(`/projects/${projectId}`);
   revalidatePath("/");
+  revalidatePath("/timesheet");
   return { ok: true as const };
 }
 
@@ -201,69 +121,96 @@ export async function editWorkLog(input: EditWorkLogInput) {
 export async function deleteWorkLog(input: DeleteWorkLogInput) {
   const actor = await requireActor();
   const data = deleteWorkLogSchema.parse(input);
-  const { log, invoicedThrough } = await loadForCorrection(data.workLogId, actor);
 
-  if (isInvoiced(log.workDate, invoicedThrough)) {
-    throw new UserFacingError(
-      "That work has already been invoiced and can no longer be removed.",
-    );
-  }
-
+  let projectId = "";
   let queuedDelete = false;
 
   await db.transaction(async (tx) => {
-    const version = await nextVersion(tx, log.id);
+    const { log, invoicedThrough } = await loadForCorrectionInTx(
+      tx,
+      data.workLogId,
+      actor,
+    );
+    projectId = log.projectId;
+    assertRemovable(log.workDate, invoicedThrough);
 
-    await tx.insert(worklogRevisions).values({
-      workLogId: log.id,
-      version,
-      taskId: log.taskId,
-      workDate: log.workDate.toISOString().slice(0, 10),
-      hours: "0.00",
-      statusAfter: log.resultingStatus,
-      internalNotes: log.internalNotes,
-      isReversal: true,
-      changedByUserId: actor.id,
-      source: "ui",
+    const result = await deleteWorkLogInTx(tx, {
+      log,
+      actor,
       reason: data.reason,
     });
-
-    await tx
-      .update(workLogs)
-      .set({ deletedAt: new Date() })
-      .where(eq(workLogs.id, log.id));
-
-    // The sheet keeps the row and blanks it: removing a row would shift every
-    // row beneath it and invalidate every recorded position at once.
-    queuedDelete = await enqueueSheetWrite(tx, {
-      projectId: log.projectId,
-      workLogId: log.id,
-      jobType: "delete",
-      changeKey: `delete:${log.id}`,
-    });
-
-    await writeAudit(tx, {
-      actorId: actor.id,
-      projectId: log.projectId,
-      entityType: "work_log",
-      entityId: log.id,
-      action: "work_log.delete",
-      // Keyed so the diff reads as a removal. Putting the hours under `before`
-      // renders as "hours 23.00 -> —", which looks like the hours were cleared
-      // rather than the entry withdrawn.
-      before: { deleted: false },
-      after: {
-        deleted: true,
-        hoursRemoved: log.hours,
-        version,
-        reason: data.reason,
-      },
-    });
+    queuedDelete = result.queuedDelete;
   });
 
   if (queuedDelete) scheduleDrain();
 
-  revalidatePath(`/projects/${log.projectId}`);
+  revalidatePath(`/projects/${projectId}`);
   revalidatePath("/");
+  revalidatePath("/timesheet");
   return { ok: true as const };
+}
+
+/**
+ * One save from the grid: a batch of creates, corrections and removals.
+ *
+ * A single-cell commit is a batch of one and a paste is a batch of many, so
+ * there is one write path rather than two — and because Server Actions dispatch
+ * sequentially per client, twenty rows sent as twenty actions would be twenty
+ * serial round trips.
+ *
+ * The six-step pattern holds, at batch granularity: authenticate, check the
+ * capability, parse the envelope, check project access, one transaction, then
+ * revalidate. Per-row validation happens inside, because a single
+ * `schema.parse` produces a single message and one bad cell in row 17 would
+ * reject 200 rows while naming none of them.
+ */
+export async function saveWorkLogGrid(input: unknown): Promise<GridSaveState> {
+  try {
+    const actor = await requireActor();
+    assertCan(actor.globalRole, "worklog.create");
+
+    const data = saveGridEnvelopeSchema.parse(input);
+    await assertProjectAccess(actor, data.projectId);
+
+    const [project] = await db
+      .select({ invoicedThrough: projects.invoicedThrough })
+      .from(projects)
+      .where(eq(projects.id, data.projectId))
+      .limit(1);
+    if (!project) throw new UserFacingError("That project no longer exists.");
+
+    const rows = await db.transaction((tx) =>
+      applyGridRowsInTx(
+        tx,
+        {
+          actor,
+          projectId: data.projectId,
+          personId: data.personId ?? null,
+          month: data.month,
+          reason: data.reason ?? null,
+          canEditOthers: can(actor.globalRole, "worklog.edit"),
+          invoicedThrough: project.invoicedThrough,
+        },
+        data.rows,
+      ),
+    );
+
+    // Once per batch, never per row: the worker groups the queued jobs into one
+    // Sheets call per month tab anyway.
+    if (rows.some((r) => r.status !== "rejected" && r.status !== "unchanged")) {
+      scheduleDrain();
+      revalidatePath(`/projects/${data.projectId}`);
+      revalidatePath("/");
+      revalidatePath("/timesheet");
+    }
+
+    const rejected = rows.filter((r) => r.status === "rejected").length;
+    return {
+      ok: rejected === 0,
+      message: summarise(rows),
+      rows,
+    };
+  } catch (err) {
+    return { error: safeErrorMessage(err, "saveWorkLogGrid") };
+  }
 }
