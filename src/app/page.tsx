@@ -6,9 +6,10 @@ import { blockers, tasks, users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { inboxFor, unresolvedCount } from "@/server/notifications";
+import { recentProjectsFor } from "@/server/recent";
 import { DismissButton } from "@/components/dismiss-button";
 import { AppShell, SectionIntro } from "@/components/app-shell";
-import { Badge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
+import { Badge, HealthBadge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
 import { ArrowRightIcon } from "@/components/icons";
 
 import { timeAgo } from "@/lib/format";
@@ -30,10 +31,11 @@ export default async function InboxPage() {
     .where(eq(users.id, actor.id))
     .limit(1);
 
-  const [items, count, scope] = await Promise.all([
+  const [items, count, scope, recents] = await Promise.all([
     inboxFor(actor.id),
     unresolvedCount(actor.id),
     accessibleProjectIds(actor),
+    recentProjectsFor(actor, 4),
   ]);
 
   const [myBlockers] = await db
@@ -185,6 +187,47 @@ export default async function InboxPage() {
           Nothing needs a decision from you right now. Blockers, reviews and
           reporting gaps land here the moment they are routed to you.
         </EmptyState>
+      )}
+
+      {/* r12 makes recent work required on the dashboard, not optional, and NN/g
+          recommends a "continue where you left off" surface for interrupted work
+          -- which is most work on a two-person team. It sits BELOW the queue on
+          purpose: this page's premise is that only exceptions deserve attention,
+          so picking up yesterday's thread must not outrank something waiting on a
+          decision. Quiet row, no metric, no accent. */}
+      {recents.length > 0 && (
+        <section className="panel mb-4">
+          <div className="panel-head">
+            <div>
+              <p className="eyebrow">PICK UP WHERE YOU LEFT OFF</p>
+              <h3 className="m-0 text-xl tracking-[-.035em]">Recent projects</h3>
+            </div>
+            <span className="text-xs text-fg-muted">Last touched by you</span>
+          </div>
+          <ul>
+            {recents.map((p) => (
+              <li key={p.id} className="border-b border-border last:border-b-0">
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="flex min-h-[52px] items-center gap-3 px-4 py-2.5
+                             transition-[color,background-color] duration-150 ease-out-quad
+                             hover:bg-surface-hover"
+                >
+                  <span className="shrink-0 font-mono text-2xs text-fg-muted">
+                    {p.code}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-bold">
+                    {p.name}
+                  </span>
+                  <HealthBadge health={p.health} />
+                  <span className="tabular shrink-0 text-2xs text-fg-subtle">
+                    {timeAgo(p.at)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {informational.length > 0 && (
