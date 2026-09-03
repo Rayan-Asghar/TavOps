@@ -24,7 +24,7 @@ export function LoadingShell({ children }: { children: ReactNode }) {
         className="hidden bg-nav px-3.5 py-4 md:sticky md:top-0 md:block md:h-screen"
       >
         <div className="flex min-h-[54px] items-center gap-2.5 px-1.5">
-          <span className="grid h-9 w-9 place-items-center bg-brand text-xl font-black text-white">
+          <span className="grid h-9 w-9 place-items-center bg-brand text-xl font-bold text-white">
             T
           </span>
           <span className="flex flex-col gap-[5px] leading-none">

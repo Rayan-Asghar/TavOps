@@ -56,7 +56,7 @@ export function GridMonthTabs({
               <LinkPending />
               {m.entries > 0 && (
                 <span
-                  className={`grid tabular h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-black
+                  className={`grid tabular h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-bold
                     ${isActive ? "bg-brand text-white" : "bg-surface-2 text-fg-muted"}`}
                 >
                   {m.entries}

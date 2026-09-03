@@ -66,7 +66,7 @@ export default async function SheetsAdminPage() {
       />
 
       {broken > 0 && (
-        <p className="mb-4 rounded-lg bg-danger-soft px-4 py-3 text-[12px] font-medium text-danger">
+        <p className="mb-4 rounded-lg bg-danger-soft px-4 py-3 text-xs font-medium text-danger">
           {broken} {broken === 1 ? "sheet has" : "sheets have"} stopped
           accepting updates. Until fixed, that work is recorded in Tavren but
           not mirrored.
@@ -84,7 +84,7 @@ export default async function SheetsAdminPage() {
         </div>
         <div className="px-5 py-1">
           {rows.length === 0 ? (
-            <p className="py-8 text-center text-[12px] text-fg-muted">
+            <p className="py-8 text-center text-xs text-fg-muted">
               No sheets attached yet. Open a project and go to its Sheet tab.
             </p>
           ) : (
@@ -94,8 +94,8 @@ export default async function SheetsAdminPage() {
                 className="flex flex-wrap items-center gap-3 border-b border-border py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-bold">{r.projectCode}</div>
-                  <div className="truncate text-[9px] text-fg-subtle">
+                  <div className="text-xs font-bold">{r.projectCode}</div>
+                  <div className="truncate text-2xs text-fg-subtle">
                     {r.projectName}
                   </div>
                 </div>
@@ -112,7 +112,7 @@ export default async function SheetsAdminPage() {
                   href={r.spreadsheetUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[11px] font-bold text-fg-muted hover:text-fg"
+                  className="text-2xs font-bold text-fg-muted hover:text-fg"
                 >
                   Open
                 </a>

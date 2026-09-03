@@ -620,7 +620,7 @@ export function WorkLogGrid({
           className="group mb-3"
           onToggle={(e) => setShowReason(e.currentTarget.open)}
         >
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-2xs font-black uppercase tracking-[.1em] text-fg-label hover:text-fg">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-2xs font-bold uppercase tracking-[.1em] text-fg-label hover:text-fg">
             <span className="transition-transform group-open:rotate-90">›</span>
             Why these changes
             {reason.trim() && (
@@ -680,7 +680,7 @@ export function WorkLogGrid({
                   aria-colindex={i + 2}
                   scope="col"
                   style={{ width: c.width }}
-                  className={`h-[34px] whitespace-nowrap border-b border-border bg-surface-2 px-3 text-2xs font-black uppercase tracking-[.1em] text-fg-label
+                  className={`h-[34px] whitespace-nowrap border-b border-border bg-surface-2 px-3 text-2xs font-bold uppercase tracking-[.1em] text-fg-label
                     ${c.align === "right" ? "text-right" : "text-left"}`}
                 >
                   {c.label}

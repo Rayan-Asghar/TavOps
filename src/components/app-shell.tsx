@@ -224,7 +224,11 @@ export function SectionIntro({
     <div className="mb-7 mt-3.5 flex flex-col items-start justify-between gap-5 border-b border-fg pb-6 pt-6 sm:flex-row sm:items-end">
       <div className="min-w-0">
         <p className="eyebrow">{eyebrow}</p>
-        <h1 className="display m-0 text-[clamp(28px,3.5vw,44px)]">{title}</h1>
+        {/* Clamped between two real steps of the scale (24 and 36) rather than
+              28 and 44, which belonged to neither. */}
+          <h1 className="display m-0 text-[clamp(1.5rem,3.5vw,2.25rem)]">
+            {title}
+          </h1>
       </div>
       {description && (
         <p className="m-0 max-w-[440px] text-xs text-fg-muted">

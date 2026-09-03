@@ -58,7 +58,7 @@ function NavLink({
       </span>
       {typeof entry.count === "number" && entry.count > 0 && (
         <span
-          className={`tabular grid h-5 min-w-[22px] place-items-center rounded-full px-1.5 text-xs font-extrabold
+          className={`tabular grid h-5 min-w-[22px] place-items-center rounded-full px-1.5 text-xs font-bold
                       ${entry.danger ? "bg-brand text-white" : "bg-nav-chip text-nav-fg-muted"}`}
         >
           {entry.count}
@@ -187,7 +187,7 @@ export function Sidebar({
       >
         <div className="flex min-h-[54px] items-center justify-between px-1.5">
           <Link href="/" onClick={close} className="flex items-center gap-2.5">
-            <span className="grid h-9 w-9 place-items-center bg-brand text-xl font-black">
+            <span className="grid h-9 w-9 place-items-center bg-brand text-xl font-bold">
               T
             </span>
             <span className="flex flex-col gap-[5px] leading-none">
@@ -220,7 +220,7 @@ export function Sidebar({
 
         {management.length > 0 && (
           <div className="mt-7 border-t border-nav-border pt-5">
-            <p className="mx-2.5 mb-2 text-2xs font-extrabold tracking-[.14em] text-nav-fg-subtle">
+            <p className="mx-2.5 mb-2 text-2xs font-bold tracking-[.14em] text-nav-fg-subtle">
               MANAGEMENT
             </p>
             <div className="grid gap-1">
@@ -239,7 +239,7 @@ export function Sidebar({
         <div className="mt-auto border-t border-nav-border pt-4">
           <div className="mb-3 px-1.5">{themeToggle}</div>
           <div className="grid grid-cols-[34px_1fr] items-center gap-2.5 p-1.5">
-            <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-brand text-xs font-extrabold">
+            <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-brand text-xs font-bold">
               {initials}
             </span>
             <span className="flex min-w-0 flex-col">

@@ -63,7 +63,7 @@ export function Th({
          both ask for a sticky header. `bg-surface` is required — a transparent
          sticky header lets rows scroll through it. */
       className={`sticky top-0 z-10 h-[38px] border-b border-border bg-surface px-4
-                  text-2xs font-black uppercase tracking-[.1em] text-fg-label
+                  text-2xs font-bold uppercase tracking-[.1em] text-fg-label
                   first:pl-5 last:pr-5 ${numeric ? "text-right" : "text-left"}`}
     >
       {srOnly ? <span className="sr-only">{children}</span> : children}

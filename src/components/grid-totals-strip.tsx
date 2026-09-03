@@ -30,7 +30,7 @@ export function GridTotalsStrip({
         {cells.map((c) => (
           <div key={c.label} className="bg-surface px-4 py-3">
             <p className="label m-0">{c.label}</p>
-            <p className="tabular m-0 text-base font-black text-fg">{c.value}</p>
+            <p className="tabular m-0 text-base font-bold text-fg">{c.value}</p>
           </div>
         ))}
       </div>

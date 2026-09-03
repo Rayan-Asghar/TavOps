@@ -64,7 +64,7 @@ export function SheetPanel({
     return (
       <section className="panel p-5">
         <p className="eyebrow m-0">WORK LOG SHEET</p>
-        <p className="m-0 mt-2 text-[12px] text-fg-muted">
+        <p className="m-0 mt-2 text-xs text-fg-muted">
           Google Sheets is not configured on the server. An admin needs to set
           the service account credentials before a sheet can be attached.
         </p>
@@ -76,7 +76,7 @@ export function SheetPanel({
     <div className="space-y-4">
       <section className="panel p-5">
         <p className="eyebrow m-0">STEP 1 — SHARE THE SHEET</p>
-        <p className="m-0 mb-3 mt-1 text-[12px] text-fg-muted">
+        <p className="m-0 mb-3 mt-1 text-xs text-fg-muted">
           Open the spreadsheet, press <b>Share</b>, and give this address{" "}
           <b>Editor</b> access. Every sheet uses the same address, and nothing
           syncs until this is done. Anyone else with Editor should be set to{" "}
@@ -115,11 +115,11 @@ export function SheetPanel({
               ["Last sync", fmtWhen(conn!.lastSyncAt)],
             ].map(([label, value]) => (
               <div key={label} className="bg-surface px-4 py-3">
-                <div className="text-[9px] font-black uppercase tracking-[.12em] text-fg-muted">
+                <div className="text-2xs font-bold uppercase tracking-[.12em] text-fg-muted">
                   {label}
                 </div>
                 <div
-                  className={`mt-0.5 text-base font-extrabold ${
+                  className={`mt-0.5 text-base font-bold ${
                     label === "Failed" && status.failed > 0 ? "text-danger" : ""
                   }`}
                 >
@@ -131,10 +131,10 @@ export function SheetPanel({
 
           {conn!.status === "error" && conn!.errorMessage && (
             <div className="border-b border-border bg-danger-soft px-5 py-3">
-              <p className="m-0 text-[11px] font-bold text-danger">
+              <p className="m-0 text-2xs font-bold text-danger">
                 This sheet has stopped accepting updates
               </p>
-              <p className="m-0 mt-1 font-mono text-[10px] text-danger">
+              <p className="m-0 mt-1 font-mono text-2xs text-danger">
                 {conn!.errorMessage}
               </p>
               <div className="mt-2">
@@ -151,7 +151,7 @@ export function SheetPanel({
 
           <div className="px-5 py-4">
             <p className="eyebrow m-0">WHAT GOES ACROSS</p>
-            <p className="m-0 mt-1.5 text-[11px] text-fg-muted">
+            <p className="m-0 mt-1.5 text-2xs text-fg-muted">
               Every hour logged on this project, one row each: the date and
               the hours
               {conn!.visibility === "internal" ? ", and what was done" : ""}.
@@ -159,7 +159,7 @@ export function SheetPanel({
               month&rsquo;s tab itself. Corrections update the row they belong
               to; a removed entry stays as a zero-hour row.
             </p>
-            <p className="m-0 mt-2 text-[10px] text-fg-subtle">
+            <p className="m-0 mt-2 text-2xs text-fg-subtle">
               Tavren fills the date, hours, notes and a hidden id. The project
               column, the link column and the totals at the top are yours — it
               never writes to them.
@@ -196,7 +196,7 @@ export function SheetPanel({
                 action={disconnectSheet}
                 fields={{ connectionId: conn!.id }}
                 confirm="Disconnect?"
-                className="px-3 py-2 text-[11px] font-bold text-fg-muted hover:text-danger"
+                className="px-3 py-2 text-2xs font-bold text-fg-muted hover:text-danger"
               >
                 Disconnect
               </ActionButton>
@@ -209,10 +209,10 @@ export function SheetPanel({
 
           {templateCopyHref && (
             <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
-              <p className="m-0 text-[11px] font-bold">
+              <p className="m-0 text-2xs font-bold">
                 Starting fresh? Take a copy of the Tavren template.
               </p>
-              <p className="m-0 mt-1 text-[10px] text-fg-muted">
+              <p className="m-0 mt-1 text-2xs text-fg-muted">
                 It opens in your own Google Drive, owned by you. Share it with
                 the address above and paste its link below — Tavren renames it
                 to <i>Tavren — {projectLabel}</i> once connected.
@@ -242,7 +242,7 @@ export function SheetPanel({
                 placeholder="https://docs.google.com/spreadsheets/d/…"
                 defaultValue={conn?.spreadsheetUrl ?? ""}
               />
-              <p className="mt-1 text-[9px] text-fg-subtle">
+              <p className="mt-1 text-2xs text-fg-subtle">
                 Paste the whole URL from your browser. The sheet must already be
                 the Tavren template — its columns are not configurable.
               </p>
@@ -265,14 +265,14 @@ export function SheetPanel({
                   May be shared outside Tavren — leave that column empty
                 </option>
               </select>
-              <p className="mt-1 text-[10px] text-fg-muted">
+              <p className="mt-1 text-2xs text-fg-muted">
                 Work notes are written for the team. Choosing the second option
                 withholds them from every row written after it, so a sheet that
                 later gets shared does not carry them.
               </p>
             </div>
 
-            <label className="flex items-start gap-2 text-[11px]">
+            <label className="flex items-start gap-2 text-2xs">
               <input
                 type="checkbox"
                 name="backfill"
@@ -282,7 +282,7 @@ export function SheetPanel({
               />
               <span>
                 Add this project&rsquo;s existing work logs
-                <span className="block text-[10px] text-fg-subtle">
+                <span className="block text-2xs text-fg-subtle">
                   Everything logged on it so far. Otherwise the sheet starts
                   empty and only new work appears.
                 </span>
@@ -306,7 +306,7 @@ export function SheetPanel({
                 <button
                   type="button"
                   onClick={() => setReconnecting(false)}
-                  className="px-3 text-[11px] font-bold text-fg-muted"
+                  className="px-3 text-2xs font-bold text-fg-muted"
                 >
                   Cancel
                 </button>

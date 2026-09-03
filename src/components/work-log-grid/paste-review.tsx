@@ -52,7 +52,7 @@ export function PasteReview({
         <h2
           ref={headingRef}
           tabIndex={-1}
-          className="m-0 text-sm font-black text-fg outline-none"
+          className="m-0 text-sm font-bold text-fg outline-none"
         >
           {summary(plan)}
         </h2>
@@ -81,7 +81,7 @@ export function PasteReview({
           <tbody>
             {plan.updates.slice(0, 20).map((u) => (
               <tr key={u.rowKey} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2 text-2xs font-black uppercase tracking-[.08em] text-fg-label">
+                <td className="px-4 py-2 text-2xs font-bold uppercase tracking-[.08em] text-fg-label">
                   Change
                 </td>
                 <td className="px-2 py-2 text-fg-muted line-through">
@@ -97,7 +97,7 @@ export function PasteReview({
             ))}
             {plan.creates.slice(0, 20).map((c, i) => (
               <tr key={`new-${i}`} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2 text-2xs font-black uppercase tracking-[.08em] text-ok">
+                <td className="px-4 py-2 text-2xs font-bold uppercase tracking-[.08em] text-ok">
                   New
                 </td>
                 <td colSpan={3} className="px-2 py-2 text-fg">
@@ -110,7 +110,7 @@ export function PasteReview({
                 key={`refused-${r.blockRow}`}
                 className="border-b border-border last:border-b-0 bg-danger-soft"
               >
-                <td className="px-4 py-2 text-2xs font-black uppercase tracking-[.08em] text-danger">
+                <td className="px-4 py-2 text-2xs font-bold uppercase tracking-[.08em] text-danger">
                   Row {r.blockRow}
                 </td>
                 <td colSpan={3} className="px-2 py-2 text-fg">

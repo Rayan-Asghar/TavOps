@@ -9,7 +9,6 @@
   --color-bg: #f5f5f3;
   --color-surface: #ffffff;
   --color-surface-2: #ececea;
-  --color-surface-3: #eaeae7;
   --color-surface-hover: #f1f1ee; /* was #fafaf8 -- 5 hex points from surface, so every row and card hover read as no change at all */
   --color-border: #dededb;
   --color-border-strong: #c2c2be;
@@ -18,7 +17,7 @@
      and table headers need more contrast than secondary prose.
 
      Every step clears WCAG 1.4.3 (4.5:1) against the WORST surface it can land
-     on -- `surface-3` #eaeae7 -- not merely against white. Measured before:
+     on -- `surface-2` -- not merely against white. Measured before:
      `muted` was 4.41 on `bg` and 4.07 on `surface-2`, so one token was legal on
      a card and illegal on the page behind it; `subtle` ran 2.38-2.81 everywhere
      while carrying real content -- person names, project codes, timestamps, the
@@ -79,29 +78,38 @@
   --color-fill-strong: #111111;
   --color-fill-strong-fg: #ffffff;
 
-  /* Type scale. The floor is 11px: below that, uppercase tracked text stops
-     being readable at arm's length on a laptop. Sizes are named so call sites
-     stop inventing their own. */
-  --text-2xs: 0.6875rem; /* 11px - eyebrow, label, tag, table head */
-  --text-2xs--line-height: 1.3;
+  /* Type scale — the ladder 3.1 prescribes: 12 / 14 / 16 / 20 / 24 / 30 / 36.
+     Ten sizes were in use (9, 11, 12, 13, 14, 16, 18, 20, 43, 44), with four
+     adjacent pairs under the 25% floor and 43 sitting one pixel from 44.
+
+     The 11px step is gone. Carbon puts label and helper text at 12, and this
+     codebase's own note said 11 was already the floor at which tracked uppercase
+     stops being readable at arm's length — so it was sitting ON the floor for 77
+     call sites rather than above it.
+
+     Names are kept so nothing has to be renamed at the call sites; several now
+     resolve to the same value, and the duplicates get collapsed as the pages are
+     touched. */
+  --text-2xs: 0.75rem; /* 12px - eyebrow, label, tag, table head, helper */
+  --text-2xs--line-height: 1.35;
   --text-xs: 0.75rem; /* 12px - dense meta, compact controls */
-  --text-xs--line-height: 1.4;
-  --text-sm: 0.8125rem; /* 13px - secondary prose */
+  --text-xs--line-height: 1.35;
+  --text-sm: 0.875rem; /* 14px - secondary prose */
   --text-sm--line-height: 1.45;
-  --text-base: 0.875rem; /* 14px - body */
+  --text-base: 0.875rem; /* 14px - body, table cells */
   --text-base--line-height: 1.45;
   --text-lg: 1rem; /* 16px - form headings, inputs on touch */
   --text-lg--line-height: 1.4;
-  --text-xl: 1.125rem; /* 18px - panel headings */
+  --text-xl: 1.25rem; /* 20px - panel headings */
   --text-xl--line-height: 1.3;
   --text-2xl: 1.25rem; /* 20px - card titles */
-  --text-2xl--line-height: 1.25;
-  --text-3xl: 1.625rem; /* 26px - page titles in bare layouts */
-  --text-3xl--line-height: 1.15;
-  --text-4xl: 2.125rem; /* 34px */
-  --text-4xl--line-height: 1.1;
-  --text-5xl: 2.6875rem; /* 43px - metric numerals */
-  --text-5xl--line-height: 1;
+  --text-2xl--line-height: 1.3;
+  --text-3xl: 1.5rem; /* 24px - page titles in bare layouts */
+  --text-3xl--line-height: 1.25;
+  --text-4xl: 1.875rem; /* 30px */
+  --text-4xl--line-height: 1.15;
+  --text-5xl: 2.25rem; /* 36px - metric numerals */
+  --text-5xl--line-height: 1.05;
 
   --font-sans: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -162,9 +170,11 @@ body {
    variable rather than to a copy, so the dark-theme overrides above keep
    applying through the alias without a second dark block.
 
-   3.3 asks for three surfaces. `surface-2` and `surface-3` are still in use by
-   the grid and the metric strips, so the alias points `muted` and `secondary` at
-   `surface-2` for now; consolidating the ramp is a separate pass.
+   3.3 asks for three surfaces, and after dropping the never-used `surface-3`
+   that is what is left: `bg` is the page, `surface` is the card. `surface-2` and
+   `surface-hover` are not surfaces at all in shadcn's model -- they are the
+   `muted` fill and the `accent` hover 3.6 asks for -- which is why they alias
+   there rather than adding elevation layers.
    --------------------------------------------------------------------------- */
 :root {
   /* 3.2: one radius, 8px, with the scale derived from it -- sm 4 / md 6 / lg 8 /
@@ -225,7 +235,6 @@ body {
   --color-bg: #101012;
   --color-surface: #191a1d;
   --color-surface-2: #212226;
-  --color-surface-3: #292a2f;
   --color-surface-hover: #26272c; /* was #1e1f22 -- indistinguishable from surface */
   --color-border: #2b2c31;
   --color-border-strong: #3e3f46;
@@ -274,7 +283,6 @@ body {
     --color-bg: #101012;
     --color-surface: #191a1d;
     --color-surface-2: #212226;
-    --color-surface-3: #292a2f;
     --color-surface-hover: #26272c; /* was #1e1f22 -- indistinguishable from surface */
     --color-border: #2b2c31;
     --color-border-strong: #3e3f46;
@@ -344,7 +352,7 @@ html {
 @layer components {
   /* Tiny uppercase kicker used above almost every heading in the reference. */
   .eyebrow {
-    @apply m-0 mb-1.5 text-2xs font-extrabold uppercase tracking-[.15em] text-fg-muted;
+    @apply m-0 mb-1.5 text-2xs font-bold uppercase tracking-[.15em] text-fg-muted;
   }
 
   /* Display headings run tight and large; this is the signature of the look. */
@@ -371,7 +379,7 @@ html {
            text-xs text-fg placeholder:text-fg-subtle focus:border-fg;
   }
   .label {
-    @apply mb-1.5 block text-2xs font-extrabold uppercase tracking-[.06em] text-fg-label;
+    @apply mb-1.5 block text-2xs font-bold uppercase tracking-[.06em] text-fg-label;
   }
 
   /* Tailwind v4 resolves @apply against utilities only, so button variants
@@ -428,7 +436,7 @@ html {
   /* Pill used for status, role and category labels. */
   .tag {
     @apply inline-flex min-h-[22px] w-max items-center justify-center whitespace-nowrap
-           rounded-full px-2 text-2xs font-black uppercase tracking-[.07em];
+           rounded-full px-2 text-2xs font-bold uppercase tracking-[.07em];
   }
 
   .progress {

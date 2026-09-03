@@ -67,11 +67,11 @@ function Stat({
   // announced as a definition list with no terms in it.
   return (
     <div className="bg-surface px-4 py-3">
-      <dt className="text-2xs font-black uppercase tracking-[.12em] text-fg-muted">
+      <dt className="text-2xs font-bold uppercase tracking-[.12em] text-fg-muted">
         {label}
       </dt>
       <dd
-        className={`m-0 mt-0.5 text-xl font-extrabold ${
+        className={`m-0 mt-0.5 text-xl font-bold ${
           tone === "danger" ? "text-danger" : "text-fg"
         }`}
       >

@@ -13,7 +13,7 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-bg px-4 py-10">
       <div className="w-full max-w-[380px]">
         <div className="mb-8 flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center bg-brand text-2xl font-black text-white">
+          <span className="grid h-11 w-11 place-items-center bg-brand text-2xl font-bold text-white">
             T
           </span>
           <span className="flex flex-col gap-1 leading-none">

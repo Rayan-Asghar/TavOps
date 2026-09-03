@@ -55,7 +55,7 @@ function Clock({ session }: { session: ActiveSession }) {
           immediately, so the initial mismatch is not worth a warning. */}
       <span
         suppressHydrationWarning
-        className="font-mono text-[30px] leading-none tracking-tight tabular-nums"
+        className="font-mono text-4xl leading-none tracking-tight tabular-nums"
       >
         {formatClock(seconds)}
       </span>

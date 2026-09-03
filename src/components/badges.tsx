@@ -29,20 +29,20 @@ export function Badge({
 export function HealthBadge({ health }: { health: string }) {
   if (health === "blocked") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-2xs font-black uppercase tracking-[.09em] text-danger">
+      <span className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-[.09em] text-danger">
         <AlertIcon /> At Risk
       </span>
     );
   }
   if (health === "at_risk") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-2xs font-black uppercase tracking-[.09em] text-warn">
+      <span className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-[.09em] text-warn">
         <AlertIcon /> Attention
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-2xs font-black uppercase tracking-[.09em] text-ok">
+    <span className="inline-flex items-center gap-1.5 text-2xs font-bold uppercase tracking-[.09em] text-ok">
       <CheckIcon /> Healthy
     </span>
   );
@@ -95,7 +95,7 @@ export function MetricCard({
     >
       <div className="flex items-center justify-between gap-3">
         <span
-          className={`text-2xs font-black uppercase tracking-[.12em] ${
+          className={`text-2xs font-bold uppercase tracking-[.12em] ${
             accent ? "text-nav-fg-muted" : "text-fg-muted"
           }`}
         >
@@ -110,7 +110,7 @@ export function MetricCard({
                   // collapse to a similar lightness — 3.24:1 in light, 2.42:1
                   // in dark. The card's own foreground is the only pairing that
                   // holds, so emphasis is carried by weight instead of hue.
-                  "font-black text-fill-strong-fg"
+                  "font-bold text-fill-strong-fg"
                 : changeTone === "positive"
                   ? "font-semibold text-ok"
                   : changeTone === "negative"
