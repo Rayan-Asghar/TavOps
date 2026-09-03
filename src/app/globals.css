@@ -10,7 +10,7 @@
   --color-surface: #ffffff;
   --color-surface-2: #ececea;
   --color-surface-3: #eaeae7;
-  --color-surface-hover: #fafaf8;
+  --color-surface-hover: #f1f1ee; /* was #fafaf8 -- 5 hex points from surface, so every row and card hover read as no change at all */
   --color-border: #dededb;
   --color-border-strong: #c2c2be;
 
@@ -149,6 +149,64 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   shadcn/ui bridge.
+
+   shadcn components are written against a fixed set of token names
+   (`bg-background`, `text-muted-foreground`, `border-input`, `ring-ring` …).
+   Rather than run `shadcn init` — which would overwrite this file and take the
+   contrast work with it — those names are aliased onto the semantic tokens that
+   already exist here. One source of truth, and a shadcn component and a hand-
+   written one land on the same colour.
+
+   `@theme inline` matters: it makes each utility resolve to the ORIGINAL
+   variable rather than to a copy, so the dark-theme overrides above keep
+   applying through the alias without a second dark block.
+
+   3.3 asks for three surfaces. `surface-2` and `surface-3` are still in use by
+   the grid and the metric strips, so the alias points `muted` and `secondary` at
+   `surface-2` for now; consolidating the ramp is a separate pass.
+   --------------------------------------------------------------------------- */
+:root {
+  /* 3.2: one radius, 8px, with the scale derived from it. Replaces the five
+     literal radii that were in use (14px, 10px, 7px, 6px, 8px). */
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-fg);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-fg);
+
+  --color-primary: var(--color-brand);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-surface-2);
+  --color-secondary-foreground: var(--color-fg);
+
+  --color-muted: var(--color-surface-2);
+  --color-muted-foreground: var(--color-fg-muted);
+
+  /* 3.6: hover is `accent`, and it must be distinguishable from the resting
+     surface — the old pair sat 5 hex points apart and read as no change at all. */
+  --color-accent: var(--color-surface-hover);
+  --color-accent-foreground: var(--color-fg);
+
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: #ffffff;
+
+  --color-input: var(--color-border);
+  --color-ring: var(--color-focus);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ---------------------------------------------------------------------------
    Dark theme.
    Token overrides only: every utility already resolves through these custom
    properties, so no component needs a `dark:` variant. The team works an
@@ -166,7 +224,7 @@ body {
   --color-surface: #191a1d;
   --color-surface-2: #212226;
   --color-surface-3: #292a2f;
-  --color-surface-hover: #1e1f22;
+  --color-surface-hover: #26272c; /* was #1e1f22 -- indistinguishable from surface */
   --color-border: #2b2c31;
   --color-border-strong: #3e3f46;
 
@@ -215,7 +273,7 @@ body {
     --color-surface: #191a1d;
     --color-surface-2: #212226;
     --color-surface-3: #292a2f;
-    --color-surface-hover: #1e1f22;
+    --color-surface-hover: #26272c; /* was #1e1f22 -- indistinguishable from surface */
     --color-border: #2b2c31;
     --color-border-strong: #3e3f46;
 
