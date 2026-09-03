@@ -28,9 +28,8 @@ shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
 authority; `.claude/commands/uxaudit.md` is `/uxaudit`, which scores the app against
 it and writes `ux-audit/`.
 
-**Baseline was 35/92. Wave 1 plus the palette puts it near 52.** Re-run `/uxaudit`
-for a real number rather than trusting that estimate — it was scored by the same
-session that did the work.
+**Baseline 35/92; Wave 1 plus the palette puts it near 52.** Re-run `/uxaudit` for a
+real number — that estimate was scored by the session that did the work.
 
 Measured, before → after (`ux-audit/_harness/`, re-runnable):
 
@@ -87,8 +86,8 @@ dashboard and in the palette.
   override the dialog's `sm:max-w-lg`; it needed the `sm:` prefix.
 - **`setState` in an effect is a lint error here** (cascading renders). Client-only
   values go through `useSyncExternalStore` with a server snapshot.
-- Everything in `.claude/handoff-history/2026-09-03_sheets-pre-grid.md` about the
-  grid, CDP, `pkill -f` bracketing and the Drive API still applies.
+- The grid, CDP, `pkill -f` bracketing and Drive API notes in
+  `.claude/handoff-history/2026-09-03_sheets-pre-grid.md` all still apply.
 
 ## Open Questions / Blockers
 
