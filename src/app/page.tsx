@@ -7,17 +7,15 @@ import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { inboxFor, snoozedFor, unresolvedCount } from "@/server/notifications";
 import { recentProjectsFor } from "@/server/recent";
-import { DismissButton } from "@/components/dismiss-button";
-import { SnoozeButton } from "@/components/snooze-button";
+import { AttentionQueue } from "@/components/attention-queue";
 import { UnsnoozeButton } from "@/components/unsnooze-button";
 import { AppShell, SectionIntro } from "@/components/app-shell";
 import { Badge, HealthBadge, MetricCard, MetricGrid, type Tone } from "@/components/badges";
-import { ArrowRightIcon } from "@/components/icons";
 
 import { timeAgo } from "@/lib/format";
 
 
-import { KIND_META, SIGNAL_COLOR, type Signal } from "@/lib/tone";
+import { KIND_META, type Signal } from "@/lib/tone";
 import { EmptyState } from "@/components/ui";
 
 // title.template applies to child segments only, and the root page shares a
@@ -126,61 +124,16 @@ export default async function InboxPage() {
             </span>
           </div>
 
-          <ul>
-            {actionable.map((n) => {
-              const meta = KIND_META[n.kind] ?? {
-                label: n.kind,
-                tone: "neutral" as Tone,
-                signal: "waiting" as Signal,
-              };
-              return (
-                <li key={n.id} className="attention-row">
-                  <span
-                    className={`mt-1.5 signal ${SIGNAL_COLOR[meta.signal]}`}
-                    aria-hidden
-                  />
-                  <div className="min-w-0">
-                    <strong className="block text-xs">{n.title}</strong>
-                    {n.body && (
-                      <span className="mt-0.5 block text-xs text-fg-muted">
-                        {n.body}
-                      </span>
-                    )}
-                    <span className="mt-1 block text-2xs text-fg-subtle">
-                      {timeAgo(n.createdAt)}
-                    </span>
-                  </div>
-                  <div className="col-start-2 flex flex-wrap items-center gap-3 sm:col-start-auto sm:shrink-0 sm:justify-end">
-                    <Badge tone={meta.tone}>{meta.label}</Badge>
-                    {/* Review items open the queue rather than the project:
-                        the queue is where the approve / send-back decision is
-                        actually made, and it carries the revision round. */}
-                    {n.kind === "task_needs_review" ? (
-                      <Link
-                        href="/review"
-                        className="btn-text"
-                        aria-label={`Open review queue for: ${n.title}`}
-                      >
-                        Review <ArrowRightIcon />
-                      </Link>
-                    ) : (
-                      n.projectId && (
-                        <Link
-                          href={`/projects/${n.projectId}`}
-                          className="btn-text"
-                          aria-label={`Open project for: ${n.title}`}
-                        >
-                          Open <ArrowRightIcon />
-                        </Link>
-                      )
-                    )}
-                    <SnoozeButton id={n.id} title={n.title} />
-                    <DismissButton id={n.id} title={n.title} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <AttentionQueue
+            items={actionable.map((n) => ({
+              id: n.id,
+              kind: n.kind,
+              title: n.title,
+              body: n.body,
+              projectId: n.projectId,
+              createdAt: n.createdAt,
+            }))}
+          />
         </section>
       ) : (
         <EmptyState

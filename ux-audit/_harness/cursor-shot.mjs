@@ -1,0 +1,10 @@
+import { chromium } from "@playwright/test";
+const b=await chromium.launch(); const c=await b.newContext({viewport:{width:1440,height:900}});
+const p=await c.newPage();
+await p.goto("http://localhost:3000/login",{waitUntil:"networkidle"});
+await p.fill('input[name="email"]',"contact@tavren.io"); await p.fill('input[name="password"]',"tavren123");
+await Promise.all([p.waitForURL(u=>!u.pathname.startsWith("/login")).catch(()=>{}),p.click('button[type="submit"]')]);
+await p.waitForTimeout(1200);
+await p.keyboard.press("j"); await p.keyboard.press("j"); await p.waitForTimeout(300);
+await p.screenshot({path:"/tmp/claude-1000/-home-rayan-Desktop-TavrenOPS/cc516926-a772-4cbe-a2e0-6b5ea4ee3a75/scratchpad/queue-cursor.png"});
+await b.close();
