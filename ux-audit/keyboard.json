@@ -1,0 +1,57 @@
+{
+  "/": {
+    "tabStops": 15,
+    "focusOrderMatchesVisual": false,
+    "invisibleFocusCount": 1,
+    "invisibleSamples": [
+      "nextjs-portal \"\""
+    ],
+    "firstStop": "a \"TTAVRENINTERNAL OS\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": false
+  },
+  "/log": {
+    "tabStops": 18,
+    "focusOrderMatchesVisual": false,
+    "invisibleFocusCount": 1,
+    "invisibleSamples": [
+      "nextjs-portal \"\""
+    ],
+    "firstStop": "a \"TTAVRENINTERNAL OS\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": false
+  },
+  "/timesheet": {
+    "tabStops": 28,
+    "focusOrderMatchesVisual": true,
+    "invisibleFocusCount": 0,
+    "invisibleSamples": [],
+    "firstStop": "td \"Rayan\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": false
+  },
+  "/projects": {
+    "tabStops": 22,
+    "focusOrderMatchesVisual": false,
+    "invisibleFocusCount": 1,
+    "invisibleSamples": [
+      "nextjs-portal \"\""
+    ],
+    "firstStop": "a \"TTAVRENINTERNAL OS\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": false
+  },
+  "/reports": {
+    "tabStops": 25,
+    "focusOrderMatchesVisual": false,
+    "invisibleFocusCount": 3,
+    "invisibleSamples": [
+      "input \"from\"",
+      "input \"to\"",
+      "nextjs-portal \"\""
+    ],
+    "firstStop": "a \"TTAVRENINTERNAL OS\"",
+    "skipToContentLink": false,
+    "cmdKChangedDom": false
+  }
+}
