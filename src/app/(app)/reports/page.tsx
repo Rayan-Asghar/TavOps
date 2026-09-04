@@ -167,20 +167,20 @@ export default async function ReportsPage({
                     key={`${toISODate(r.workDate)}-${i}`}
                     className="border-b border-border last:border-b-0"
                   >
-                    <td className="px-5 py-2 tabular whitespace-nowrap">
+                    <td className="h-9 px-5 py-2 tabular whitespace-nowrap">
                       {toISODate(r.workDate)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{r.personName}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="h-9 px-3 py-2 whitespace-nowrap">{r.personName}</td>
+                    <td className="h-9 px-3 py-2 whitespace-nowrap">
                       <strong>{r.projectCode}</strong>
                     </td>
-                    <td className="px-3 py-2 text-fg-muted">
+                    <td className="h-9 px-3 py-2 text-fg-muted">
                       {r.taskTitle ?? "General project work"}
                     </td>
-                    <td className="px-3 py-2 text-right tabular">
+                    <td className="h-9 px-3 py-2 text-right tabular">
                       {hrs(r.hours)}
                     </td>
-                    <td className="max-w-[320px] truncate px-5 py-2 text-fg-muted">
+                    <td className="h-9 max-w-[320px] truncate px-5 py-2 text-fg-muted">
                       {r.notes}
                     </td>
                   </tr>

@@ -87,3 +87,52 @@ export function humanizeRole(role: string): string {
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
 }
+
+/**
+ * Named streams for the Needs Attention queue.
+ *
+ * DESIGN-STANDARD 2.5, from Superhuman's split inboxes: "so zero is reachable
+ * per-stream". One undifferentiated pile can only be empty all at once, which on
+ * a two-person team means effectively never — and a queue that is never empty
+ * stops being read. Three streams, each of which can be honestly finished on its
+ * own, is the point.
+ *
+ * Split by what the item asks of you, not by severity: something is either
+ * blocking a person, waiting on your judgement, or drifting. Severity is already
+ * carried by the row's stripe.
+ */
+export type StreamKey = "blocked" | "review" | "slipping";
+
+export const STREAMS: {
+  key: StreamKey;
+  label: string;
+  /** What finishing this stream means, for its cleared state. */
+  cleared: string;
+  kinds: string[];
+}[] = [
+  {
+    key: "blocked",
+    label: "Blocked",
+    cleared: "Nobody is waiting on an unblock.",
+    kinds: ["blocker_opened", "blocker_escalated"],
+  },
+  {
+    key: "review",
+    label: "Needs your review",
+    cleared: "Every submission has been through you.",
+    kinds: ["task_needs_review"],
+  },
+  {
+    key: "slipping",
+    label: "Slipping",
+    cleared: "Nothing is drifting.",
+    kinds: ["task_stalled", "update_missing", "project_at_risk", "sync_failed"],
+  },
+];
+
+/** Anything unmapped falls into `slipping` rather than disappearing. */
+export function streamOf(kind: string): StreamKey {
+  return (
+    STREAMS.find((s) => s.kinds.includes(kind))?.key ?? "slipping"
+  );
+}

@@ -84,7 +84,9 @@ export function Td({
 }) {
   return (
     <td
-      className={`px-4 py-3 align-middle first:pl-5 last:pr-5 ${
+      /* 36px: §1.1's data zone is 32-40, and one height across every scanned
+         table is what "one scale, two densities" means in practice. */
+      className={`h-9 px-4 py-2 align-middle first:pl-5 last:pr-5 ${
         numeric ? "text-right" : ""
       } ${mono ? "font-mono" : ""} ${className}`}
     >

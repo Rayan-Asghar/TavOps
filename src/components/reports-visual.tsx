@@ -20,6 +20,12 @@ import type {
  *
  * Nothing here needs a query the page did not already run, except `hoursByDay`.
  * Every other number was already on screen as text.
+ *
+ * §1.1 zoning, applied deliberately rather than by accident. The person rows and
+ * the entries table are **data**: 36px, scanned. The project rows are not — each
+ * carries a name, a bullet against its estimate and a line of context, and it is
+ * three rows compared rather than thirty scanned. That is the focus zone, and
+ * squeezing it to 36px would cost the chart that makes it worth reading.
  */
 
 export function ReportsVisual({
@@ -243,7 +249,7 @@ export function ReportsVisual({
             {personRows.map((p) => (
               <li
                 key={p.userId}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3 last:border-b-0 sm:grid-cols-[160px_minmax(0,1fr)_auto]"
+                className="grid min-h-9 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-b border-border px-5 py-1.5 last:border-b-0 sm:grid-cols-[160px_minmax(0,1fr)_auto]"
               >
                 <span className="min-w-0 truncate text-xs font-bold">
                   {p.name}

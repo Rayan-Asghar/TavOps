@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, asc, count as countRows, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -12,6 +13,9 @@ import { can } from "@/lib/rbac";
 
 import { fmtDate } from "@/lib/format";
 import { EmptyState, ListFilters, Pagination } from "@/components/ui";
+import { DensityToggle } from "@/components/density-toggle";
+import { BulletBar } from "@/components/charts";
+import { DENSITY_COOKIE, parseDensity } from "@/lib/density";
 
 import {
   offsetFor,
@@ -28,6 +32,7 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<RawParams>;
 }) {
+  const density = parseDensity((await cookies()).get(DENSITY_COOKIE)?.value);
   const actor = await getActor();
   if (!actor) redirect("/login");
 
@@ -161,6 +166,17 @@ export default async function ProjectsPage({
         </div>
       </ListFilters>
 
+      {/* Sits beside the count rather than inside the filter form: density is a
+          preference that persists, not a filter that narrows. */}
+      {rows.length > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <span className="text-2xs text-fg-muted">
+            {total} project{total === 1 ? "" : "s"}
+          </span>
+          <DensityToggle current={density} />
+        </div>
+      )}
+
       {rows.length === 0 ? (
         list.q ? (
           /* no-results must never be a dead end (r41): the way back out of the
@@ -193,6 +209,77 @@ export default async function ProjectsPage({
             against estimate and anything currently blocking them.
           </EmptyState>
         )
+      ) : density === "compact" ? (
+        /* C4's list mode. §1.1 puts the data zone at 32-40px rows, which the card
+           grid cannot be — so this is the same information at that density, with
+           the sticky header C4 also asks for. The project is still the first
+           column and still human-readable (r16): code and name, never an id. */
+        <section className="panel overflow-hidden">
+          <div className="max-h-[70vh] w-full overflow-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th scope="col" className="sticky top-0 z-10 h-[34px] border-b border-border bg-surface px-5 text-left text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                    Project
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 h-[34px] w-[180px] border-b border-border bg-surface px-3 text-left text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                    Tasks
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 h-[34px] w-[110px] border-b border-border bg-surface px-3 text-right text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                    Logged
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 h-[34px] w-[130px] border-b border-border bg-surface px-3 text-left text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                    Health
+                  </th>
+                  <th scope="col" className="sticky top-0 z-10 h-[34px] w-[110px] border-b border-border bg-surface px-5 text-right text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                    Due
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((p) => (
+                    <tr
+                      key={p.id}
+                      className="h-9 border-b border-border transition-[background-color] duration-150 ease-out-quad last:border-b-0 hover:bg-surface-hover"
+                    >
+                      <td className="px-5">
+                        <Link href={`/projects/${p.id}`} className="flex min-w-0 items-baseline gap-2 font-bold hover:text-brand">
+                          <span className="font-mono text-2xs text-fg-muted">{p.code}</span>
+                          <span className="truncate">{p.name}</span>
+                        </Link>
+                      </td>
+                      <td className="px-3">
+                        <span className="flex items-center gap-2">
+                          <span className="w-[64px]">
+                            <BulletBar
+                              value={p.doneTasks}
+                              target={0}
+                              max={p.totalTasks || 1}
+                              label={`${p.code} tasks complete`}
+                              valueLabel={`${p.doneTasks} of ${p.totalTasks}`}
+                              height={4}
+                            />
+                          </span>
+                          <span className="tabular text-2xs text-fg-muted">
+                            {p.doneTasks}/{p.totalTasks}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="tabular px-3 text-right">
+                        {Number(p.loggedHours).toFixed(1)}h
+                      </td>
+                      <td className="px-3">
+                        <HealthBadge health={p.health} />
+                      </td>
+                      <td className="tabular px-5 text-right text-fg-muted">
+                        {fmtDate(p.internalDueDate)}
+                      </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((p) => {

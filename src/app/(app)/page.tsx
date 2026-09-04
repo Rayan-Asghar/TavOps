@@ -17,8 +17,9 @@ import { Badge, HealthBadge, type Tone } from "@/components/badges";
 import { timeAgo } from "@/lib/format";
 
 
-import { KIND_META, type Signal } from "@/lib/tone";
+import { KIND_META, STREAMS, streamOf, type Signal } from "@/lib/tone";
 import { EmptyState } from "@/components/ui";
+import { CheckIcon } from "@/components/icons";
 
 // title.template applies to child segments only, and the root page shares a
 // segment with the root layout — so this one carries the suffix itself.
@@ -145,40 +146,62 @@ export default async function InboxPage() {
         </div>
       </section>
 
-      {actionable.length > 0 ? (
-        <section className="panel mb-4">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">PRIORITY QUEUE</p>
-              <h3 className="m-0 text-xl tracking-[-.035em]">
-                Requires action
-              </h3>
-            </div>
-            <span className="text-xs text-fg-muted">
-              {actionable.length} item{actionable.length === 1 ? "" : "s"}
-            </span>
-          </div>
+      {/* 2.5, from Superhuman's split inboxes: one undifferentiated pile can
+          only be empty all at once, which on a two-person team means never — and
+          a queue that is never empty stops being read. Three streams, each of
+          which can be honestly finished on its own.
 
-          <AttentionQueue
-            items={actionable.map((n) => ({
-              id: n.id,
-              kind: n.kind,
-              title: n.title,
-              body: n.body,
-              projectId: n.projectId,
-              createdAt: n.createdAt,
-            }))}
-          />
-        </section>
-      ) : (
-        <EmptyState
-          variant="cleared"
-          title="You're All Clear"
-          className="mb-4"
-        >
+          A stream with nothing in it still shows, quietly, saying what finishing
+          it meant. That is the whole point: "zero is reachable per-stream" is
+          only legible if zero is visible. */}
+      {/* Everything clear is its own moment, not three panels each saying so.
+          5.8 calls a queue reaching zero the one place an elaborate state is
+          earned; per-stream zero matters while you are working through them. */}
+      {actionable.length === 0 ? (
+        <EmptyState variant="cleared" title="You're All Clear" className="mb-4">
           Nothing needs a decision from you right now. Blockers, reviews and
           reporting gaps land here the moment they are routed to you.
         </EmptyState>
+      ) : (
+        STREAMS.map((stream) => {
+        const rows = actionable.filter((n) => streamOf(n.kind) === stream.key);
+        return (
+          <section key={stream.key} className="panel mb-4">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">{stream.label.toUpperCase()}</p>
+                <h3 className="m-0 text-xl tracking-[-.035em]">
+                  {rows.length > 0
+                    ? `${rows.length} item${rows.length === 1 ? "" : "s"}`
+                    : "Clear"}
+                </h3>
+              </div>
+              {rows.length === 0 && (
+                <span className="inline-flex items-center gap-1.5 text-2xs font-bold text-ok">
+                  <CheckIcon /> Done
+                </span>
+              )}
+            </div>
+
+            {rows.length > 0 ? (
+              <AttentionQueue
+                items={rows.map((n) => ({
+                  id: n.id,
+                  kind: n.kind,
+                  title: n.title,
+                  body: n.body,
+                  projectId: n.projectId,
+                  createdAt: n.createdAt,
+                }))}
+              />
+            ) : (
+              <p className="m-0 px-5 py-6 text-xs text-fg-muted">
+                {stream.cleared}
+              </p>
+            )}
+            </section>
+          );
+        })
       )}
 
       {/* 2.6: a queue you cannot look behind is one nobody trusts enough to
