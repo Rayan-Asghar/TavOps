@@ -40,7 +40,15 @@
         Still to do: the full Members *table* layout, and a time-off column once
         Phase 3 lands
   - [ ] 2B.9 global search over content, not just destinations
-- [ ] **Phase 2A — the visible layer** (needs 2B's shell first)
+- [ ] **Phase 2A — the visible layer** ← in progress
+  - [x] 2.4 project **money tab** — billing model + financials + retainer periods
+        (all three had no writer at all), plus the margin strip with the
+        "Not costed" honesty cell and the single-contributor suppression rule
+        enforced in the query rather than the component
+  - [ ] 2.1 the Harvest-style project list (Budget · Spent · Remaining · Costs)
+  - [ ] 2.2 clients directory
+  - [ ] 2.3 the two-tier reconciliation strip on `/reports`
+  - [ ] 2.5 saved views + cross-project tasks
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
