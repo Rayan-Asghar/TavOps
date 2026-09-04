@@ -172,14 +172,36 @@ separate `sales_head` role — the distinction is `head` vs `sales`.
 
 ## Security model
 
+### Access control
+
 Access control is **app-layer RBAC**, defined once in
 [src/lib/rbac.ts](src/lib/rbac.ts) as capabilities rather than role-name checks.
 Project scoping lives in [src/lib/access.ts](src/lib/access.ts) and every
 fetch-by-id goes through it — an unauthorised project id returns 404, not 403,
 so ids cannot be probed.
 
-Two tables carry a **row-level security backstop** on top of that:
-`project_financials` and `user_rates`. They return zero rows unless the caller
+### Signing in
+
+Two providers, one rule. Email and password works as it always did; **Sign in
+with Google** appears only when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are
+set, so an unconfigured install shows no button rather than one that fails.
+
+Google proves *who* somebody is. It never grants access, and **nothing is
+auto-provisioned**: an address with no row in `users` is refused. Accounts are
+still created by an admin under People — Google only replaces the password.
+Both providers run `maySignIn` ([src/lib/sign-in-eligibility.ts](src/lib/sign-in-eligibility.ts)),
+so a deactivated account and an expired collaborator are turned away at either
+door.
+
+Set up an OAuth 2.0 **Web application** client (not the Sheets service account —
+different credential, same console) at
+<https://console.cloud.google.com/apis/credentials>, with redirect URI
+`<origin>/api/auth/callback/google`.
+
+### Row-level security
+
+Three tables carry a **row-level security backstop** on top of that:
+`project_financials`, `user_rates` and `work_log_costs`. They return zero rows unless the caller
 opts in for that transaction via `withFinanceAccess()`. This is defence against
 a future forgotten `WHERE` clause, not a substitute for the RBAC check.
 
