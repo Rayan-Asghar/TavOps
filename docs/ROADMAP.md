@@ -11,13 +11,17 @@
 
 - [x] Phase 0 — pre-existing defects: `usersRelations.rate` cardinality, `money()` currency
 - [ ] **Phase 1 — Commercial foundation** ← in progress
-  - [x] migration `0019_commercial_foundation.sql` written + dry-run green
-  - [ ] `src/db/schema.ts` updated to match
-  - [ ] journal + snapshot, migration applied
-  - [ ] `src/lib/rates.ts` + tests
-  - [ ] `withFinanceAccessInTx`, `src/server/costing.ts`
-  - [ ] `src/lib/margin.ts` + tests
-  - [ ] `billable` wired through every write path
+  - [x] migration `0019_commercial_foundation.sql`, applied; snapshot + journal
+  - [x] `src/db/schema.ts` + `tests/db/harness.ts` + `tests/db/rls.test.ts` (2→3 tables)
+  - [x] `src/lib/rates.ts` — half-open window, refuses ambiguity (11 tests)
+  - [x] `src/lib/margin.ts` — three identities, refuses mixed currency (19 tests)
+  - [x] `src/lib/billable.ts` — inheritance chain (6 tests)
+  - [x] `withFinanceAccessInTx`, `src/server/costing.ts`, wired into `recordWorkInTx`
+  - [x] `tests/db/costing.test.ts` (9 tests, incl. the gate-closes assertion)
+  - [ ] `billable` on the remaining write paths: `editWorkLogInTx`, the timer,
+        the grid batch save, and the log/quick-log/edit forms
+  - [ ] seed the `task_types` catalogue in `scripts/seed.ts`
+  - [ ] `recostWorkLogs` admin path + `work_log.recost` audit action
 - [ ] Phase 2A — Visible layer
 - [ ] Phase 2B — The interface
 - [ ] Phase 3 — Planning layer
