@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, withFinanceAccessInTx, type Tx } from "@/db";
 import { userRates, workLogCosts, workLogs } from "@/db/schema";
 import { assertCan } from "@/lib/rbac";
