@@ -13,6 +13,7 @@
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "db:reset": "docker compose down -v && docker compose up -d && sleep 4 && pnpm db:migrate && bash scripts/bootstrap.sh",
     "db:seed:proposals": "tsx --env-file=.env.local scripts/seed-proposals.ts",
+    "db:backfill-costs": "tsx --env-file=.env.local scripts/backfill-costs.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

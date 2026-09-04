@@ -1,8 +1,11 @@
-import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
-import { withFinanceAccessInTx, type Tx } from "@/db";
-import { userRates, workLogCosts } from "@/db/schema";
+import { and, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { db, withFinanceAccessInTx, type Tx } from "@/db";
+import { userRates, workLogCosts, workLogs } from "@/db/schema";
+import { assertCan } from "@/lib/rbac";
 import { costEntry } from "@/lib/margin";
 import { resolveRate, type RateRow } from "@/lib/rates";
+import { writeAudit } from "./audit";
+import type { Actor } from "@/lib/access";
 
 /**
  * Writes what one work log cost, in the same transaction as the work log.
@@ -111,4 +114,70 @@ export async function costWorkLogInTx(tx: Tx, input: CostWorkLogInput) {
 
     return resolved.basis;
   });
+}
+
+/**
+ * Re-costs entries that were already costed, on purpose and on the record.
+ *
+ * This is the answer to "the rate was wrong", and it is deliberately an EVENT
+ * rather than a side effect. Under read-time resolution, correcting a rate row
+ * would silently restate every margin ever reported from it, with nothing to
+ * point at afterwards. Here, "we corrected Ayan's July cost rate and re-costed
+ * 42 entries" is a row in the audit log with a name and a reason on it.
+ *
+ * Gated on `rates.view`, not `finance.view`: changing what work is recorded as
+ * having cost is a pay-data operation, and `rbac.ts` is explicit that pay data
+ * is not granted by inference.
+ */
+export async function recostWorkLogs(
+  workLogIds: string[],
+  actor: Actor,
+  reason: string,
+): Promise<{ costed: number; unrated: number; ambiguous: number }> {
+  assertCan(actor.globalRole, "rates.view");
+  const ids = [...new Set(workLogIds)];
+  if (ids.length === 0) return { costed: 0, unrated: 0, ambiguous: 0 };
+
+  const tally = { costed: 0, unrated: 0, ambiguous: 0 };
+
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: workLogs.id,
+        userId: workLogs.userId,
+        projectId: workLogs.projectId,
+        workDate: workLogs.workDate,
+        hours: workLogs.hours,
+        billable: workLogs.billable,
+        currentRevisionId: workLogs.currentRevisionId,
+      })
+      .from(workLogs)
+      .where(and(inArray(workLogs.id, ids), isNull(workLogs.deletedAt)));
+
+    for (const row of rows) {
+      // A log with no revision head has no chain to anchor a cost to. Seeded
+      // fixtures are the only rows in that state; skip rather than invent one.
+      if (!row.currentRevisionId) continue;
+
+      const basis = await costWorkLogInTx(tx, {
+        workLogId: row.id,
+        revisionId: row.currentRevisionId,
+        userId: row.userId,
+        workDate: row.workDate,
+        hours: row.hours,
+        billable: row.billable,
+      });
+      tally[basis === "rated" ? "costed" : basis] += 1;
+    }
+
+    // One row for the batch, not one per entry: the operation is the batch.
+    await writeAudit(tx, {
+      actorId: actor.id,
+      entityType: "work_log",
+      action: "work_log.recost",
+      after: { requested: ids.length, ...tally, reason },
+    });
+  });
+
+  return tally;
 }
