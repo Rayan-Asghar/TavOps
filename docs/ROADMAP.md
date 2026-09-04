@@ -5,12 +5,12 @@
 > this says where we are *going* and why. Do not restate history here —
 > that is `PROGRESS.md`.
 
-**Approved:** 2026-09-04 · **Status:** Phase 1 in progress
+**Approved:** 2026-09-04 · **Status:** Phase 1 complete; Phase 2 next
 
 ## Progress
 
 - [x] Phase 0 — pre-existing defects: `usersRelations.rate` cardinality, `money()` currency
-- [ ] **Phase 1 — Commercial foundation** ← in progress
+- [x] **Phase 1 — Commercial foundation** — done
   - [x] migration `0019_commercial_foundation.sql`, applied; snapshot + journal
   - [x] `src/db/schema.ts` + `tests/db/harness.ts` + `tests/db/rls.test.ts` (2→3 tables)
   - [x] `src/lib/rates.ts` — half-open window, refuses ambiguity (11 tests)
@@ -18,12 +18,12 @@
   - [x] `src/lib/billable.ts` — inheritance chain (6 tests)
   - [x] `withFinanceAccessInTx`, `src/server/costing.ts`, wired into `recordWorkInTx`
   - [x] `tests/db/costing.test.ts` (9 tests, incl. the gate-closes assertion)
-  - [ ] `billable` on the remaining write paths: `editWorkLogInTx`, the timer,
-        the grid batch save, and the log/quick-log/edit forms
-  - [ ] seed the `task_types` catalogue in `scripts/seed.ts`
-  - [ ] `recostWorkLogs` admin path + `work_log.recost` audit action
-- [ ] Phase 2A — Visible layer
-- [ ] Phase 2B — The interface
+  - [x] `billable` on every write path: edit, timer, grid batch save, all forms
+  - [x] `readTriStateCheckbox` + one shared `BillableField`
+  - [x] `task_types` seeded (Harvest set); `recostWorkLogs`; `scripts/backfill-costs.ts`
+        (proven on dev: 23 entries, 17 rated / 6 unrated, idempotent on rerun)
+- [ ] **Phase 2A / 2B** ← next. Start 2B.1 (the page shell) first: 2A rebuilds the
+      same pages, so building the shell after 2A would mean writing them twice.
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
