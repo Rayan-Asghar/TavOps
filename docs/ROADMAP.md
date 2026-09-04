@@ -50,7 +50,10 @@
         uncosted hours shown beside the cost. Grouping by client deferred to 2B.3
         so it lands as a first-class control rather than one screen's special case
   - [ ] 2.2 clients directory
-  - [ ] 2.3 the two-tier reconciliation strip on `/reports`
+  - [x] 2.3 the two-tier reconciliation strip on `/reports` — hours identity in
+        tier 1, money identity in tier 2 behind `finance.view`, "not costed" as the
+        honesty cell, drill-downs shared by the screen and the CSV. **Closes
+        DESIGN-STANDARD scorecard row C5.**
   - [ ] 2.5 saved views + cross-project tasks
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
