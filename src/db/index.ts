@@ -43,10 +43,57 @@ export type Db = typeof db;
  * caller that borrows the same pooled connection.
  */
 export async function withFinanceAccess<T>(
-  fn: (tx: Parameters<Parameters<Db["transaction"]>[0]>[0]) => Promise<T>,
+  fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sqlRaw`SET LOCAL tavren.finance_access = 'on'`);
     return fn(tx);
+  });
+}
+
+/** A transaction handle, as handed to a `db.transaction` callback. */
+export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * The same gate, opened inside a transaction that is already running, and
+ * closed again before that transaction continues.
+ *
+ * Costing has to happen in the SAME transaction as the work log it describes —
+ * a cost row that commits while its entry rolls back is worse than no cost row,
+ * the argument `writeAudit` already makes. But `recordWorkInTx` runs in a plain
+ * `db.transaction`, which has no `tavren.finance_access`, so reading a rate
+ * there returns nothing. Correctly.
+ *
+ * Wrapping the whole work-log write in `withFinanceAccess` would hold the gate
+ * open across the audit write, the sheet enqueue and the notification fan-out —
+ * far wider than the costing needs. A SECURITY DEFINER function would be worse
+ * still: `tests/db/rls.test.ts` asserts the app role can neither bypass RLS nor
+ * act as superuser, and a definer function owned by the superuser hands exactly
+ * that back for one query shape, encoded in SQL where nobody reviews it.
+ *
+ * So: a savepoint, the flag on, the work, the flag off. Two mechanisms close
+ * it, one per path. `SET LOCAL` may be issued repeatedly within a transaction
+ * and the last value wins, so the explicit `'off'` shuts the window on the
+ * success path; and `ROLLBACK TO SAVEPOINT` reverts a `SET LOCAL` made inside a
+ * subtransaction, which covers the throw path.
+ *
+ * The reset is deliberately NOT in a `finally`. If `fn` failed on a SQL error
+ * the subtransaction is already aborted, so the reset would itself throw
+ * "current transaction is aborted" and mask the real error — swapping a
+ * diagnosable failure for a confusing one, to close a window the rollback has
+ * already closed.
+ *
+ * Like `withFinanceAccess`: the caller has already checked the capability. This
+ * is the backstop, not the control.
+ */
+export async function withFinanceAccessInTx<T>(
+  tx: Tx,
+  fn: (sp: Tx) => Promise<T>,
+): Promise<T> {
+  return tx.transaction(async (sp) => {
+    await sp.execute(sqlRaw`SET LOCAL tavren.finance_access = 'on'`);
+    const result = await fn(sp);
+    await sp.execute(sqlRaw`SET LOCAL tavren.finance_access = 'off'`);
+    return result;
   });
 }

@@ -1,15 +1,18 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   projects,
+  taskTypes,
   tasks,
   workLogs,
   worklogRevisions,
   type taskStatus,
 } from "@/db/schema";
 import { UserFacingError } from "@/lib/errors";
+import { resolveBillable } from "@/lib/billable";
 import { notify, resolveByDedupeKey } from "./notifications";
 import { writeAudit } from "./audit";
+import { costWorkLogInTx } from "./costing";
 import { enqueueSheetWrite } from "./sheet-sync";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -31,6 +34,14 @@ export type RecordWorkInput = {
    * name the lead, not the person whose day it was.
    */
   actorId?: string;
+  /** What kind of work this was, when the entry names it directly. */
+  taskTypeId?: string | null;
+  /**
+   * An explicit billable choice. Undefined means "not stated", which is the
+   * normal case: billability is inherited from the kind of work. See
+   * `src/lib/billable.ts` for why this is not a required field.
+   */
+  billable?: boolean | null;
 };
 
 /**
@@ -61,6 +72,30 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     task = found;
   }
 
+  // Billability is inherited, then overridden -- never asked for. Both types
+  // are looked up in one pass so the chain resolves without a second round trip.
+  const typeIds = [input.taskTypeId, task?.taskTypeId].filter(
+    (id): id is string => !!id,
+  );
+  const typeBillable = new Map<string, boolean>();
+  if (typeIds.length > 0) {
+    const found = await tx
+      .select({ id: taskTypes.id, billable: taskTypes.billable })
+      .from(taskTypes)
+      .where(inArray(taskTypes.id, typeIds));
+    for (const t of found) typeBillable.set(t.id, t.billable);
+  }
+
+  const decided = resolveBillable({
+    entryOverride: input.billable,
+    entryTypeBillable: input.taskTypeId
+      ? (typeBillable.get(input.taskTypeId) ?? null)
+      : null,
+    taskTypeBillable: task?.taskTypeId
+      ? (typeBillable.get(task.taskTypeId) ?? null)
+      : null,
+  });
+
   const [entry] = await tx
     .insert(workLogs)
     .values({
@@ -71,6 +106,8 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       internalNotes: input.internalNotes,
       resultingStatus: input.resultingStatus ?? null,
       source: "ui",
+      taskTypeId: input.taskTypeId ?? task?.taskTypeId ?? null,
+      billable: decided.billable,
       ...(input.workDate ? { workDate: input.workDate } : {}),
     })
     .returning();
@@ -88,6 +125,7 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       hours: entry.hours,
       statusAfter: input.resultingStatus ?? null,
       internalNotes: input.internalNotes,
+      billable: decided.billable,
       changedByUserId: input.actorId ?? input.userId,
       source: "ui",
     })
@@ -97,6 +135,17 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
     .update(workLogs)
     .set({ currentRevisionId: revision.id })
     .where(eq(workLogs.id, entry.id));
+
+  // In the same transaction as the entry, for the reason writeAudit is: a cost
+  // that commits while its work log rolls back is worse than no cost at all.
+  await costWorkLogInTx(tx, {
+    workLogId: entry.id,
+    revisionId: revision.id,
+    userId: input.userId,
+    workDate: entry.workDate,
+    hours: entry.hours,
+    billable: decided.billable,
+  });
 
   if (task) {
     await tx
@@ -152,6 +201,8 @@ export async function recordWorkInTx(tx: Tx, input: RecordWorkInput) {
       taskId: entry.taskId,
       workDate: entry.workDate.toISOString().slice(0, 10),
       resultingStatus: input.resultingStatus ?? null,
+      billable: decided.billable,
+      billableSource: decided.source,
     },
   });
 
