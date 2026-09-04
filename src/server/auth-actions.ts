@@ -27,6 +27,18 @@ export async function loginAction(
   }
 }
 
+/**
+ * Hands off to Google. There is no state to return: either the redirect
+ * happens, or NextAuth sends the browser back to /login with an error in the
+ * query string, which the page renders.
+ *
+ * `signIn` throws a redirect by design, so it must NOT sit inside a try/catch
+ * that swallows it — the NEXT_REDIRECT error is the mechanism, not a failure.
+ */
+export async function googleLoginAction() {
+  await signIn("google", { redirectTo: "/" });
+}
+
 export async function logoutAction() {
   await signOut({ redirect: false });
   redirect("/login");

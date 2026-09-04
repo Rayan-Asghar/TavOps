@@ -16,6 +16,27 @@ import type { NextAuthConfig } from "next-auth";
  * by default. Removing it would leave only the per-page `getActor()` checks,
  * so any page that forgot one would become public.
  */
+/**
+ * Copies the fields the session is built from onto the token.
+ *
+ * Shared with the Node-side instance in `auth.ts`, which cannot reuse the `jwt`
+ * callback wholesale — a Google sign-in has to resolve the Tavren user by email
+ * first, and that is a database query this file must never contain. Pure, so it
+ * stays edge-safe.
+ */
+export function applyUserToToken(
+  token: Record<string, unknown>,
+  user: {
+    id?: string;
+    globalRole?: string;
+    accessExpiresAt?: string | null;
+  },
+): void {
+  token.uid = user.id;
+  token.globalRole = user.globalRole;
+  token.accessExpiresAt = user.accessExpiresAt ?? null;
+}
+
 export const authConfig = {
   pages: {
     signIn: "/login",
@@ -35,12 +56,7 @@ export const authConfig = {
       return signedIn;
     },
     jwt({ token, user }) {
-      if (user) {
-        token.uid = user.id;
-        token.globalRole = (user as { globalRole?: string }).globalRole;
-        token.accessExpiresAt =
-          (user as { accessExpiresAt?: string | null }).accessExpiresAt ?? null;
-      }
+      if (user) applyUserToToken(token, user);
       return token;
     },
     session({ session, token }) {

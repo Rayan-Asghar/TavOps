@@ -1,11 +1,13 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { authConfig } from "./auth.config";
+import { applyUserToToken, authConfig } from "./auth.config";
+import { maySignIn } from "./sign-in-eligibility";
 import type { Actor } from "./access";
 import type { GlobalRole } from "./rbac";
 
@@ -14,9 +16,104 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * Google sign-in is registered only when it is configured.
+ *
+ * A provider with no client id renders a button that fails on click, which
+ * looks like a broken app rather than an unconfigured one. The login page reads
+ * the same flag, so the button and the provider appear and disappear together.
+ */
+export const googleEnabled =
+  !!process.env.AUTH_GOOGLE_ID && !!process.env.AUTH_GOOGLE_SECRET;
+
+/**
+ * The one place "is this person allowed in" is decided, for every provider.
+ *
+ * Both sign-in paths converge here so they cannot drift: a rule added for the
+ * password form that Google skipped would be a way in that nobody tested.
+ * Returns the row, or null — the caller never learns which check failed.
+ */
+async function activeMemberByEmail(email: string | null | undefined) {
+  if (!email) return null;
+
+  const [found] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.toLowerCase().trim()))
+    .limit(1);
+
+  return maySignIn(found) ? found : null;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+
+    /**
+     * The gate. Tavren is strictly internal, so a Google account is proof of
+     * WHO somebody is and never proof that they belong here.
+     *
+     * There is deliberately NO auto-provisioning. An unknown Google account is
+     * refused rather than turned into a user — otherwise anyone with a Google
+     * login walks into the operations system, and the `users` table stops being
+     * the list of people who work here. Accounts are created by an admin under
+     * People, exactly as before; Google only replaces the password.
+     */
+    async signIn({ user, account, profile }) {
+      // Credentials already authorized in `authorize()`; re-checking here would
+      // duplicate the rule and invite the two copies to disagree.
+      if (account?.provider !== "google") return true;
+
+      // Google may return an address it has not verified. Treating that as
+      // identity would let somebody claim a colleague's address.
+      if (profile?.email_verified !== true) return false;
+
+      return !!(await activeMemberByEmail(user.email ?? profile.email));
+    },
+
+    /**
+     * Overrides the edge-safe `jwt` in auth.config.ts, which cannot do this:
+     * a Google identity carries Google's subject id, not ours, and every
+     * access check in the app keys on `users.id`. Resolving it by email is a
+     * query, and `auth.config.ts` has to stay free of the Postgres driver so
+     * the proxy can keep importing it on the edge runtime.
+     *
+     * Runs only when `user` is present — on sign-in, not on every request.
+     */
+    async jwt({ token, user, account }) {
+      if (!user) return token;
+
+      if (account?.provider === "google") {
+        const member = await activeMemberByEmail(user.email);
+        // signIn already refused this case; returning the token unchanged
+        // leaves it without a uid, so getActor() reports signed out.
+        if (!member) return token;
+
+        applyUserToToken(token, {
+          id: member.id,
+          globalRole: member.globalRole,
+          accessExpiresAt: member.accessExpiresAt?.toISOString() ?? null,
+        });
+        return token;
+      }
+
+      applyUserToToken(token, user as never);
+      return token;
+    },
+  },
   providers: [
+    ...(googleEnabled
+      ? [
+          Google({
+            // Tavren's own users table is the allowlist, so linking by email is
+            // exactly what we want: an admin creates the account, the person
+            // signs in with the matching Google address. It is safe here ONLY
+            // because signIn() refuses any address that is not already a user.
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
     Credentials({
       credentials: {
         email: { label: "Email", type: "email" },
@@ -42,10 +139,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ok = await bcrypt.compare(password, hash);
 
         if (!found || !ok) return null;
-        if (!found.isActive) return null;
-        if (found.accessExpiresAt && found.accessExpiresAt <= new Date()) {
-          return null;
-        }
+        // Same rule as the Google path, from the same function.
+        if (!(await activeMemberByEmail(found.email))) return null;
 
         return {
           id: found.id,
