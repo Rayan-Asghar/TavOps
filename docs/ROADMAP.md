@@ -22,8 +22,18 @@
   - [x] `readTriStateCheckbox` + one shared `BillableField`
   - [x] `task_types` seeded (Harvest set); `recostWorkLogs`; `scripts/backfill-costs.ts`
         (proven on dev: 23 entries, 17 rated / 6 unrated, idempotent on rerun)
-- [ ] **Phase 2A / 2B** ← next. Start 2B.1 (the page shell) first: 2A rebuilds the
-      same pages, so building the shell after 2A would mean writing them twice.
+- [x] **Google sign-in** (unplanned, requested mid-flight) — one `maySignIn` rule for
+      both providers, no auto-provisioning, DB lookup kept out of the edge-safe config
+- [ ] **Phase 2B — the interface** ← in progress
+  - [x] 2B.1 `PageHeader` — the five bands; `SectionIntro` reimplemented on it so the
+        eleven existing pages migrate as they are rebuilt, not in one sweep
+  - [x] 2B.2 `DateRangeStepper` + `stepRange` (months step by months); `/reports` migrated
+  - [ ] 2B.3 filter chips + grouping as one system
+  - [ ] 2B.4 view switchers (`/timesheet` Day|Week|Month, `/tasks` List|Board)
+  - [ ] 2B.5 table conventions: group headers, inline bars, row actions, bulk checkbox
+  - [ ] 2B.6 the people table (Toggl's Members: role · time off · rate · cost · hours)
+  - [ ] 2B.9 global search over content, not just destinations
+- [ ] **Phase 2A — the visible layer** (needs 2B's shell first)
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
