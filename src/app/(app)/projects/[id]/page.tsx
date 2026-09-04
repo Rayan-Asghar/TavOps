@@ -29,6 +29,9 @@ import { renderClientBrief, type ClientBrief } from "@/lib/client-brief";
 
 import { fmtDate } from "@/lib/format";
 import { ActionButton, DataTable, EmptyRow, Th } from "@/components/ui";
+import { ProjectMoney } from "@/components/project-money";
+import { MarginSummary } from "@/components/margin-summary";
+import { projectMargin, projectMoneyPanel } from "@/server/margin-queries";
 
 /**
  * The one route where a dynamic tab title earns its keep — people keep several
@@ -80,7 +83,14 @@ function Stat({
   );
 }
 
-const TAB_KEYS: TabKey[] = ["overview", "tasks", "team", "activity", "sheet"];
+const TAB_KEYS: TabKey[] = [
+  "overview",
+  "tasks",
+  "team",
+  "activity",
+  "money",
+  "sheet",
+];
 
 export default async function ProjectPage({
   params,
@@ -157,8 +167,21 @@ export default async function ProjectPage({
     await projectRoleOf(actor, id),
     "sheet.configure",
   );
+  // finance.view is what the money tab is made of; without it the tab is not in
+  // the list, and a hand-edited ?tab=money falls through to overview.
+  const canSeeMoney = can(role, "finance.view");
   const activeTab: TabKey =
-    requestedTab === "sheet" && !canConfigureSheet ? "overview" : requestedTab;
+    (requestedTab === "sheet" && !canConfigureSheet) ||
+    (requestedTab === "money" && !canSeeMoney)
+      ? "overview"
+      : requestedTab;
+
+  const [money, margin] = canSeeMoney
+    ? await Promise.all([
+        projectMoneyPanel(id, role),
+        projectMargin(id, role),
+      ])
+    : [null, null];
 
   const sheetStatus = canConfigureSheet
     ? await sheetStatusFor({ projectId: id })
@@ -288,6 +311,7 @@ export default async function ProjectPage({
           { key: "tasks", label: "Tasks", count: openTasks.length },
           { key: "team", label: "Team", count: teamList.length },
           { key: "activity", label: "Activity" },
+          ...(canSeeMoney ? [{ key: "money" as const, label: "Money" }] : []),
           ...(canConfigureSheet
             ? [
                 {
@@ -592,6 +616,22 @@ export default async function ProjectPage({
                   : null
               }
             />
+          )}
+
+          {activeTab === "money" && money && (
+            <>
+              {margin && <MarginSummary margin={margin} />}
+              <ProjectMoney
+                projectId={project.id}
+                billingModel={money.billingModel}
+                contractValue={money.contractValue}
+                platformFeePct={money.platformFeePct}
+                budgetedHours={money.budgetedHours}
+                currency={money.currency}
+                canEdit={can(role, "project.edit")}
+                periods={money.periods}
+              />
+            </>
           )}
 
           {activeTab === "activity" && (

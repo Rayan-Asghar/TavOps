@@ -4,7 +4,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LinkPending } from "./ui";
 
-export type TabKey = "overview" | "tasks" | "team" | "activity" | "sheet";
+export type TabKey =
+  | "overview"
+  | "tasks"
+  | "team"
+  | "activity"
+  | "money"
+  | "sheet";
 
 export type TabDef = { key: TabKey; label: string; count?: number };
 
