@@ -45,7 +45,10 @@
         (all three had no writer at all), plus the margin strip with the
         "Not costed" honesty cell and the single-contributor suppression rule
         enforced in the query rather than the component
-  - [ ] 2.1 the Harvest-style project list (Budget · Spent · Remaining · Costs)
+  - [x] 2.1 the project list carries money — Budget · Spent · Cost in BOTH density
+        modes (the toggle changes density, never what is true), billing-model badge,
+        uncosted hours shown beside the cost. Grouping by client deferred to 2B.3
+        so it lands as a first-class control rather than one screen's special case
   - [ ] 2.2 clients directory
   - [ ] 2.3 the two-tier reconciliation strip on `/reports`
   - [ ] 2.5 saved views + cross-project tasks
