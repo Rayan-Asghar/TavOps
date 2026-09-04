@@ -40,7 +40,7 @@
         Still to do: the full Members *table* layout, and a time-off column once
         Phase 3 lands
   - [ ] 2B.9 global search over content, not just destinations
-- [ ] **Phase 2A — the visible layer** ← in progress
+- [x] **Phase 2A — the visible layer** — done
   - [x] 2.4 project **money tab** — billing model + financials + retainer periods
         (all three had no writer at all), plus the margin strip with the
         "Not costed" honesty cell and the single-contributor suppression rule
@@ -56,7 +56,11 @@
         tier 1, money identity in tier 2 behind `finance.view`, "not costed" as the
         honesty cell, drill-downs shared by the screen and the CSV. **Closes
         DESIGN-STANDARD scorecard row C5.**
-  - [ ] 2.5 saved views + cross-project tasks
+  - [x] 2.5 saved views + cross-project tasks — `/tasks` (open-only by default,
+        nulls-last on due date, filter options built from the reader's own scope)
+        and saved views as named URLs (migration `0021`), path allow-listed so a
+        stored view cannot become an open redirect
+- [ ] **Phase 2A remainder** — none. 2A is complete.
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
