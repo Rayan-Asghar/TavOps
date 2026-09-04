@@ -11,11 +11,14 @@ A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
 
 ## Branch topology — read this first
 
-`main`, 8 commits ahead of `origin/main`. **Nothing is pushed.** The `redesign`
+`main`, 15 commits ahead of `origin/main`. **Nothing is pushed.** The `redesign`
 and `timesheet-grid` branches are merged; ignore them.
 
-Tree clean, `pnpm verify` (330 unit) and `pnpm test:db` (120 fixture) both green.
-**Build needs `NODE_OPTIONS=--max-old-space-size=4096`** or it dies with 137.
+Tree clean, `pnpm verify` (363 unit) and `pnpm test:db` (129 fixture) both green,
+production build green.
+**Build needs `NODE_OPTIONS=--max-old-space-size=4096`** or it dies with 137 —
+and **do not build while `next dev` is running**: 4096 is enough on its own but
+not alongside a dev server, which is what an unexplained 137 usually means.
 
 ⚠️ **Up to six Claude sessions run against this repo at once.** The index is
 shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
@@ -31,24 +34,30 @@ is that Tavren has premium-tier engineering (audit log, retroactive rates, RLS)
 under a free-tier feature set (no clients screen, no expenses, no money on the
 project list).
 
-Shipped in Phase 1 — migration `0019`:
-- `projects.billing_model` + `retainer_periods` (T&M / fixed fee / retainer).
-  **Retainers were previously inexpressible.** Nothing reads these yet.
-- `task_types` — the billable catalogue. Billability is INHERITED from the kind
-  of work (`src/lib/billable.ts`), never asked for per entry.
-- `billable` on `work_logs` and `worklog_revisions`.
-- `work_log_costs` — RLS-forced, its **own table**, deliberately (see below).
-- `user_rates` gained its first index and a one-open-rate-per-person constraint.
-- `src/lib/rates.ts` (half-open window), `src/lib/margin.ts` (three identities,
-  refuses mixed currency), `src/server/costing.ts`, `recostWorkLogs`.
-- `scripts/backfill-costs.ts` — run on dev: 23 entries, 17 rated / 6 unrated,
-  idempotent on rerun. `pnpm db:backfill-costs`.
+Phase 1 (migration `0019`) shipped `billing_model` + `retainer_periods`,
+`task_types`, `billable` on logs and revisions, `work_log_costs`, the rate and
+margin modules, and `pnpm db:backfill-costs`. Detail in `docs/ROADMAP.md`.
+**Nothing reads the retainer or margin tables yet — that is Phase 2A.**
+
+Since then, three more things landed:
+
+- **Google sign-in.** One `maySignIn` rule for both providers, **no
+  auto-provisioning** — an address with no `users` row is refused. The DB lookup
+  is in the Node instance, never `auth.config.ts`, which the edge proxy imports.
+  Needs `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` from a Google Cloud OAuth *Web
+  application* client (NOT the Sheets service account) or the button stays hidden.
+- **Phase 2B.1/2B.2.** `PageHeader` (five bands) with `SectionIntro`
+  reimplemented on top, so the eleven existing pages migrate as they are rebuilt.
+  `DateRangeStepper` + `stepRange`; `/reports` migrated.
+- **In-app scheduler (migration `0020`).** `/api/heartbeat` + `src/server/scheduler.ts`.
+  The browser is a clock source only; the server decides what is due from
+  `job_runs`. **This removes the "hosting blocks the scheduler" dependency** that
+  used to head this file's blockers.
 
 ## Next Steps
 
-1. **Phase 2B.1 — the page shell — first.** Not 2A. 2A rebuilds the same pages,
-   so building the shell afterwards means writing them twice. `docs/ROADMAP.md`
-   §2B.1 has the five-band contract; all four studied tools use it.
+1. **Phase 2B.3 onward** — filter chips + grouping as one system, then the view
+   switchers and table conventions. `docs/ROADMAP.md` has the detail.
 2. Then 2A: the Harvest-style project list (Budget · Spent · Remaining · Costs),
    the clients directory, the two-tier reconciliation strip on `/reports`.
 3. `/uxaudit` has NOT been re-run since the redesign work. Its last score (~60/92)
@@ -79,6 +88,10 @@ Shipped in Phase 1 — migration `0019`:
   delivered *in* that stream. Throttle instead.
 - **shadcn's Button and Sonner were rejected** (focus-ring opt-out, 24–36px
   targets, `dark:` variants; Sonner needs `next-themes`, which this app avoids).
+- **A session-level advisory lock is held by a CONNECTION, and `db` is a pool.**
+  `pg_advisory_unlock` can land on a different connection than the lock did,
+  release nothing, and leak until that connection recycles. `scheduler.ts` uses
+  `pg_try_advisory_xact_lock`; **sync-worker.ts:490 still has the hazard.**
 - **`setState` in an effect is a lint error**; client-only values go through
   `useSyncExternalStore` with a server snapshot. **A `RefObject` effect cannot
   see a conditionally-mounted form** — use a callback ref.
@@ -87,9 +100,12 @@ Shipped in Phase 1 — migration `0019`:
 
 ## Open Questions / Blockers
 
-- **Hosting** — deferred to Phase 6 by decision. Note GoDaddy/Hostinger *shared*
-  hosting cannot run this (needs a Node process, Postgres and real cron); a
-  Hostinger VPS can. Blocks every automation until then.
+- **Hosting** — deferred to Phase 6. **No longer blocks automation**: the app
+  schedules itself while a browser is open, so a host needs only a Node process
+  and Postgres, not cron. Nothing runs overnight or over a weekend, which is
+  acceptable for these three jobs — they recompute current state rather than
+  draining a backlog. Note GoDaddy/Hostinger *shared* hosting still cannot run
+  this; a Hostinger VPS can.
 - **Seeded logs carry no revisions or costs.** Routing the seed through
   `recordWorkInTx` would overwrite the `lastUpdateAt` values the staleness sweep
   fixtures depend on. The backfill script skips them for the same reason.
