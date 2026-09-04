@@ -226,6 +226,15 @@ export const costBasis = pgEnum("cost_basis", [
   "ambiguous",
 ]);
 
+export const jobRunStatus = pgEnum("job_run_status", [
+  "running",
+  "ok",
+  "error",
+]);
+
+/** Which clock triggered a run: an open browser, or a real scheduler. */
+export const jobRunSource = pgEnum("job_run_source", ["heartbeat", "cron"]);
+
 
 /* ------------------------------------------------------------------ *
  * People
@@ -1333,3 +1342,29 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
   team: one(teams, { fields: [teamMembers.teamId], references: [teams.id] }),
   user: one(users, { fields: [teamMembers.userId], references: [users.id] }),
 }));
+
+/**
+ * The last run of each periodic job.
+ *
+ * One row per job, updated in place — not a run history. The audit log records
+ * what changed in the business; a growing table of "the sweep ran and found
+ * nothing" is noise nobody reads. What matters operationally is only ever the
+ * last run: is it recent, and did it work.
+ *
+ * `lastRunAt` is stamped when a run is CLAIMED, not when it finishes, because
+ * the claim is what makes the job not-due for every other caller. It has to
+ * take effect before the work starts, or two heartbeats both start it.
+ */
+export const jobRuns = pgTable("job_runs", {
+  /** The job name from `src/lib/job-schedule.ts`. Code-defined, so not an FK. */
+  job: varchar("job", { length: 40 }).primaryKey(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull(),
+  lastStatus: jobRunStatus("last_status").notNull(),
+  lastError: text("last_error"),
+  lastSource: jobRunSource("last_source").notNull(),
+  lastMs: integer("last_ms"),
+  runs: integer("runs").default(0).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

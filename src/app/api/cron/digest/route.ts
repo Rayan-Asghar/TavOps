@@ -3,6 +3,7 @@ import { buildDigest, renderDigest } from "@/server/digest";
 import { deliver } from "@/server/webhooks";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { log, newRequestId } from "@/lib/logger";
+import { recordCronRun } from "@/server/scheduler";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,6 +33,11 @@ export async function POST(req: Request) {
       ? { delivered: 0, failed: 0, configured: 0 }
       : await deliver(message);
 
+    // A dry render is not a run. Stamping it would mark the digest done for
+    // the day and suppress the real one — checking the wording would silence
+    // the report.
+    if (!dry) await recordCronRun("digest", "ok", Date.now() - startedAt);
+
     log.info("cron.digest.done", {
       requestId,
       ms: Date.now() - startedAt,
@@ -43,6 +49,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, dry, ...delivery, message });
   } catch (err) {
+    if (!dry) {
+      await recordCronRun("digest", "error", Date.now() - startedAt, err);
+    }
     log.error("cron.digest.failed", {
       requestId,
       ms: Date.now() - startedAt,

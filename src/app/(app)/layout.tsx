@@ -9,6 +9,8 @@ import { can, type GlobalRole } from "@/lib/rbac";
 import { Sidebar, type NavEntry, type NavGroup } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TimerChip } from "@/components/timer-chip";
+import { Heartbeat } from "@/components/heartbeat";
+import { inAppSchedulerEnabled } from "@/server/scheduler";
 import { ToastProvider } from "@/components/ui/toast";
 import {
   CommandPalette,
@@ -197,6 +199,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <p className="eyebrow m-0 hidden lg:block">{fmtDayLabel()}</p>
           </div>
         </header>
+
+        {/* Mounted here, beside TimerChip, because this layout persists across
+            navigations: moving between pages neither restarts its interval nor
+            fires an extra beat. Renders nothing. The flag is read on the server
+            so a host with real cron never even makes the request. */}
+        <Heartbeat enabled={inAppSchedulerEnabled()} />
 
         <main className="p-5 md:p-7">{children}</main>
       </div>

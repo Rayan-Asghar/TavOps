@@ -37,7 +37,7 @@
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
-- [ ] Phase 6 — Deployment
+- [ ] Phase 6 — Deployment (scheduler no longer blocks it — in-app heartbeat landed)
 
 ---
 
@@ -603,6 +603,20 @@ model becomes right, so nobody relitigates it.
 ---
 
 # Phase 6 — Deployment (deferred, but scoped)
+
+**Updated: the scheduler is no longer a hosting blocker.** The app schedules
+itself from an open browser (`/api/heartbeat` → `src/server/scheduler.ts`), with
+the server as sole authority on what is due, so sweeps, the sheet drain and the
+digest all run without an external cron daemon. That removes the dependency
+chain HANDOFF recorded — "hosting blocks the scheduler, which blocks every
+automation" — and reduces the hosting requirement to *somewhere that runs a Node
+process and Postgres*, with no cron facility needed.
+
+What it does not cover: nothing runs overnight or across a weekend with no
+browser open. For these three jobs that is acceptable — they recompute current
+state rather than draining a backlog, so Monday produces one sweep rather than
+sixty, and a missed digest is skipped rather than delivered late. Set
+`IN_APP_SCHEDULER="off"` and wire real cron when that stops being true.
 
 Hosting decision, then: a Dockerfile for the app, Postgres with
 `scripts/bootstrap-roles.sql` actually run (**without it the RLS backstop is silently

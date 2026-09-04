@@ -97,15 +97,48 @@ connection string silently turns the backstop off with nothing failing.
 
 ## Scheduled jobs
 
-Two endpoints, both requiring `Authorization: Bearer $CRON_SECRET`:
+Three jobs, and two ways to run them.
 
-| Endpoint | Cadence | Does |
+| Job | Cadence | Does |
 | --- | --- | --- |
-| `POST /api/cron/sweeps` | hourly | Escalates blockers, flags stale tasks and estimate overruns, recomputes project health |
-| `POST /api/cron/digest` | daily, ~13:00 UTC | Builds the status digest and posts it to every configured webhook |
+| `sweeps` | hourly | Escalates blockers, flags stale tasks and estimate overruns, recomputes project health |
+| `sync` | every 3 min | Drains the sheet outbox. A **backstop**: `scheduleDrain()` already pushes a write after each response, so this exists for jobs stranded by a crash or deploy |
+| `digest` | daily, from 13:00 UTC | Builds the status digest and posts it to every configured webhook |
+
+### In-app scheduling (the default)
+
+The app schedules itself. An open browser POSTs `/api/heartbeat` every few
+minutes; the **server** reads `job_runs`, decides what is due, and claims it
+under a Postgres advisory lock. Five open laptops therefore produce one run an
+hour, not five.
+
+The browser is a clock source and nothing more: it never names a job, never
+sends a timestamp, and never decides that anything should run. The endpoint is
+session-authenticated — `CRON_SECRET` is never exposed to a browser, and the
+heartbeat is not a call into `/api/cron/*`.
+
+The obvious limit is that nothing runs overnight or over a weekend when no
+browser is open. Nothing accumulates either: these jobs recompute current state
+rather than working through a backlog, so the first person in on Monday
+triggers one sweep, not sixty. A missed digest is skipped, not sent late.
+
+Set `IN_APP_SCHEDULER="off"` once a real scheduler exists.
+
+### External cron
+
+`POST /api/cron/{sweeps,sync,digest}`, each requiring
+`Authorization: Bearer $CRON_SECRET`. These run **unconditionally** when called
+— deciding the time is the caller's job, and second-guessing it would make a
+misconfigured crontab silently do nothing.
+
+They record their runs in `job_runs` too, so a host running both cron and open
+browsers does the work once: whichever fires first stamps the row and the other
+finds nothing due. Both can be left on safely.
 
 Add `?dry=1` to the digest endpoint to render it without sending — useful for
-checking the wording without putting a test message in front of the team.
+checking the wording without putting a test message in front of the team. A dry
+render is deliberately not recorded, so checking the wording cannot suppress
+the real digest.
 
 Note that Vercel's Hobby tier only runs cron **once per day** and forbids
 commercial use, which makes it a poor fit. Use a cheap VPS, Cloudflare Workers
