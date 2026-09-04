@@ -60,19 +60,19 @@ export async function costWorkLogInTx(tx: Tx, input: CostWorkLogInput) {
         effectiveTo: userRates.effectiveTo,
       })
       .from(userRates)
-      .where(
-        and(
-          eq(userRates.userId, input.userId),
-          lte(userRates.effectiveFrom, input.workDate),
-          // The upper bound is half-open, so a row ending on the work date does
-          // not cover it. Narrowed here only to keep the result small; the
-          // resolver decides, and its boundary tests are the specification.
-          or(
-            isNull(userRates.effectiveTo),
-            gt(userRates.effectiveTo, input.workDate),
-          ),
-        ),
-      );
+      // Every rate this person has ever had, and NO date filtering in SQL.
+      //
+      // There used to be a `lte(effectiveFrom, workDate)` bound here "just to
+      // keep the result small". It compared INSTANTS while `resolveRate`
+      // compares UTC DAYS, so a rate created at 14:32 today excluded work
+      // logged at 12:00 today -- the SQL quietly discarded a row the resolver
+      // would have accepted, and the entry came back `unrated` with no error.
+      //
+      // Two implementations of one rule, and the stricter one wins silently.
+      // The rule lives in `resolveRate`, which is tested at every boundary;
+      // this query's only job is to hand it the candidates. A person has one
+      // rate row per raise, so there is nothing to optimise here anyway.
+      .where(eq(userRates.userId, input.userId));
 
     const resolved = resolveRate(rows as RateRow[], input.workDate);
 

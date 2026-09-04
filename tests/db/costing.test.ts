@@ -136,6 +136,47 @@ describe("costing a work log", () => {
     expect((await costOf(entry.id)).costAmount).toBe("10.00");
   });
 
+  it("costs an entry from EARLIER on the day the rate was created", async () => {
+    // Regression. The rate lookup used to bound `effective_from <= work_date`
+    // in SQL, comparing instants, while resolveRate compares UTC days. A rate
+    // entered at 14:32 therefore excluded work logged at 12:00 the same day,
+    // and the entry came back `unrated` with nothing to indicate why. The
+    // window rule now lives only in resolveRate.
+    const projectId = await makeProject({});
+    const userId = await makeUser({});
+    await makeRate(userId, "10.00", {
+      billableRate: "40.00",
+      effectiveFrom: "2026-08-27T14:32:00Z",
+    });
+
+    const { entry } = await logWork({
+      projectId,
+      userId,
+      hours: 1,
+      workDate: new Date("2026-08-27T12:00:00Z"),
+    });
+
+    const cost = await costOf(entry.id);
+    expect(cost.basis).toBe("rated");
+    expect(cost.costAmount).toBe("10.00");
+  });
+
+  it("still refuses to cost work from the day BEFORE the rate began", async () => {
+    // The other half: widening the query must not have widened the rule.
+    const projectId = await makeProject({});
+    const userId = await makeUser({});
+    await makeRate(userId, "10.00", { effectiveFrom: "2026-08-27T00:00:00Z" });
+
+    const { entry } = await logWork({
+      projectId,
+      userId,
+      hours: 1,
+      workDate: new Date("2026-08-26T12:00:00Z"),
+    });
+
+    expect((await costOf(entry.id)).basis).toBe("unrated");
+  });
+
   it("costs the rate in force on the WORK date, not on the day it was typed", async () => {
     const projectId = await makeProject({});
     const userId = await makeUser({});

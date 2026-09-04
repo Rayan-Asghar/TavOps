@@ -1,8 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import { asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { db, withFinanceAccess } from "@/db";
+import { userRates, users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
@@ -10,6 +10,7 @@ import { SectionIntro } from "@/components/app-shell";
 import { Badge } from "@/components/badges";
 import { CreateUserForm } from "@/components/create-user-form";
 import { UserRowActions } from "@/components/user-row-actions";
+import { RateCell, type CurrentRate } from "@/components/rate-cell";
 
 
 
@@ -51,6 +52,39 @@ export default async function AdminUsersPage() {
     .select({ activeAdmins: sql<number>`count(*)::int` })
     .from(users)
     .where(sql`${users.globalRole} = 'admin' and ${users.isActive} = true`);
+
+  /**
+   * Rates are read only when the actor may see them, and only inside the
+   * finance gate. `rates.view` is admin-only: `head` runs the company and still
+   * does not get pay data by inference, which is the rule rbac.ts states and
+   * the reason this is a separate check from `user.manage`.
+   */
+  const canSeeRates = can(role, "rates.view");
+  const rates = new Map<string, CurrentRate>();
+  if (canSeeRates) {
+    const rows = await withFinanceAccess((tx) =>
+      tx
+        .select({
+          userId: userRates.userId,
+          internalCostPerHour: userRates.internalCostPerHour,
+          billableRatePerHour: userRates.billableRatePerHour,
+          currency: userRates.currency,
+          effectiveFrom: userRates.effectiveFrom,
+        })
+        .from(userRates)
+        // The open row is the current one; the closed rows are history, and
+        // history belongs to the costing snapshot, not to this screen.
+        .where(isNull(userRates.effectiveTo)),
+    );
+    for (const r of rows) {
+      rates.set(r.userId, {
+        internalCostPerHour: r.internalCostPerHour,
+        billableRatePerHour: r.billableRatePerHour,
+        currency: r.currency,
+        effectiveFrom: r.effectiveFrom.toISOString().slice(0, 10),
+      });
+    }
+  }
 
   const now = new Date();
   const active = people.filter((p) => p.isActive);
@@ -127,6 +161,16 @@ export default async function AdminUsersPage() {
                       }
                     />
                   </div>
+
+                  {/* Rendered on the server only for an actor who may see pay
+                      data, so an unrendered rate never reaches the browser. */}
+                  {canSeeRates && p.isActive && (
+                    <RateCell
+                      userId={p.id}
+                      userName={p.name}
+                      rate={rates.get(p.id) ?? null}
+                    />
+                  )}
                 </li>
               );
             })}

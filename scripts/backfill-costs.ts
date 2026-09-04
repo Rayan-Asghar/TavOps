@@ -27,14 +27,22 @@ const FORCE = process.argv.includes("--force");
 async function main() {
   console.log(`Backfilling work-log costs${FORCE ? " (forced)" : ""}...`);
 
-  // "Needs costing" means: no cost row, or one anchored to a revision that is
-  // no longer the head. The second case is an entry edited before this script
-  // existed -- its stored cost describes a version of the entry nobody can see.
+  // "Needs costing" means one of three things:
+  //   * no cost row at all;
+  //   * a cost anchored to a revision that is no longer the head -- an entry
+  //     edited before this script existed, whose stored cost describes a
+  //     version nobody can see any more;
+  //   * a cost whose basis is not `rated`. An `unrated` or `ambiguous` cost is
+  //     PROVISIONAL: it records that no rate covered that date, which stops
+  //     being true the moment somebody enters one. Leaving these out made the
+  //     script's own closing advice -- "enter the missing rates, then run this
+  //     again" -- do nothing at all on the second run.
   const staleOrMissing = await withFinanceAccess(async (tx) => {
     const costed = tx
       .select({
         workLogId: workLogCosts.workLogId,
         revisionId: workLogCosts.revisionId,
+        basis: workLogCosts.basis,
       })
       .from(workLogCosts)
       .as("costed");
@@ -48,6 +56,7 @@ async function main() {
         billable: workLogs.billable,
         currentRevisionId: workLogs.currentRevisionId,
         costedRevisionId: costed.revisionId,
+        costedBasis: costed.basis,
       })
       .from(workLogs)
       .leftJoin(costed, eq(costed.workLogId, workLogs.id))
@@ -65,7 +74,8 @@ async function main() {
     (r) =>
       FORCE ||
       r.costedRevisionId === null ||
-      r.costedRevisionId !== r.currentRevisionId,
+      r.costedRevisionId !== r.currentRevisionId ||
+      r.costedBasis !== "rated",
   );
 
   console.log(
