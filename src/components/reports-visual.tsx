@@ -39,6 +39,7 @@ export function ReportsVisual({
   recon,
   margin,
   rangeHref,
+  drillable = true,
 }: {
   days: DayHours[];
   projectRows: ProjectReportRow[];
@@ -51,6 +52,8 @@ export function ReportsVisual({
   margin?: ProjectMargin | null;
   /** The current window, so each figure can link to the rows behind it. */
   rangeHref: string;
+  /** False when the entries table this strip drills into is not rendered. */
+  drillable?: boolean;
 }) {
   const logged = days.map((d) => d.hours);
   const busiest = days.reduce<DayHours | null>(
@@ -76,7 +79,7 @@ export function ReportsVisual({
             label="Hours logged"
             value={`${hrs(recon.logged)}h`}
             note="everything in this window"
-            href={`${rangeHref}#entries`}
+            href={drillable ? `${rangeHref}#entries` : undefined}
           />
           {/* 2.3 asks for the billable split, and it is buildable now that
               work_logs.billable exists. It shares a total with the invoiced
@@ -86,13 +89,13 @@ export function ReportsVisual({
             label="Billable"
             value={`${hrs(recon.billable)}h`}
             note="charged for at rate card"
-            href={`${rangeHref}&billable=yes#entries`}
+            href={drillable ? `${rangeHref}&billable=yes#entries` : undefined}
           />
           <ReconCell
             label="Non-billable"
             value={`${hrs(recon.nonBillable)}h`}
             note="internal, rework, meetings"
-            href={`${rangeHref}&billable=no#entries`}
+            href={drillable ? `${rangeHref}&billable=no#entries` : undefined}
             emphasis={recon.nonBillable > 0}
           />
           <ReconCell
@@ -350,6 +353,14 @@ export function ReportsVisual({
  * r38: every metric drills down to the rows underneath it, so each is a link
  * rather than a number — supporting detail without leaving the screen.
  */
+/**
+ * One reconciliation figure.
+ *
+ * `href` is optional because the supporting detail it drills into is itself
+ * gated: a reader who logs no hours gets no entries table, and a figure that
+ * links to an anchor which is not on the page is worse than a figure that does
+ * not invite the click. Without an href it renders as the same cell, inert.
+ */
 function ReconCell({
   label,
   value,
@@ -360,14 +371,11 @@ function ReconCell({
   label: string;
   value: string;
   note: string;
-  href: string;
+  href?: string;
   emphasis?: boolean;
 }) {
-  return (
-    <Link
-      href={href}
-      className="group block bg-surface p-5 transition-[background-color] duration-150 ease-out-quad hover:bg-surface-hover"
-    >
+  const body = (
+    <>
       <span className="text-2xs font-bold uppercase tracking-[.1em] text-fg-muted">
         {label}
       </span>
@@ -379,6 +387,17 @@ function ReconCell({
         {value}
       </strong>
       <span className="mt-2 block text-2xs text-fg-muted">{note}</span>
+    </>
+  );
+
+  if (!href) return <div className="block bg-surface p-5">{body}</div>;
+
+  return (
+    <Link
+      href={href}
+      className="group block bg-surface p-5 transition-[background-color] duration-150 ease-out-quad hover:bg-surface-hover"
+    >
+      {body}
     </Link>
   );
 }

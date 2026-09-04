@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, projects, tasks, workLogs } from "@/db/schema";
+import { clients, projects, tasks, users, workLogs } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
+import { can } from "@/lib/rbac";
 import { SectionIntro } from "@/components/app-shell";
 import { QuickLogRow, type QuickLogTask } from "@/components/quick-log";
 
@@ -28,6 +29,19 @@ export default async function LogPage({
 }) {
   const actor = await getActor();
   if (!actor) redirect("/login");
+
+  // Read the role from the database rather than the session, as /reports and
+  // /timesheet do: a role changed after sign-in takes effect on the next load.
+  const [me] = await db
+    .select({ globalRole: users.globalRole })
+    .from(users)
+    .where(eq(users.id, actor.id))
+    .limit(1);
+
+  /* Every row on this page is a form that calls `logWork`, which asserts this
+     capability. Without the gate the page renders a full screen of controls
+     that can only fail — the worst kind of dead end, because it looks live. */
+  if (!can(me?.globalRole ?? "developer", "worklog.create")) notFound();
 
   /* `?project=` narrows this page to one project. It is how the project page's
      rail now offers "log work" — a link here rather than a second copy of the

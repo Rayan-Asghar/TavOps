@@ -26,8 +26,6 @@ import { ReportsVisual } from "@/components/reports-visual";
 export const metadata = { title: "Reports" };
 const TIMESHEET_PREVIEW = 60;
 
-
-
 /** Over 100% is not an error — it is somebody working past their stated week. */
 
 export default async function ReportsPage({
@@ -63,24 +61,34 @@ export default async function ReportsPage({
 
   // Everyone gets a report; what it contains narrows to what they may read.
   const seesEveryone = can(role, "worklog.viewAll");
+  /* Could this reader have entries of their own to show? The table below is
+     pinned to `actor.id` for anyone without worklog.viewAll, so for a role that
+     logs no hours it is empty by construction — not "no entries in this range",
+     which invites widening the range forever. The rest of the page is scoped by
+     PROJECT and is entirely correct for a sales owner, so the page is narrowed
+     here rather than withheld, per the policy in the layout's nav comment. */
+  const seesAnyEntries = seesEveryone || can(role, "worklog.create");
   const seesMoney = can(role, "finance.view");
 
-  const [projectRows, personRows, sheet, days, recon, margin] = await Promise.all([
-    projectReport(range, scope),
-    seesEveryone ? personReport(range, scope) : Promise.resolve([]),
-    timesheet(range, scope, {
-      limit: TIMESHEET_PREVIEW,
-      userId: seesEveryone ? null : actor.id,
-      billable: filters.billable,
-      workLogIds: uncostedIds,
-    }),
-    hoursByDay(range, scope),
-    reconciliation(range, scope),
-    // Scoped to exactly the projects the hours above are built from, so the
-    // money describes the rows this reader can see rather than a company total
-    // they have no way to reconcile.
-    windowMargin(range, scope, role),
-  ]);
+  const [projectRows, personRows, sheet, days, recon, margin] =
+    await Promise.all([
+      projectReport(range, scope),
+      seesEveryone ? personReport(range, scope) : Promise.resolve([]),
+      seesAnyEntries
+        ? timesheet(range, scope, {
+            limit: TIMESHEET_PREVIEW,
+            userId: seesEveryone ? null : actor.id,
+            billable: filters.billable,
+            workLogIds: uncostedIds,
+          })
+        : Promise.resolve([]),
+      hoursByDay(range, scope),
+      reconciliation(range, scope),
+      // Scoped to exactly the projects the hours above are built from, so the
+      // money describes the rows this reader can see rather than a company total
+      // they have no way to reconcile.
+      windowMargin(range, scope, role),
+    ]);
 
   // Money is fetched only when the role allows it, and only inside the RLS
   // opt-in — without both, the query returns nothing.
@@ -103,12 +111,18 @@ export default async function ReportsPage({
         description={
           seesEveryone
             ? "Built from the work logs themselves. Nothing here is maintained by hand."
-            : "Your own entries, on the projects you work on."
+            : seesAnyEntries
+              ? "Your own entries, on the projects you work on."
+              : "Hours delivered on the projects you sold."
         }
         actions={
-          <a href={exportHref} className="btn-secondary btn-sm" download>
-            Download CSV
-          </a>
+          // The export applies the same `userId` pin as the table, so without
+          // entries to show there is nothing to download either.
+          seesAnyEntries ? (
+            <a href={exportHref} className="btn-secondary btn-sm" download>
+              Download CSV
+            </a>
+          ) : undefined
         }
         controls={
           <>
@@ -120,7 +134,9 @@ export default async function ReportsPage({
                 and the export link keeps matching what is on screen. */}
             <form method="get" className="flex flex-wrap items-end gap-2">
               <div>
-                <label className="label sr-only" htmlFor="from">From</label>
+                <label className="label sr-only" htmlFor="from">
+                  From
+                </label>
                 <input
                   id="from"
                   name="from"
@@ -131,7 +147,9 @@ export default async function ReportsPage({
                 />
               </div>
               <div>
-                <label className="label sr-only" htmlFor="to">To</label>
+                <label className="label sr-only" htmlFor="to">
+                  To
+                </label>
                 <input
                   id="to"
                   name="to"
@@ -149,36 +167,39 @@ export default async function ReportsPage({
         }
       />
 
-
-        <ReportsVisual
-          days={days}
-          projectRows={projectRows}
-          personRows={personRows}
-          budgets={budgets}
-          totalHours={totalHours}
-          seesEveryone={seesEveryone}
-          recon={recon}
-          margin={margin}
-          rangeHref={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}`}
-        />
+      <ReportsVisual
+        days={days}
+        projectRows={projectRows}
+        personRows={personRows}
+        budgets={budgets}
+        totalHours={totalHours}
+        seesEveryone={seesEveryone}
+        recon={recon}
+        margin={margin}
+        rangeHref={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}`}
+        drillable={seesAnyEntries}
+      />
 
       {/* ---------------- the entries ---------------- */}
       {/* The reconciliation figures link here: r38 wants supporting detail
           reachable without leaving the screen. */}
-      <section id="entries" className="panel scroll-mt-[72px]">
-        <div className="panel-head">
-          <div>
-            <p className="eyebrow">
-              {seesEveryone ? "EVERY ENTRY IN RANGE" : "YOUR ENTRIES IN RANGE"}
-            </p>
-            <h3 className="m-0 text-lg tracking-[-.03em]">Timesheet</h3>
+      {seesAnyEntries && (
+        <section id="entries" className="panel scroll-mt-[72px]">
+          <div className="panel-head">
+            <div>
+              <p className="eyebrow">
+                {seesEveryone
+                  ? "EVERY ENTRY IN RANGE"
+                  : "YOUR ENTRIES IN RANGE"}
+              </p>
+              <h3 className="m-0 text-lg tracking-[-.03em]">Timesheet</h3>
+            </div>
+            <span className="text-xs text-fg-muted">
+              newest {TIMESHEET_PREVIEW} shown · CSV has them all
+            </span>
           </div>
-          <span className="text-xs text-fg-muted">
-            newest {TIMESHEET_PREVIEW} shown · CSV has them all
-          </span>
-        </div>
-        {/* 60 rows: the only table here long enough to lose its own header. */}
-        <DataTable minWidth={680} maxHeight={520}>
+          {/* 60 rows: the only table here long enough to lose its own header. */}
+          <DataTable minWidth={680} maxHeight={520}>
             <thead>
               <tr>
                 <Th>Date</Th>
@@ -203,7 +224,9 @@ export default async function ReportsPage({
                     <td className="h-9 px-5 py-2 tabular whitespace-nowrap">
                       {toISODate(r.workDate)}
                     </td>
-                    <td className="h-9 px-3 py-2 whitespace-nowrap">{r.personName}</td>
+                    <td className="h-9 px-3 py-2 whitespace-nowrap">
+                      {r.personName}
+                    </td>
                     <td className="h-9 px-3 py-2 whitespace-nowrap">
                       <strong>{r.projectCode}</strong>
                     </td>
@@ -221,7 +244,8 @@ export default async function ReportsPage({
               )}
             </tbody>
           </DataTable>
-      </section>
+        </section>
+      )}
     </>
   );
 }

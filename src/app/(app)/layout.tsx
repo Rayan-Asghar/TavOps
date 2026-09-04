@@ -90,6 +90,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // The same hours a month at a time, laid out like the project's sheet.
     today.push({ href: "/timesheet", label: "Timesheet", icon: "log" });
   }
+  /* Sales sits in TODAY, not INSIGHT. A pipeline is a working queue — the bids
+     that have gone cold are worked this morning, the way a blocker is — and the
+     group a destination lives in is the honest statement of how often it is
+     meant to be opened. It was filed under reporting when the page was a log of
+     what had already happened. */
+  if (can(role, "proposal.create")) {
+    today.push({ href: "/sales", label: "Sales", icon: "sales" });
+  }
 
   const delivery: NavEntry[] = [
     { href: "/projects", label: "Projects", icon: "projects" },
@@ -107,9 +115,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // narrows its content by capability rather than being withheld.
     { href: "/reports", label: "Reports", icon: "projects" },
   ];
-  if (can(role, "proposal.create")) {
-    insight.push({ href: "/sales", label: "Sales", icon: "sales" });
-  }
 
   // Only surface what is actually built. A nav full of dead links reads as a
   // broken product rather than a roadmap.

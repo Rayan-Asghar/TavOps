@@ -50,11 +50,20 @@ describe("global role capabilities", () => {
     expect(can("developer", "user.manage")).toBe(false);
   });
 
-  it("lets every working role log work and raise a blocker", () => {
+  it("lets every working role raise a blocker", () => {
     for (const role of ["head", "sales", "developer", "collaborator"] as const) {
-      expect(can(role, "worklog.create")).toBe(true);
       expect(can(role, "blocker.create")).toBe(true);
     }
+  });
+
+  it("grants worklog.create to the roles that deliver, and not to sales", () => {
+    for (const role of ["head", "developer", "collaborator"] as const) {
+      expect(can(role, "worklog.create")).toBe(true);
+    }
+    // Not an oversight: a rep logs no hours, so the two screens this gates are
+    // withheld rather than shown empty. `/log` and `/timesheet` both 404 for
+    // them, and the command palette drops the destinations with the rail.
+    expect(can("sales", "worklog.create")).toBe(false);
   });
 
   it("keeps correcting somebody else's hours off the default roles", () => {

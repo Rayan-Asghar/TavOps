@@ -14,7 +14,8 @@ export async function loginAction(
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
       password: String(formData.get("password") ?? ""),
-      redirectTo: "/",
+      // `/start` resolves the landing screen from the role — see lib/home.ts.
+      redirectTo: "/start",
     });
     return {};
   } catch (err) {
@@ -36,7 +37,7 @@ export async function loginAction(
  * that swallows it — the NEXT_REDIRECT error is the mechanism, not a failure.
  */
 export async function googleLoginAction() {
-  await signIn("google", { redirectTo: "/" });
+  await signIn("google", { redirectTo: "/start" });
 }
 
 export async function logoutAction() {

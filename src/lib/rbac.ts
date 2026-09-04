@@ -73,12 +73,14 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "audit.view",
   ],
 
-  sales: [
-    "blocker.create",
-    "worklog.create",
-    "proposal.create",
-    "deadline.viewClient",
-  ],
+  /*
+   * Sales does not log hours. The grant was here from the first draft, on the
+   * assumption that everybody logs time, and it put the two delivery screens
+   * (`/log`, `/timesheet`) on a rail belonging to people who never open them.
+   * BD time is real, non-billable cost, but it is not entered by the rep — see
+   * `task_types`, where Business Development exists for whoever does log it.
+   */
+  sales: ["blocker.create", "proposal.create", "deadline.viewClient"],
 
   developer: ["worklog.create", "blocker.create", "task.edit"],
 

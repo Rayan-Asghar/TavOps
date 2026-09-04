@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, users } from "@/db/schema";
@@ -47,6 +47,11 @@ export default async function TimesheetPage({
     .limit(1);
 
   const role = me?.globalRole ?? "developer";
+  /* The grid writes hours, so it needs the capability that writes hours. It was
+     reachable by URL without one until sales stopped holding `worklog.create`,
+     at which point an ungated route renders a grid whose every save throws. */
+  if (!can(role, "worklog.create")) notFound();
+
   const params = await searchParams;
   const one = (v: string | string[] | undefined) =>
     (Array.isArray(v) ? v[0] : v) ?? "";
