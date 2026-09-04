@@ -86,3 +86,45 @@ export function formatRange({ from, to }: DateRange): string {
     `${d.getUTCDate()} ${month(d)} ${d.getUTCFullYear()}`;
   return `${part(from)} – ${part(to)}`;
 }
+
+/** Whether a range is exactly one calendar month, first day to last. */
+export function isCalendarMonth({ from, to }: DateRange): boolean {
+  const lastOfMonth = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 0),
+  );
+  return (
+    from.getUTCDate() === 1 &&
+    to.getUTCFullYear() === lastOfMonth.getUTCFullYear() &&
+    to.getUTCMonth() === lastOfMonth.getUTCMonth() &&
+    to.getUTCDate() === lastOfMonth.getUTCDate()
+  );
+}
+
+/**
+ * The previous or next window of the same size.
+ *
+ * A calendar month steps by calendar months, not by its own length, because
+ * 31 days before 1–31 March is not 1–28 February — stepping by day count walks
+ * the window off the month boundary and never finds its way back. Every other
+ * range steps by its exact length, so a fortnight stays a fortnight.
+ */
+export function stepRange(range: DateRange, direction: -1 | 1): DateRange {
+  const { from, to } = range;
+
+  if (isCalendarMonth(range)) {
+    const y = from.getUTCFullYear();
+    const m = from.getUTCMonth() + direction;
+    return {
+      from: new Date(Date.UTC(y, m, 1)),
+      to: new Date(Date.UTC(y, m + 1, 0)),
+    };
+  }
+
+  const days =
+    Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
+  const shift = days * 86_400_000 * direction;
+  return {
+    from: new Date(from.getTime() + shift),
+    to: new Date(to.getTime() + shift),
+  };
+}

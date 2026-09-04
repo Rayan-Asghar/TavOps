@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   defaultRange,
   formatRange,
+  isCalendarMonth,
   parseRange,
+  stepRange,
   toISODate,
 } from "./report-range";
 
@@ -97,5 +99,56 @@ describe("formatRange", () => {
     expect(
       formatRange({ from: at("2026-08-24"), to: at("2026-09-04") }),
     ).toBe("24 Aug 2026 – 4 Sep 2026");
+  });
+});
+
+describe("stepRange", () => {
+  const range = (from: string, to: string) => ({
+    from: new Date(`${from}T00:00:00.000Z`),
+    to: new Date(`${to}T00:00:00.000Z`),
+  });
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  it("steps a calendar month by calendar months, not by 31 days", () => {
+    // Stepping March back by its own length lands on 29 Jan – 28 Feb and the
+    // window never returns to a month boundary again.
+    const prev = stepRange(range("2026-03-01", "2026-03-31"), -1);
+    expect(iso(prev.from)).toBe("2026-02-01");
+    expect(iso(prev.to)).toBe("2026-02-28");
+  });
+
+  it("keeps landing on month ends of differing length", () => {
+    const next = stepRange(range("2026-01-01", "2026-01-31"), 1);
+    expect(iso(next.from)).toBe("2026-02-01");
+    expect(iso(next.to)).toBe("2026-02-28");
+  });
+
+  it("crosses a year boundary in both directions", () => {
+    const back = stepRange(range("2026-01-01", "2026-01-31"), -1);
+    expect(iso(back.from)).toBe("2025-12-01");
+    expect(iso(back.to)).toBe("2025-12-31");
+
+    const fwd = stepRange(range("2026-12-01", "2026-12-31"), 1);
+    expect(iso(fwd.from)).toBe("2027-01-01");
+  });
+
+  it("steps an arbitrary window by its exact length", () => {
+    const prev = stepRange(range("2026-03-09", "2026-03-15"), -1);
+    expect(iso(prev.from)).toBe("2026-03-02");
+    expect(iso(prev.to)).toBe("2026-03-08");
+  });
+
+  it("round-trips: forward then back returns the original", () => {
+    const start = range("2026-03-01", "2026-03-31");
+    const there = stepRange(start, 1);
+    const back = stepRange(there, -1);
+    expect(iso(back.from)).toBe(iso(start.from));
+    expect(iso(back.to)).toBe(iso(start.to));
+  });
+
+  it("does not mistake a part-month for a calendar month", () => {
+    expect(isCalendarMonth(range("2026-03-01", "2026-03-30"))).toBe(false);
+    expect(isCalendarMonth(range("2026-03-02", "2026-03-31"))).toBe(false);
+    expect(isCalendarMonth(range("2026-03-01", "2026-03-31"))).toBe(true);
   });
 });

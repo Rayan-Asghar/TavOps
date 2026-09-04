@@ -5,7 +5,7 @@ import { users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { can } from "@/lib/rbac";
-import { parseRange, formatRange, toISODate } from "@/lib/report-range";
+import { parseRange, toISODate } from "@/lib/report-range";
 import {
   budgetedHoursFor,
   personReport,
@@ -14,7 +14,8 @@ import {
   hoursByDay,
   reconciliation,
 } from "@/server/reports";
-import { SectionIntro } from "@/components/app-shell";
+import { PageHeader } from "@/components/app-shell";
+import { DateRangeStepper } from "@/components/ui";
 
 import { fmtDate, hrs } from "@/lib/format";
 import { DataTable, EmptyCell, Th } from "@/components/ui";
@@ -72,50 +73,57 @@ export default async function ReportsPage({
 
   return (
     <>
-      <SectionIntro
-        eyebrow={formatRange(range).toUpperCase()}
+      <PageHeader
+        eyebrow="Reporting"
         title="Where the hours went"
         description={
           seesEveryone
             ? "Built from the work logs themselves. Nothing here is maintained by hand."
             : "Your own entries, on the projects you work on."
         }
+        actions={
+          <a href={exportHref} className="btn-secondary btn-sm" download>
+            Download CSV
+          </a>
+        }
+        controls={
+          <>
+            {/* Stepping is the common move — last month, the month before —
+                and it used to mean typing two dates correctly. */}
+            <DateRangeStepper range={range} basePath="/reports" />
+
+            {/* Still a GET form, so an arbitrary window stays a shareable URL
+                and the export link keeps matching what is on screen. */}
+            <form method="get" className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="label sr-only" htmlFor="from">From</label>
+                <input
+                  id="from"
+                  name="from"
+                  type="date"
+                  aria-label="From"
+                  defaultValue={toISODate(range.from)}
+                  className="field h-11 py-0"
+                />
+              </div>
+              <div>
+                <label className="label sr-only" htmlFor="to">To</label>
+                <input
+                  id="to"
+                  name="to"
+                  type="date"
+                  aria-label="To"
+                  defaultValue={toISODate(range.to)}
+                  className="field h-11 py-0"
+                />
+              </div>
+              <button type="submit" className="btn-secondary btn-sm">
+                Apply
+              </button>
+            </form>
+          </>
+        }
       />
-
-      {/* GET, so a chosen window is a shareable URL and the export matches it. */}
-      <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="label" htmlFor="from">From</label>
-          <input
-            id="from"
-            name="from"
-            type="date"
-            defaultValue={toISODate(range.from)}
-            className="field"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor="to">To</label>
-          <input
-            id="to"
-            name="to"
-            type="date"
-            defaultValue={toISODate(range.to)}
-            className="field"
-          />
-        </div>
-        <button type="submit" className="btn-primary btn-sm">
-          Apply
-        </button>
-        <a
-          href={exportHref}
-          className="btn-secondary btn-sm"
-          download
-        >
-          Download CSV
-        </a>
-      </form>
-
 
 
         <ReportsVisual

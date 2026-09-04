@@ -363,9 +363,17 @@ export type Reconciliation = {
  *
  * 2.3 wants Reports to open with three or four numbers that each sum a named
  * section of the detail below, the way Stripe's balance report does. Its example
- * splits on billable/unbilled, which does not exist here and is not going to:
- * Tavren invoices from Wise, there is no payment integration, and no work log
- * carries a billable flag.
+ * splits on billable/unbilled.
+ *
+ * `work_logs.billable` now exists (migration 0019), so that split IS buildable
+ * and is Phase 2A of docs/ROADMAP.md. It does not replace these four: billable
+ * and invoiced are two ORTHOGONAL splits of the same hours, and one strip of
+ * four cells cannot carry two identities that both have to add up. The plan is
+ * two tiers -- billable/non-billable for everyone, money behind `finance.view`.
+ *
+ * Invoicing itself stays out: Tavren invoices from Wise and there is no payment
+ * integration, so `projects.invoiced_through` remains the honest local
+ * equivalent.
  *
  * `projects.invoiced_through` is the honest local equivalent, and it is already
  * load-bearing rather than invented for this — it is the hard stop that prevents
