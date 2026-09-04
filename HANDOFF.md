@@ -84,10 +84,6 @@ Since then, three more things landed:
 - **`overflow-x-auto` forces `overflow-y:auto`**, making that wrapper the sticky
   containing block — so the grid has no sticky header, and the fix would move
   geometry its roving-tabindex model depends on.
-- **Do not test `loading.tsx` by blocking the RSC request** — the loading UI is
-  delivered *in* that stream. Throttle instead.
-- **shadcn's Button and Sonner were rejected** (focus-ring opt-out, 24–36px
-  targets, `dark:` variants; Sonner needs `next-themes`, which this app avoids).
 - **A session-level advisory lock is held by a CONNECTION, and `db` is a pool.**
   `pg_advisory_unlock` can land on a different connection than the lock did,
   release nothing, and leak until that connection recycles. `scheduler.ts` uses
@@ -95,8 +91,8 @@ Since then, three more things landed:
 - **`setState` in an effect is a lint error**; client-only values go through
   `useSyncExternalStore` with a server snapshot. **A `RefObject` effect cannot
   see a conditionally-mounted form** — use a callback ref.
-- The grid, CDP and Drive API notes in
-  `.claude/handoff-history/2026-09-03_sheets-pre-grid.md` still apply.
+- The grid, CDP, Drive API, `loading.tsx` and rejected-shadcn notes in
+  `.claude/handoff-history/` still apply.
 
 ## Open Questions / Blockers
 
