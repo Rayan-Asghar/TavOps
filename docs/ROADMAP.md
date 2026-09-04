@@ -60,7 +60,6 @@
         nulls-last on due date, filter options built from the reader's own scope)
         and saved views as named URLs (migration `0021`), path allow-listed so a
         stored view cannot become an open redirect
-- [ ] **Phase 2A remainder** — none. 2A is complete.
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
