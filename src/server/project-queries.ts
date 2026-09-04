@@ -109,6 +109,7 @@ export async function loadProjectDetail(actor: Actor, projectId: string) {
           userId: workLogs.userId,
           userName: users.name,
           taskTitle: tasks.title,
+          billable: workLogs.billable,
         })
         .from(workLogs)
         .leftJoin(users, eq(workLogs.userId, users.id))

@@ -7,6 +7,7 @@ import {
   type FormState,
 } from "@/server/form-actions";
 import { FormError } from "@/components/ui";
+import { BillableField } from "./billable-field";
 
 const initial: FormState = {};
 
@@ -25,12 +26,16 @@ export function WorkLogActions({
   hours,
   notes,
   workDate,
+  billable,
 }: {
   workLogId: string;
   hours: string;
   notes: string;
   /** yyyy-mm-dd, for the date input. */
   workDate: string;
+  /** Seeded from the entry, never defaulted: a correction must not silently
+   *  reclassify what the client is charged for. */
+  billable: boolean;
 }) {
   const [open, setOpen] = useState<"edit" | "delete" | null>(null);
   const [editState, editAction, editing] = useActionState(
@@ -99,6 +104,7 @@ export function WorkLogActions({
                 className="field"
               />
             </div>
+            <BillableField defaultChecked={billable} idSuffix={workLogId} />
             <div className="flex-1">
               <label className="label" htmlFor={`d-${workLogId}`}>
                 Date

@@ -8,6 +8,7 @@ import { requireActor } from "@/lib/auth";
 import { assertProjectAccess } from "@/lib/access";
 import { assertCan } from "@/lib/rbac";
 import { elapsedSeconds, secondsToHours } from "@/lib/timer-utils";
+import { readTriStateCheckbox } from "@/lib/form-checkbox";
 import { recordWorkInTx } from "./record-work";
 import {
   adjustTimerSchema,
@@ -202,6 +203,7 @@ export async function finishTimer(
       sessionId: String(formData.get("sessionId") ?? ""),
       note: String(formData.get("note") ?? ""),
       resultingStatus: String(formData.get("resultingStatus") || "in_review"),
+      billable: readTriStateCheckbox(formData.getAll("billable")),
     });
 
     const session = await loadOwnSession(data.sessionId, actor.id);
@@ -227,6 +229,7 @@ export async function finishTimer(
         hours,
         internalNotes: data.note,
         resultingStatus: data.resultingStatus,
+        billable: data.billable ?? null,
       });
 
       await tx

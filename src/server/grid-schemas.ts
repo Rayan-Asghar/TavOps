@@ -17,6 +17,7 @@ export const GRID_FIELDS = [
   "internalNotes",
   "taskId",
   "userId",
+  "billable",
 ] as const;
 export type GridField = (typeof GRID_FIELDS)[number];
 
@@ -52,6 +53,8 @@ export const gridRowSchema = z.discriminatedUnion("op", [
     taskId: z.string().uuid().nullable().optional(),
     /** Whose entry it is. Defaults to the grid's person, then to the actor. */
     userId: z.string().uuid().nullable().optional(),
+    /** Omitted means "inherit from the kind of work", not "false". */
+    billable: z.boolean().optional(),
   }),
   z.object({
     op: z.literal("update"),
@@ -63,6 +66,9 @@ export const gridRowSchema = z.discriminatedUnion("op", [
     hours,
     internalNotes,
     taskId: z.string().uuid().nullable().optional(),
+    /** Omitted leaves billability alone; the short-circuit in
+     *  `applyGridRowsInTx` depends on that distinction. */
+    billable: z.boolean().optional(),
   }),
   z.object({
     op: z.literal("remove"),

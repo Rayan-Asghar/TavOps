@@ -13,6 +13,7 @@ import {
 } from "@/server/timer";
 import { elapsedSeconds, formatClock, secondsToHours } from "@/lib/timer-utils";
 import { FormError, FormSuccess, useToast } from "@/components/ui";
+import { BillableField } from "./billable-field";
 
 const initial: TimerState = {};
 
@@ -318,6 +319,10 @@ export function ActiveTimerPanel({ session }: { session: ActiveSession }) {
           <option value="done">Done</option>
           <option value="in_progress">Still in progress</option>
         </select>
+
+        {/* A timer measures presence, and a meeting can be timed as readily as
+            a build — so the finish step gets the same override as the form. */}
+        <BillableField idSuffix={session.id} />
 
         {finishState.error && (
           <FormError>{finishState.error}</FormError>

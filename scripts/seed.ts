@@ -15,6 +15,7 @@ import {
   projectMembers,
   projects,
   tasks,
+  taskTypes,
   teamMembers,
   teams,
   userRates,
@@ -144,15 +145,32 @@ async function main() {
     ]);
   });
 
+  // The billable catalogue. Business Development and the two internal kinds are
+  // deliberately non-billable: they are real work that no client pays for, and
+  // that is the whole reason billability is inherited rather than asked for.
+  const typeRows = await db
+    .insert(taskTypes)
+    .values([
+      { name: "Design", billable: true, orderIndex: 1 },
+      { name: "Programming", billable: true, orderIndex: 2 },
+      { name: "Project Management", billable: true, orderIndex: 3 },
+      { name: "Marketing", billable: true, orderIndex: 4 },
+      { name: "Business Development", billable: false, orderIndex: 5 },
+      { name: "Internal", billable: false, orderIndex: 6 },
+      { name: "Rework", billable: false, orderIndex: 7 },
+    ])
+    .returning();
+  const type = (name: string) => typeRows.find((t) => t.name === name)!.id;
+
   const taskRows = await db
     .insert(tasks)
     .values([
-      { projectId: shopify.id, title: "Homepage build", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "16.00", dueDate: new Date(Date.now() + 3 * 864e5), lastUpdateAt: new Date(Date.now() - 3 * 864e5) },
-      { projectId: shopify.id, title: "PDP template", assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "20.00", dueDate: new Date(Date.now() - 1 * 864e5) },
-      { projectId: shopify.id, title: "Klaviyo setup", assigneeId: by("Ayan").id, status: "todo", estimatedHours: "8.00" },
-      { projectId: shopify.id, title: "Collection pages", assigneeId: by("Hozefa").id, status: "in_review", estimatedHours: "10.00", lastUpdateAt: new Date() },
-      { projectId: wp.id, title: "Blog template", assigneeId: by("Abdur Rehman").id, status: "in_progress", estimatedHours: "12.00", lastUpdateAt: new Date() },
-      { projectId: wp.id, title: "Contact form + CRM hook", assigneeId: by("Abdur Rehman").id, status: "todo", estimatedHours: "5.00" },
+      { projectId: shopify.id, title: "Homepage build", taskTypeId: type("Programming"), assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "16.00", dueDate: new Date(Date.now() + 3 * 864e5), lastUpdateAt: new Date(Date.now() - 3 * 864e5) },
+      { projectId: shopify.id, title: "PDP template", taskTypeId: type("Programming"), assigneeId: by("Ayan").id, status: "in_progress", estimatedHours: "20.00", dueDate: new Date(Date.now() - 1 * 864e5) },
+      { projectId: shopify.id, title: "Klaviyo setup", taskTypeId: type("Marketing"), assigneeId: by("Ayan").id, status: "todo", estimatedHours: "8.00" },
+      { projectId: shopify.id, title: "Collection pages", taskTypeId: type("Design"), assigneeId: by("Hozefa").id, status: "in_review", estimatedHours: "10.00", lastUpdateAt: new Date() },
+      { projectId: wp.id, title: "Blog template", taskTypeId: type("Programming"), assigneeId: by("Abdur Rehman").id, status: "in_progress", estimatedHours: "12.00", lastUpdateAt: new Date() },
+      { projectId: wp.id, title: "Contact form + CRM hook", taskTypeId: type("Programming"), assigneeId: by("Abdur Rehman").id, status: "todo", estimatedHours: "5.00" },
     ])
     .returning();
 
@@ -163,6 +181,9 @@ async function main() {
     { projectId: shopify.id, taskId: homepage.id, userId: by("Ayan").id, hours: "6.00", internalNotes: "Hero + featured collection sections, desktop and mobile.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 3 * 864e5) },
     { projectId: shopify.id, taskId: pdp.id, userId: by("Ayan").id, hours: "4.50", internalNotes: "Variant picker and gallery scaffolding.", resultingStatus: "in_progress", workDate: new Date(Date.now() - 2 * 864e5) },
     { projectId: shopify.id, taskId: null, userId: by("Hammad").id, hours: "1.00", internalNotes: "Client call: scope walkthrough for Klaviyo migration.", workDate: new Date(Date.now() - 2 * 864e5) },
+    // No task, and a non-billable type: the case work_logs.task_type_id exists
+    // for, and the one that makes the billable split show something on day one.
+    { projectId: shopify.id, taskId: null, taskTypeId: type("Business Development"), billable: false, userId: by("Saqlain").id, hours: "2.00", internalNotes: "Upwork proposal writing and follow-up.", workDate: new Date(Date.now() - 1 * 864e5) },
   ]);
 
   // One internal blocker already past SLA, and one client dependency that must
@@ -195,6 +216,7 @@ async function main() {
   console.log(`  clients:  2`);
   console.log(`  projects: 2`);
   console.log(`  tasks:    ${taskRows.length}`);
+  console.log(`  types:    ${typeRows.length}`);
   console.log(`\nSign in with any address below, password: ${DEV_PASSWORD}`);
   for (const u of team) console.log(`  ${u.email.padEnd(24)} ${u.globalRole}`);
   process.exit(0);

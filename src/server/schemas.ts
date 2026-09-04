@@ -16,6 +16,9 @@ export const logWorkSchema = z.object({
     .enum(["todo", "in_progress", "blocked", "in_review", "done"])
     .nullable()
     .optional(),
+  /** Null or absent means "inherit from the kind of work". Not a required
+   *  choice: see src/lib/billable.ts for why. */
+  billable: z.boolean().nullable().optional(),
 });
 
 export type LogWorkInput = z.infer<typeof logWorkSchema>;
@@ -33,6 +36,9 @@ export const editWorkLogSchema = z.object({
   internalNotes: z.string().trim().min(3, "Say what you did, even briefly."),
   /** Optional: only sent when the entry was filed against the wrong day. */
   workDate: z.coerce.date().optional(),
+  /** Absent leaves billability alone; the edit form seeds it from the current
+   *  value, so a correction never silently reclassifies what a client owes. */
+  billable: z.boolean().nullable().optional(),
   reason: z.string().trim().min(3, "Say why this entry is changing."),
 });
 

@@ -8,6 +8,9 @@ export const finishTimerSchema = z.object({
   sessionId: z.string().uuid(),
   note: z.string().trim().min(3, "Add a short note on what you finished."),
   resultingStatus: z.enum(["in_progress", "in_review", "done"]).default("in_review"),
+  /** Null means "inherit from the task's type" — a timer measures presence,
+   *  and a meeting can be timed just as a build can. */
+  billable: z.boolean().nullable().optional(),
 });
 
 export const adjustTimerSchema = z.object({

@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
 import { FormError, FormSuccess } from "@/components/ui";
 import { useFormDraft } from "@/components/ui/use-form-draft";
+import { BillableField } from "./billable-field";
 
 const initial: FormState = {};
 
@@ -63,6 +64,7 @@ export function LogWorkForm({
               placeholder="6"
             />
           </div>
+          <BillableField />
           <div>
             <label className="label" htmlFor="resultingStatus">Move to</label>
             <select id="resultingStatus" name="resultingStatus" className="field">

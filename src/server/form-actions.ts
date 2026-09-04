@@ -4,6 +4,7 @@ import { logWork, editWorkLog, deleteWorkLog } from "./work-logs";
 import { reportBlocker } from "./blockers";
 import { resolveBlocker } from "./blockers";
 import { safeErrorMessage } from "./action-errors";
+import { readTriStateCheckbox } from "@/lib/form-checkbox";
 
 export type FormState = { ok?: boolean; error?: string; message?: string };
 
@@ -25,6 +26,7 @@ export async function logWorkFormAction(
       hours: Number(formData.get("hours") ?? 0),
       internalNotes: String(formData.get("internalNotes") ?? ""),
       resultingStatus: status === "" ? null : (status as never),
+      billable: readTriStateCheckbox(formData.getAll("billable")),
     });
 
     return { ok: true, message: "Logged." };
@@ -80,6 +82,7 @@ export async function editWorkLogFormAction(
       hours: Number(formData.get("hours") ?? 0),
       internalNotes: String(formData.get("internalNotes") ?? ""),
       workDate: workDate === "" ? undefined : workDate,
+      billable: readTriStateCheckbox(formData.getAll("billable")),
       reason: String(formData.get("reason") ?? ""),
     });
     return { ok: true, message: "Entry corrected." };

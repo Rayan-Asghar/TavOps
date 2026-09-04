@@ -53,6 +53,7 @@ export async function logWork(input: LogWorkInput) {
       hours: data.hours,
       internalNotes: data.internalNotes,
       resultingStatus: data.resultingStatus ?? null,
+      billable: data.billable ?? null,
     }),
   );
 
@@ -97,6 +98,7 @@ export async function editWorkLog(input: EditWorkLogInput) {
       hours: data.hours,
       internalNotes: data.internalNotes,
       workDate: data.workDate ?? null,
+      billable: data.billable ?? null,
       reason: data.reason,
     });
     queuedSync = result.queuedSync;

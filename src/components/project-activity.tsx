@@ -77,6 +77,7 @@ export function ProjectActivity({
                     hours={l.hours}
                     notes={l.notes}
                     workDate={l.workDate.toISOString().slice(0, 10)}
+                    billable={l.billable}
                   />
                 )}
               </div>

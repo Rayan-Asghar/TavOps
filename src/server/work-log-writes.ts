@@ -8,6 +8,7 @@ import { UserFacingError } from "@/lib/errors";
 import { isInvoiced } from "@/lib/billing-lock";
 import { writeAudit } from "./audit";
 import { enqueueSheetWrite } from "./sheet-sync";
+import { costWorkLogInTx } from "./costing";
 import { recordWorkInTx } from "./record-work";
 import {
   gridRowSchema,
@@ -161,6 +162,10 @@ export type EditWorkLogInTxInput = {
   /** `undefined` leaves the task alone; `null` detaches it. */
   taskId?: string | null;
   reason?: string | null;
+  /** `undefined` leaves billability alone — the convention `taskId` uses.
+   *  Re-inheriting from a changed task would silently restate what a client
+   *  is charged, which is not a side effect an edit should have. */
+  billable?: boolean | null;
   /** Recorded in the audit diff so a grid edit is distinguishable from a form
    *  correction without spending a permanent `change_source` enum value. */
   via?: "grid";
@@ -182,6 +187,10 @@ export async function editWorkLogInTx(tx: Tx, input: EditWorkLogInTxInput) {
   }
 
   const hours = input.hours.toFixed(2);
+  const billable =
+    input.billable === undefined || input.billable === null
+      ? log.billable
+      : input.billable;
   const version = await nextVersion(tx, log.id);
 
   const [revision] = await tx
@@ -194,6 +203,7 @@ export async function editWorkLogInTx(tx: Tx, input: EditWorkLogInTxInput) {
       hours,
       statusAfter: log.resultingStatus,
       internalNotes: input.internalNotes,
+      billable,
       changedByUserId: actor.id,
       source: "ui",
       reason: input.reason ?? null,
@@ -207,9 +217,22 @@ export async function editWorkLogInTx(tx: Tx, input: EditWorkLogInTxInput) {
       internalNotes: input.internalNotes,
       workDate: newDate,
       taskId,
+      billable,
       currentRevisionId: revision.id,
     })
     .where(eq(workLogs.id, log.id));
+
+  // Re-costed, not carried forward. Hours may have changed, and so may the
+  // work date — which re-resolves against the rate in force on the NEW day,
+  // because that is what the entry now claims happened.
+  await costWorkLogInTx(tx, {
+    workLogId: log.id,
+    revisionId: revision.id,
+    userId: log.userId,
+    workDate: newDate,
+    hours,
+    billable,
+  });
 
   // The sheet row is corrected in place, addressed by the entry's id.
   const queuedSync = await enqueueSheetWrite(tx, {
@@ -229,11 +252,13 @@ export async function editWorkLogInTx(tx: Tx, input: EditWorkLogInTxInput) {
       hours: log.hours,
       internalNotes: log.internalNotes,
       workDate: log.workDate.toISOString().slice(0, 10),
+      billable: log.billable,
     },
     after: {
       hours,
       internalNotes: input.internalNotes,
       workDate: newDate.toISOString().slice(0, 10),
+      billable,
       version,
       reason: input.reason ?? null,
       ...(input.via ? { via: input.via } : {}),
@@ -495,7 +520,10 @@ async function applyOneRow(
       log.hours === row.hours.toFixed(2) &&
       log.internalNotes === row.internalNotes &&
       log.workDate.toISOString().slice(0, 10) === row.workDate &&
-      (log.taskId ?? null) === (taskId ?? null);
+      (log.taskId ?? null) === (taskId ?? null) &&
+      // Load-bearing. Omit this and flipping only the billable cell compares
+      // equal, returns "unchanged", and the change is silently discarded.
+      (row.billable === undefined || row.billable === log.billable);
 
     if (unchanged) {
       return { rowKey: row.rowKey, status: "unchanged", workLogId: log.id };
@@ -508,6 +536,7 @@ async function applyOneRow(
       internalNotes: row.internalNotes,
       workDate: newDate,
       taskId: row.taskId,
+      billable: row.billable,
       reason: ctx.reason,
       via: "grid",
     });
@@ -554,6 +583,9 @@ async function createRow(
     hours: row.hours,
     internalNotes: row.internalNotes,
     workDate,
+    // Undefined, not false, when the cell was left alone: recordWorkInTx then
+    // inherits from the task's type rather than being told an answer.
+    billable: row.billable ?? null,
   });
 
   return {

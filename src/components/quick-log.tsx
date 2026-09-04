@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useFormDraft } from "@/components/ui/use-form-draft";
 import { logWorkFormAction, type FormState } from "@/server/form-actions";
 import { FormError, FormSuccess } from "@/components/ui";
+import { BillableField } from "./billable-field";
 
 const initial: FormState = {};
 
@@ -107,6 +108,7 @@ export function QuickLogRow({ task }: { task: QuickLogTask }) {
                 placeholder="3"
               />
             </div>
+            <BillableField idSuffix={task.taskId ?? task.projectId} />
             <div>
               <label className="label" htmlFor={`s-${task.taskId ?? task.projectId}`}>
                 Move to
