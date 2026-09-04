@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -28,24 +27,22 @@ import {
  * anything. Every destination below is also a sidebar item or a link on a page —
  * the palette is a shortcut, not a hiding place.
  *
- * 2.1 gives it a second job. Linear's palette duplicates every action *and shows
- * its shortcut*, which is how the team learns the keyboard model without reading
- * documentation. So each row here carries the key that would have done the same
- * thing, and the shortcuts are real: they are handled by this component.
+ * It had a `G`-then-letter chord too, so the rows could teach a keyboard model
+ * the way 2.1 describes Linear's. That came out with the queue's `J`/`K`: bare
+ * letters firing globally were not earning their cost here. ⌘K stays — it is one
+ * binding, everyone already expects it, and it needs no teaching.
  *
  * r12: recents come first, because "continue where you left off" is the common
  * case on an interrupted two-person team.
  *
- * r14: bindings must not override standard shortcuts. `G`-then-letter and the
- * single letters are ignored whenever a text field has focus or a modifier is
- * held, so copy, paste, select-all, print and find all behave normally.
+ * r13 is the rule that shapes the rest: a palette is an escape hatch, never the
+ * fix for weak navigation, and never the only path to anything. Every row is
+ * also a sidebar item or a link on a page.
  */
 
 export type PaletteDestination = {
   href: string;
   label: string;
-  /** The `G`-then-letter jump, e.g. "I" for `G I`. */
-  jump?: string;
 };
 
 export type PaletteRecent = {
@@ -74,8 +71,6 @@ export function CommandPalette({
   const router = useRouter();
   /** r13: focus returns to whatever had it when the palette opened. */
   const opener = useRef<HTMLElement | null>(null);
-  /** Tracks a pending `G`, so `G` then `I` jumps to the inbox. */
-  const pendingJump = useRef<number | null>(null);
 
   /* The server cannot know the platform, and a `setState` in an effect to correct
      it after mount is a cascading render. `useSyncExternalStore` is the idiomatic
@@ -97,31 +92,8 @@ export function CommandPalette({
     [router],
   );
 
-  const jumps = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const d of [...destinations, ...actions]) {
-      if (d.jump) m.set(d.jump.toLowerCase(), d.href);
-    }
-    return m;
-  }, [destinations, actions]);
-
   useEffect(() => {
     /** True when the keystroke belongs to whatever the user is typing into. */
-    const isTyping = (t: EventTarget | null) => {
-      const el = t as HTMLElement | null;
-      if (!el) return false;
-      const tag = el.tagName;
-      return (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        el.isContentEditable ||
-        // The work-log grid is a keyboard surface of its own; its cells own
-        // every bare keystroke, including the letters used for jumps.
-        !!el.closest("[data-grid-surface]")
-      );
-    };
-
     const onKey = (e: KeyboardEvent) => {
       // Open: the one binding that works even while typing, because that is the
       // universal convention and users expect it from anywhere.
@@ -132,38 +104,11 @@ export function CommandPalette({
         return;
       }
 
-      // r14: never shadow a browser or OS shortcut, and never steal a keystroke
-      // from a field. Everything below is a bare letter with no modifier.
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      if (open) return;
-
-      const k = e.key.toLowerCase();
-
-      if (pendingJump.current !== null) {
-        window.clearTimeout(pendingJump.current);
-        pendingJump.current = null;
-        const href = jumps.get(k);
-        if (href) {
-          e.preventDefault();
-          router.push(href);
-        }
-        return;
-      }
-
-      if (k === "g") {
-        // Arm the chord, and disarm it if the second key never comes.
-        pendingJump.current = window.setTimeout(() => {
-          pendingJump.current = null;
-        }, 1400);
-      }
     };
 
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      if (pendingJump.current !== null) window.clearTimeout(pendingJump.current);
-    };
-  }, [open, jumps, router]);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // Return focus where it was, so the palette does not strand a keyboard user.
   useEffect(() => {
@@ -247,7 +192,6 @@ export function CommandPalette({
           {destinations.map((d) => (
             <CommandItem key={d.href} value={d.label} onSelect={() => go(d.href)}>
               <span>{d.label}</span>
-              {d.jump && <CommandShortcut>G {d.jump}</CommandShortcut>}
             </CommandItem>
           ))}
         </CommandGroup>
@@ -263,7 +207,6 @@ export function CommandPalette({
                   onSelect={() => go(a.href)}
                 >
                   <span>{a.label}</span>
-                  {a.jump && <CommandShortcut>G {a.jump}</CommandShortcut>}
                 </CommandItem>
               ))}
             </CommandGroup>
