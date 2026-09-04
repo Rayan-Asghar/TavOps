@@ -31,7 +31,14 @@
   - [ ] 2B.3 filter chips + grouping as one system
   - [ ] 2B.4 view switchers (`/timesheet` Day|Week|Month, `/tasks` List|Board)
   - [ ] 2B.5 table conventions: group headers, inline bars, row actions, bulk checkbox
-  - [ ] 2B.6 the people table (Toggl's Members: role · time off · rate · cost · hours)
+  - [x] 2B.6 **rates writer** — promoted to first: Phase 1's costing engine had no
+        way to be fed, so `user_rates` was seed-only and most hours cost NULL. A
+        change is a new row closing the old at the same date (half-open), audited
+        without amounts (`head` has `audit.view` but not `rates.view`). Found and
+        fixed two bugs doing it: the backfill never re-costed `unrated` rows, and
+        the rate lookup compared instants where `resolveRate` compares UTC days.
+        Still to do: the full Members *table* layout, and a time-off column once
+        Phase 3 lands
   - [ ] 2B.9 global search over content, not just destinations
 - [ ] **Phase 2A — the visible layer** (needs 2B's shell first)
 - [ ] Phase 3 — Planning layer
