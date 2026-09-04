@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getActor } from "@/lib/auth";
@@ -7,7 +8,6 @@ import { activeSessionFor } from "@/server/timer";
 import { loadProjectDetail, projectTitle } from "@/server/project-queries";
 import { activateProject } from "@/server/project-actions";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
-import { LogWorkForm } from "@/components/log-work-form";
 import { BlockerForm } from "@/components/blocker-form";
 import { TaskForm } from "@/components/task-form";
 import { ReviewForm } from "@/components/review-form";
@@ -621,12 +621,28 @@ export default async function ProjectPage({
           )}
 
           <ActionPanel
+            /* A link to the one place work is logged, not a second copy of the
+               form. There used to be three: /log, the timesheet grid, and this
+               rail — each with its own validation and no signal about which was
+               the right one. The rail is a door now, pre-filtered to this
+               project. */
             logWork={
               can(role, "worklog.create") ? (
-                <LogWorkForm
-                  projectId={project.id}
-                  tasks={openTasks.map((t) => ({ id: t.id, title: t.title }))}
-                />
+                <div className="p-4">
+                  <h3 className="mb-1.5 text-sm font-semibold text-fg">
+                    Log work
+                  </h3>
+                  <p className="m-0 mb-3 text-xs text-fg-muted">
+                    Hours go in on one screen for every project, so the rules and
+                    the correction history are the same wherever you start.
+                  </p>
+                  <Link
+                    href={`/log?project=${project.id}`}
+                    className="btn-primary btn-sm w-full"
+                  >
+                    Log work on {project.code}
+                  </Link>
+                </div>
               ) : null
             }
             reportBlocker={

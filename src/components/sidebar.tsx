@@ -23,6 +23,20 @@ export type NavEntry = {
   danger?: boolean;
 };
 
+/**
+ * A labelled section of the rail.
+ *
+ * The nav used to be one flat list plus MANAGEMENT, which meant nine
+ * undifferentiated destinations and no answer to "where would that live?" —
+ * and two routes (/review, /admin/teams) that lived nowhere at all, leaving the
+ * rail with nothing selected when you were on them (r5's orphan test).
+ *
+ * Grouped by what you are doing rather than by object type: what needs me today,
+ * what is being delivered, what it all adds up to. M3 caps a rail at 3-7
+ * destinations; these groups are 3 / 2 / 2 / 3.
+ */
+export type NavGroup = { label: string | null; entries: NavEntry[] };
+
 const ICONS = {
   inbox: InboxIcon,
   projects: ProjectsIcon,
@@ -69,15 +83,13 @@ function NavLink({
 }
 
 export function Sidebar({
-  main,
-  management,
+  groups,
   userName,
   userRole,
   signOut,
   themeToggle,
 }: {
-  main: NavEntry[];
-  management: NavEntry[];
+  groups: NavGroup[];
   userName: string;
   userRole: string;
   signOut: React.ReactNode;
@@ -207,34 +219,29 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav aria-label="Main" className="mt-6 grid gap-1">
-          {main.map((e) => (
-            <NavLink
-              key={e.href}
-              entry={e}
-              active={isActive(e.href)}
-              onNavigate={close}
-            />
-          ))}
+        <nav aria-label="Main" className="mt-6 flex flex-col gap-5">
+          {groups
+            .filter((g) => g.entries.length > 0)
+            .map((g, i) => (
+              <div key={g.label ?? `g${i}`}>
+                {g.label && (
+                  <p className="mx-2.5 mb-1.5 text-2xs font-bold tracking-[.14em] text-nav-fg-subtle">
+                    {g.label}
+                  </p>
+                )}
+                <div className="grid gap-1">
+                  {g.entries.map((e) => (
+                    <NavLink
+                      key={e.href}
+                      entry={e}
+                      active={isActive(e.href)}
+                      onNavigate={close}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
         </nav>
-
-        {management.length > 0 && (
-          <div className="mt-7 border-t border-nav-border pt-5">
-            <p className="mx-2.5 mb-2 text-2xs font-bold tracking-[.14em] text-nav-fg-subtle">
-              MANAGEMENT
-            </p>
-            <div className="grid gap-1">
-              {management.map((e) => (
-                <NavLink
-                  key={e.href}
-                  entry={e}
-                  active={isActive(e.href)}
-                  onNavigate={close}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
         <div className="mt-auto border-t border-nav-border pt-4">
           <div className="mb-3 px-1.5">{themeToggle}</div>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -20,9 +21,19 @@ export const metadata = { title: "Log work" };
  *
  * `/` stays the partner view; this is where the people doing the work land.
  */
-export default async function LogPage() {
+export default async function LogPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string }>;
+}) {
   const actor = await getActor();
   if (!actor) redirect("/login");
+
+  /* `?project=` narrows this page to one project. It is how the project page's
+     rail now offers "log work" — a link here rather than a second copy of the
+     form. One form, one set of validation rules, and an unambiguous answer to
+     "where do I log my hours". */
+  const only = (await searchParams).project ?? null;
 
 
   const [scope] = await Promise.all([
@@ -89,7 +100,9 @@ export default async function LogPage() {
         )
         .orderBy(asc(projects.name));
 
-  const taskItems: QuickLogTask[] = rows.map((r) => ({
+  const inScope = (projectId: string) => only === null || projectId === only;
+
+  const taskItems: QuickLogTask[] = rows.filter((r) => inScope(r.projectId)).map((r) => ({
     taskId: r.taskId,
     projectId: r.projectId,
     projectName: r.projectName,
@@ -100,7 +113,7 @@ export default async function LogPage() {
     loggedHours: r.loggedHours,
   }));
 
-  const generalItems: QuickLogTask[] = projectRows.map((p) => ({
+  const generalItems: QuickLogTask[] = projectRows.filter((p) => inScope(p.id)).map((p) => ({
     taskId: null,
     projectId: p.id,
     projectName: p.clientName ?? p.name,
@@ -111,6 +124,13 @@ export default async function LogPage() {
     loggedHours: "0",
   }));
 
+  const narrowedTo =
+    only === null
+      ? null
+      : (projectRows.find((p) => p.id === only)?.name ??
+        rows.find((r) => r.projectId === only)?.projectName ??
+        "this project");
+
   return (
     <>
       <SectionIntro
@@ -118,6 +138,18 @@ export default async function LogPage() {
         title="Log work"
         description="Your open tasks. Tap one, put in the hours and a line about what you did — that is the whole job."
       />
+
+      {/* r35: a narrowed view says so, and offers the way out. Arriving from a
+          project's rail should not look like "you have one task". */}
+      {narrowedTo && (
+        <p className="mb-5 flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+          Showing <strong className="font-bold text-fg">{narrowedTo}</strong>{" "}
+          only.
+          <Link href="/log" className="btn-secondary btn-xs">
+            Show every project
+          </Link>
+        </p>
+      )}
 
       {taskItems.length > 0 ? (
         <section className="panel mb-4">
