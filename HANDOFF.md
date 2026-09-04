@@ -42,17 +42,14 @@ margin modules, and `pnpm db:backfill-costs`. Detail in `docs/ROADMAP.md`.
 Since then, three more things landed:
 
 - **Google sign-in.** One `maySignIn` rule for both providers, **no
-  auto-provisioning** — an address with no `users` row is refused. The DB lookup
-  is in the Node instance, never `auth.config.ts`, which the edge proxy imports.
-  Needs `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` from a Google Cloud OAuth *Web
-  application* client (NOT the Sheets service account) or the button stays hidden.
-- **Phase 2B.1/2B.2.** `PageHeader` (five bands) with `SectionIntro`
-  reimplemented on top, so the eleven existing pages migrate as they are rebuilt.
-  `DateRangeStepper` + `stepRange`; `/reports` migrated.
-- **In-app scheduler (migration `0020`).** `/api/heartbeat` + `src/server/scheduler.ts`.
-  The browser is a clock source only; the server decides what is due from
-  `job_runs`. **This removes the "hosting blocks the scheduler" dependency** that
-  used to head this file's blockers.
+  auto-provisioning**. Needs `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` from a Google
+  OAuth *Web application* client (NOT the Sheets service account), or the button
+  stays hidden. Its DB lookup must never move into `auth.config.ts` (edge).
+- **Phase 2B.1/2B.2.** `PageHeader` (five bands); `SectionIntro` reimplemented on
+  it so pages migrate as rebuilt. `DateRangeStepper`; `/reports` migrated.
+- **In-app scheduler (migration `0020`).** `/api/heartbeat` +
+  `src/server/scheduler.ts`. Browser is a clock source only; the server decides
+  what is due from `job_runs`. **Removes the hosting-blocks-automation chain.**
 
 ## Next Steps
 
