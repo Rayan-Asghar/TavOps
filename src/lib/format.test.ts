@@ -119,4 +119,11 @@ describe("money", () => {
     expect(money(null)).toBe("—");
     expect(money(0)).toBe("$0");
   });
+
+  it("honours a currency other than the default", () => {
+    // A PKR figure rendered with a dollar sign is a wrong number that looks right.
+    expect(money(12500, "PKR")).toContain("12,500");
+    expect(money(12500, "PKR")).not.toContain("$");
+    expect(money(12500, "EUR")).toContain("€");
+  });
 });

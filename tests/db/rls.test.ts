@@ -1,12 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
-import { projectFinancials, userRates } from "@/db/schema";
+import { projectFinancials, userRates, workLogCosts } from "@/db/schema";
 import {
+  makeCost,
   makeFinancials,
   makeProject,
   makeRate,
   makeUser,
+  makeWorkLog,
   owner,
   resetDb,
 } from "./harness";
@@ -91,6 +93,75 @@ describe("user_rates", () => {
   });
 });
 
+describe("work_log_costs", () => {
+  async function costedLog() {
+    const projectId = await makeProject({});
+    const userId = await makeUser({});
+    const { id, revisionId } = await makeWorkLog({ projectId, userId });
+    await makeCost({
+      workLogId: id,
+      revisionId,
+      costAmount: "31.25",
+      revenueAmount: "125.00",
+    });
+    return id;
+  }
+
+  it("hides what an hour cost from an ordinary query", async () => {
+    const workLogId = await costedLog();
+
+    const rows = await db
+      .select()
+      .from(workLogCosts)
+      .where(eq(workLogCosts.workLogId, workLogId));
+
+    expect(rows).toEqual([]);
+  });
+
+  it("returns the cost inside withFinanceAccess", async () => {
+    const workLogId = await costedLog();
+
+    const rows = await withFinanceAccess((tx) =>
+      tx
+        .select()
+        .from(workLogCosts)
+        .where(eq(workLogCosts.workLogId, workLogId)),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].costAmount).toBe("31.25");
+    expect(rows[0].revenueAmount).toBe("125.00");
+  });
+
+  it("refuses an insert that has not opted in", async () => {
+    const projectId = await makeProject({});
+    const userId = await makeUser({});
+    const { id, revisionId } = await makeWorkLog({ projectId, userId });
+
+    await expect(
+      db.insert(workLogCosts).values({
+        workLogId: id,
+        revisionId,
+        basis: "rated",
+        costAmount: "1.00",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("keeps every cost-bearing column OFF work_logs", async () => {
+    // The reason work_log_costs is a separate table at all. work_logs is read
+    // by the grid, both CSV exports and reports.ts::timesheet, none of which
+    // open the finance gate — so a rate or cost column landing here would
+    // retire the backstop silently, with every other test still passing.
+    const rows = await owner`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'work_logs'
+         AND (column_name LIKE '%cost%' OR column_name LIKE '%rate%')`;
+
+    expect(rows.map((r) => r.column_name)).toEqual([]);
+  });
+});
+
 describe("the opt-in is scoped to its transaction", () => {
   it("does not leak to the next query on the same pooled connection", async () => {
     const projectId = await makeProject({});
@@ -124,16 +195,18 @@ describe("the opt-in is scoped to its transaction", () => {
 });
 
 describe("the configuration the backstop depends on", () => {
-  it("keeps RLS enabled AND forced on both tables", async () => {
+  it("keeps RLS enabled AND forced on every protected table", async () => {
     // ENABLE alone exempts the table owner. FORCE is what removes that
     // exemption, and a future migration recreating either table would silently
     // drop both flags — the policies would still exist and read as protection.
     const rows = await owner`
       SELECT relname, relrowsecurity, relforcerowsecurity
         FROM pg_class
-       WHERE relname IN ('project_financials', 'user_rates')`;
+       WHERE relname IN ('project_financials', 'user_rates', 'work_log_costs')`;
 
-    expect(rows).toHaveLength(2);
+    // Deliberately a count and not a subset check: a new table joining the
+    // finance family has to be added here consciously.
+    expect(rows).toHaveLength(3);
     for (const r of rows) {
       expect(r.relrowsecurity, `${r.relname} RLS enabled`).toBe(true);
       expect(r.relforcerowsecurity, `${r.relname} RLS forced`).toBe(true);
@@ -143,9 +216,9 @@ describe("the configuration the backstop depends on", () => {
   it("keeps a policy on each protected table", async () => {
     const rows = await owner`
       SELECT tablename FROM pg_policies
-       WHERE tablename IN ('project_financials', 'user_rates')`;
+       WHERE tablename IN ('project_financials', 'user_rates', 'work_log_costs')`;
     expect(new Set(rows.map((r) => r.tablename))).toEqual(
-      new Set(["project_financials", "user_rates"]),
+      new Set(["project_financials", "user_rates", "work_log_costs"]),
     );
   });
 

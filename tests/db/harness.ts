@@ -18,6 +18,7 @@ export const owner = postgres(OWNER_URL, { max: 2 });
 
 /** Everything the fixtures touch, children first. */
 const TABLES = [
+  "work_log_costs",
   "sync_jobs",
   "sheet_row_links",
   "sheet_connections",
@@ -30,8 +31,10 @@ const TABLES = [
   "blockers",
   "tasks",
   "project_members",
+  "task_types",
   "project_financials",
   "user_rates",
+  "retainer_periods",
   "projects",
   "clients",
   "team_members",
@@ -120,13 +123,44 @@ export async function makeFinancials(projectId: string, contractValue: string) {
   });
 }
 
-export async function makeRate(userId: string, costPerHour: string) {
+export async function makeRate(
+  userId: string,
+  costPerHour: string,
+  opts: {
+    billableRate?: string | null;
+    currency?: string;
+    /** Half-open: [effectiveFrom, effectiveTo). */
+    effectiveFrom?: string;
+    effectiveTo?: string | null;
+  } = {},
+) {
+  const id = randomUUID();
   await owner.begin(async (tx) => {
     await tx.unsafe(`SET LOCAL tavren.finance_access = 'on'`);
     await tx`
-      INSERT INTO user_rates (user_id, internal_cost_per_hour)
-      VALUES (${userId}, ${costPerHour})`;
+      INSERT INTO user_rates (id, user_id, internal_cost_per_hour,
+                              billable_rate_per_hour, currency,
+                              effective_from, effective_to)
+      VALUES (${id}, ${userId}, ${costPerHour},
+              ${opts.billableRate ?? null}, ${opts.currency ?? "USD"},
+              ${opts.effectiveFrom ?? "2000-01-01T00:00:00Z"},
+              ${opts.effectiveTo ?? null})`;
   });
+  return id;
+}
+
+/** A kind of work, which is what decides whether an hour bills. */
+export async function makeTaskType(opts: {
+  name?: string;
+  billable?: boolean;
+  defaultBillableRate?: string | null;
+}) {
+  const id = randomUUID();
+  await owner`
+    INSERT INTO task_types (id, name, billable, default_billable_rate)
+    VALUES (${id}, ${opts.name ?? `type-${id.slice(0, 8)}`},
+            ${opts.billable ?? true}, ${opts.defaultBillableRate ?? null})`;
+  return id;
 }
 
 /** A work log, with its v1 revision, ready to be mirrored. */
@@ -138,6 +172,8 @@ export async function makeWorkLog(opts: {
   notes?: string;
   workDate?: string;
   status?: string | null;
+  billable?: boolean;
+  taskTypeId?: string | null;
 }) {
   const id = randomUUID();
   const revisionId = randomUUID();
@@ -145,10 +181,12 @@ export async function makeWorkLog(opts: {
 
   await owner`
     INSERT INTO work_logs (id, project_id, task_id, user_id, work_date, hours,
-                           internal_notes, resulting_status, current_revision_id)
+                           internal_notes, resulting_status, current_revision_id,
+                           billable, task_type_id)
     VALUES (${id}, ${opts.projectId}, ${opts.taskId ?? null}, ${opts.userId},
             ${`${date}T12:00:00Z`}, ${opts.hours ?? "2.50"},
-            ${opts.notes ?? "Did the thing."}, ${opts.status ?? null}, ${revisionId})`;
+            ${opts.notes ?? "Did the thing."}, ${opts.status ?? null}, ${revisionId},
+            ${opts.billable ?? true}, ${opts.taskTypeId ?? null})`;
 
   await owner`
     INSERT INTO worklog_revisions (id, work_log_id, version, work_date, hours,
@@ -157,6 +195,28 @@ export async function makeWorkLog(opts: {
             ${opts.notes ?? "Did the thing."}, ${opts.userId})`;
 
   return { id, revisionId };
+}
+
+/** A cost row for an existing work log. Needs the finance opt-in, like the
+ *  rates it is derived from. */
+export async function makeCost(opts: {
+  workLogId: string;
+  revisionId: string;
+  basis?: "rated" | "unrated" | "ambiguous";
+  rateId?: string | null;
+  costAmount?: string | null;
+  revenueAmount?: string | null;
+  currency?: string | null;
+}) {
+  await owner.begin(async (tx) => {
+    await tx.unsafe(`SET LOCAL tavren.finance_access = 'on'`);
+    await tx`
+      INSERT INTO work_log_costs (work_log_id, revision_id, basis, rate_id,
+                                  cost_amount, revenue_amount, currency)
+      VALUES (${opts.workLogId}, ${opts.revisionId}, ${opts.basis ?? "rated"},
+              ${opts.rateId ?? null}, ${opts.costAmount ?? null},
+              ${opts.revenueAmount ?? null}, ${opts.currency ?? "USD"})`;
+  });
 }
 
 /** A sheet belongs to a project. */

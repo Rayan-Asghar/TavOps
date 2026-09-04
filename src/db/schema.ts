@@ -200,6 +200,32 @@ export const proposalStatus = pgEnum("proposal_status", [
   "lost",
 ]);
 
+/**
+ * How a project earns. Lives on `projects` and not on `project_financials`,
+ * which is RLS-gated: contract value is sensitive, the shape of the deal is
+ * not, and the project list has to badge it without opening the finance gate.
+ */
+export const billingModel = pgEnum("billing_model", [
+  "time_and_materials",
+  "fixed_fee",
+  "retainer",
+]);
+
+export const retainerPeriodStatus = pgEnum("retainer_period_status", [
+  "open",
+  "closed",
+]);
+
+/**
+ * Why a work log's cost is what it is. `unrated` and `ambiguous` carry null
+ * amounts and are reported as such — a missing cost is shown, never guessed.
+ */
+export const costBasis = pgEnum("cost_basis", [
+  "rated",
+  "unrated",
+  "ambiguous",
+]);
+
 
 /* ------------------------------------------------------------------ *
  * People
@@ -232,25 +258,37 @@ export const users = pgTable(
  *  damaging thing in this system to leak internally. Nothing joins this into
  *  a shared DTO — it is read only by explicit admin-scoped queries, and RLS
  *  is enabled on it as a backstop. */
-export const userRates = pgTable("user_rates", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  internalCostPerHour: numeric("internal_cost_per_hour", {
-    precision: 10,
-    scale: 2,
-  }).notNull(),
-  billableRatePerHour: numeric("billable_rate_per_hour", {
-    precision: 10,
-    scale: 2,
-  }),
-  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
-  effectiveFrom: timestamp("effective_from", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  effectiveTo: timestamp("effective_to", { withTimezone: true }),
-});
+export const userRates = pgTable(
+  "user_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    internalCostPerHour: numeric("internal_cost_per_hour", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    billableRatePerHour: numeric("billable_rate_per_hour", {
+      precision: 10,
+      scale: 2,
+    }),
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    effectiveTo: timestamp("effective_to", { withTimezone: true }),
+  },
+  (t) => [
+    index("user_rates_user_from_idx").on(t.userId, t.effectiveFrom),
+    /* At most one open-ended rate per person. The resolver refuses ambiguity
+     * rather than picking the newest — picking would make an entry's cost
+     * depend on insertion order — but the database should not permit it. */
+    uniqueIndex("user_rates_one_open_per_user")
+      .on(t.userId)
+      .where(sql`${t.effectiveTo} IS NULL`),
+  ],
+);
 
 /**
  * Teams are deliberately many-to-many.
@@ -337,6 +375,9 @@ export const projects = pgTable(
     internalDueDate: timestamp("internal_due_date", { withTimezone: true }),
     clientDueDate: timestamp("client_due_date", { withTimezone: true }),
     description: text("description"),
+    billingModel: billingModel("billing_model")
+      .default("time_and_materials")
+      .notNull(),
     /** Work dated on or before this is locked: developers cannot edit or delete
      *  a log that has already been billed. */
     invoicedThrough: date("invoiced_through"),
@@ -392,9 +433,76 @@ export const projectMembers = pgTable(
   ],
 );
 
+/**
+ * One billing period of a retainer.
+ *
+ * A retainer is periodic, so its budget, burn and margin are all per period —
+ * a lifetime "budget burn" on a retainer means nothing. `rolloverHours` is
+ * stored rather than derived because whether unused hours carry forward is a
+ * commercial decision made per client; deriving it would bake one client's
+ * contract into the code.
+ */
+export const retainerPeriods = pgTable(
+  "retainer_periods",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    /** Inclusive, like `projects.invoicedThrough` and unlike a rate window. */
+    periodEnd: date("period_end").notNull(),
+    includedHours: numeric("included_hours", { precision: 8, scale: 2 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }),
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    /** Carried in from the period before, if that client's contract allows it. */
+    rolloverHours: numeric("rollover_hours", { precision: 8, scale: 2 })
+      .default("0")
+      .notNull(),
+    status: retainerPeriodStatus("status").default("open").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("retainer_periods_project_start_unique").on(
+      t.projectId,
+      t.periodStart,
+    ),
+  ],
+);
+
 /* ------------------------------------------------------------------ *
  * Work
  * ------------------------------------------------------------------ */
+
+/**
+ * The billable catalogue: Design, Programming, Business Development.
+ *
+ * Asking a person to classify every entry produces entries that are never
+ * logged. Inheriting billability from the kind of work produces the right
+ * answer without anyone remembering anything, and Business Development —
+ * real work that no client pays for — is the case this exists for.
+ */
+export const taskTypes = pgTable(
+  "task_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 80 }).notNull(),
+    billable: boolean("billable").default(true).notNull(),
+    defaultBillableRate: numeric("default_billable_rate", {
+      precision: 10,
+      scale: 2,
+    }),
+    orderIndex: integer("order_index").default(0).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("task_types_name_unique").on(t.name)],
+);
 
 export const tasks = pgTable(
   "tasks",
@@ -409,6 +517,10 @@ export const tasks = pgTable(
       onDelete: "set null",
     }),
     status: taskStatus("status").default("todo").notNull(),
+    /** What kind of work this is, which is what decides whether it bills. */
+    taskTypeId: uuid("task_type_id").references(() => taskTypes.id, {
+      onDelete: "set null",
+    }),
     estimatedHours: numeric("estimated_hours", { precision: 6, scale: 2 }),
     dueDate: timestamp("due_date", { withTimezone: true }),
     priority: integer("priority").default(3).notNull(),
@@ -426,6 +538,7 @@ export const tasks = pgTable(
     index("tasks_project_idx").on(t.projectId),
     index("tasks_assignee_idx").on(t.assigneeId),
     index("tasks_status_idx").on(t.status),
+    index("tasks_task_type_idx").on(t.taskTypeId),
   ],
 );
 
@@ -449,6 +562,16 @@ export const workLogs = pgTable(
       .defaultNow()
       .notNull(),
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
+    /** Carried here as well as on the task because `taskId` is nullable: client
+     *  calls, scoping sessions and internal meetings have no task, and those
+     *  are exactly the entries whose billability is in question. */
+    taskTypeId: uuid("task_type_id").references(() => taskTypes.id, {
+      onDelete: "set null",
+    }),
+    /** Resolved once at write time — entry override, then task type, then
+     *  project default, then true — and stored. Resolving at read time would
+     *  let a change to a task type restate already-invoiced history. */
+    billable: boolean("billable").default(true).notNull(),
     /** The one note a work log carries. Internal, like everything here. */
     internalNotes: text("internal_notes").notNull(),
     /** Status the developer moved the task to with this entry, if any. */
@@ -472,6 +595,12 @@ export const workLogs = pgTable(
     index("work_logs_task_idx").on(t.taskId),
     index("work_logs_user_date_idx").on(t.userId, t.workDate),
     index("work_logs_live_idx").on(t.projectId, t.deletedAt),
+    /* Partial on purpose. `billable` is overwhelmingly true, so an index over
+     * all of it would never be chosen; the selective question is "show me the
+     * non-billable time", and that is the one worth an index. */
+    index("work_logs_nonbillable_idx")
+      .on(t.projectId, t.workDate)
+      .where(sql`${t.billable} = false AND ${t.deletedAt} IS NULL`),
   ],
 );
 
@@ -495,6 +624,9 @@ export const worklogRevisions = pgTable(
     hours: numeric("hours", { precision: 5, scale: 2 }).notNull(),
     statusAfter: text("status_after"),
     internalNotes: text("internal_notes"),
+    /** A billing fact, so it belongs on the chain: "who flipped this to
+     *  non-billable, and when" must have an answer, like the hours do. */
+    billable: boolean("billable").default(true).notNull(),
     isReversal: boolean("is_reversal").default(false).notNull(),
     changedByUserId: uuid("changed_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -510,6 +642,55 @@ export const worklogRevisions = pgTable(
     index("worklog_revisions_log_idx").on(t.workLogId, t.changedAt),
   ],
 );
+
+/**
+ * What one work log cost, and what it earned, at the rates in force on the day
+ * the work happened.
+ *
+ * A SEPARATE TABLE, and this is the load-bearing decision in the money layer.
+ * The obvious implementation is `work_logs.internal_cost_per_hour`. That would
+ * put pay data on the table `grid-queries.ts`, `reports.ts::timesheet`, both
+ * CSV export routes and the timesheet grid all select from — and would retire
+ * the finance RLS backstop overnight, silently, with no test failing. Keeping
+ * cost in its own RLS-forced table leaves every existing query exactly as
+ * leak-proof as it is today. `tests/db/rls.test.ts` asserts `work_logs` has no
+ * column matching %cost% or %rate%, so this cannot quietly be undone.
+ *
+ * `revisionId` makes staleness a predicate rather than a hope: a cost is fresh
+ * when it equals `work_logs.currentRevisionId`. That is what lets Reports show
+ * "not costed: 14h" instead of implying the margin is complete.
+ *
+ * Amounts are null unless `basis` is `rated`. A missing cost is shown as
+ * missing — never zero, never today's rate, never a company average.
+ */
+export const workLogCosts = pgTable("work_log_costs", {
+  workLogId: uuid("work_log_id")
+    .primaryKey()
+    .references(() => workLogs.id, { onDelete: "cascade" }),
+  revisionId: uuid("revision_id")
+    .notNull()
+    .references(() => worklogRevisions.id, { onDelete: "cascade" }),
+  basis: costBasis("basis").notNull(),
+  rateId: uuid("rate_id").references(() => userRates.id, {
+    onDelete: "set null",
+  }),
+  internalCostPerHour: numeric("internal_cost_per_hour", {
+    precision: 10,
+    scale: 2,
+  }),
+  billableRatePerHour: numeric("billable_rate_per_hour", {
+    precision: 10,
+    scale: 2,
+  }),
+  currency: varchar("currency", { length: 3 }),
+  /** Rounded to the cent once, here, so an aggregate is exactly the sum of the
+   *  rows a drill-down shows. Never rounded again downstream. */
+  costAmount: numeric("cost_amount", { precision: 12, scale: 2 }),
+  revenueAmount: numeric("revenue_amount", { precision: 12, scale: 2 }),
+  costedAt: timestamp("costed_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
 
 export const blockers = pgTable(
   "blockers",
@@ -957,12 +1138,12 @@ export const auditLog = pgTable(
  * Relations
  * ------------------------------------------------------------------ */
 
-export const usersRelations = relations(users, ({ many, one }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
   memberships: many(projectMembers),
   tasks: many(tasks),
   workLogs: many(workLogs),
   notifications: many(notifications),
-  rate: one(userRates),
+  rates: many(userRates),
 }));
 
 export const clientsRelations = relations(clients, ({ many }) => ({
@@ -970,6 +1151,7 @@ export const clientsRelations = relations(clients, ({ many }) => ({
 }));
 
 export const projectsRelations = relations(projects, ({ many, one }) => ({
+  retainerPeriods: many(retainerPeriods),
   client: one(clients, {
     fields: [projects.clientId],
     references: [clients.id],
@@ -1013,6 +1195,22 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   }),
   workLogs: many(workLogs),
   blockers: many(blockers),
+  taskType: one(taskTypes, {
+    fields: [tasks.taskTypeId],
+    references: [taskTypes.id],
+  }),
+}));
+
+export const taskTypesRelations = relations(taskTypes, ({ many }) => ({
+  tasks: many(tasks),
+  workLogs: many(workLogs),
+}));
+
+export const retainerPeriodsRelations = relations(retainerPeriods, ({ one }) => ({
+  project: one(projects, {
+    fields: [retainerPeriods.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const workLogsRelations = relations(workLogs, ({ one }) => ({
@@ -1022,6 +1220,26 @@ export const workLogsRelations = relations(workLogs, ({ one }) => ({
   }),
   task: one(tasks, { fields: [workLogs.taskId], references: [tasks.id] }),
   user: one(users, { fields: [workLogs.userId], references: [users.id] }),
+  taskType: one(taskTypes, {
+    fields: [workLogs.taskTypeId],
+    references: [taskTypes.id],
+  }),
+  /* Deliberately NOT joined into any shared DTO. See workLogCosts. */
+  cost: one(workLogCosts, {
+    fields: [workLogs.id],
+    references: [workLogCosts.workLogId],
+  }),
+}));
+
+export const workLogCostsRelations = relations(workLogCosts, ({ one }) => ({
+  workLog: one(workLogs, {
+    fields: [workLogCosts.workLogId],
+    references: [workLogs.id],
+  }),
+  revision: one(worklogRevisions, {
+    fields: [workLogCosts.revisionId],
+    references: [worklogRevisions.id],
+  }),
 }));
 
 export const blockersRelations = relations(blockers, ({ one }) => ({

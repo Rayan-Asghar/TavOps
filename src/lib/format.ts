@@ -88,12 +88,21 @@ export function pct(n: number | null | undefined): string {
   return n === null || n === undefined ? EM_DASH : `${Math.round(n * 100)}%`;
 }
 
-/** "$12,500" — whole dollars; cents are noise at agency contract sizes. */
-export function money(n: number | null | undefined): string {
+/**
+ * "$12,500" — whole dollars; cents are noise at agency contract sizes.
+ *
+ * The currency is a parameter and not a constant because `projectFinancials`,
+ * `userRates` and `proposals` each carry their own `currency` column. Formatting
+ * a PKR figure with a dollar sign is the kind of wrong number that gets believed.
+ */
+export function money(
+  n: number | null | undefined,
+  currency = "USD",
+): string {
   if (n === null || n === undefined) return EM_DASH;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 0,
   }).format(n);
 }
