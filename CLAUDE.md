@@ -14,3 +14,7 @@
   session needs to act.
 - Never scan the whole repo to rediscover state. HANDOFF.md +
   PROGRESS.md + CLAUDE.md are the source of truth for project state.
+- When a plan is finalized, write it to `docs/ROADMAP.md` in full —
+  the reasoning, not just the steps — with a checkbox Progress list at
+  the top. Update the checkboxes as phases land. A plan that lives only
+  in a session transcript is a plan the next session cannot follow.
