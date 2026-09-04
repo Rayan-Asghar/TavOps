@@ -7,7 +7,6 @@ await p.fill('input[name="email"]',"contact@tavren.io"); await p.fill('input[nam
 await Promise.all([p.waitForURL(u=>!u.pathname.startsWith("/login")).catch(()=>{}),p.click('button[type="submit"]')]);
 await p.waitForTimeout(1200);
 
-const toast = () => p.locator('[role="status"]').locator("..").locator("div.pointer-events-auto").first();
 const visible = async () => (await p.locator("div.pointer-events-auto").count()) > 0;
 
 // 1. dismiss a blocker -> toast appears, animates in
