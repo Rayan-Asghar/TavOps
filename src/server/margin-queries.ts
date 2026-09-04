@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
 import {
   projectFinancials,
@@ -275,4 +275,123 @@ export async function projectMoneyRows(
   });
 
   return out;
+}
+
+/**
+ * Cost and revenue over a reporting window, for the /reports strip.
+ *
+ * Scope is the caller's `accessibleProjectIds` — the same list the hours
+ * figures above it are built from, so the money describes exactly the rows the
+ * reader can see rather than a company total they cannot reconcile.
+ */
+export async function windowMargin(
+  range: { from: Date; to: Date },
+  scope: string[] | null,
+  role: GlobalRole,
+): Promise<ProjectMargin | null> {
+  if (!can(role, "finance.view")) return null;
+  if (scope !== null && scope.length === 0) return null;
+
+  const from = new Date(range.from);
+  from.setUTCHours(0, 0, 0, 0);
+  const toExclusive = new Date(range.to);
+  toExclusive.setUTCHours(0, 0, 0, 0);
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+
+  const rows = await withFinanceAccess((tx) =>
+    tx
+      .select({
+        hours: workLogs.hours,
+        billable: workLogs.billable,
+        userId: workLogs.userId,
+        costAmount: sql<
+          string | null
+        >`case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                 and ${workLogCosts.basis} = 'rated'
+            then ${workLogCosts.costAmount} end`,
+        revenueAmount: sql<
+          string | null
+        >`case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                 and ${workLogCosts.basis} = 'rated'
+            then ${workLogCosts.revenueAmount} end`,
+        currency: sql<
+          string | null
+        >`case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                 and ${workLogCosts.basis} = 'rated'
+            then ${workLogCosts.currency} end`,
+      })
+      .from(workLogs)
+      .leftJoin(workLogCosts, eq(workLogCosts.workLogId, workLogs.id))
+      .where(
+        and(
+          isNull(workLogs.deletedAt),
+          gte(workLogs.workDate, from),
+          lt(workLogs.workDate, toExclusive),
+          scope === null ? undefined : inArray(workLogs.projectId, scope),
+        ),
+      ),
+  );
+
+  const contributors = new Set(rows.map((r) => r.userId)).size;
+  const groupRows: GroupRow[] = rows.map((r) => ({
+    hours: r.hours,
+    billable: r.billable,
+    costAmount: r.costAmount,
+    revenueAmount: r.revenueAmount,
+    currency: r.currency,
+  }));
+
+  const suppressed = contributors < 2 && !can(role, "rates.view");
+  return {
+    totals: marginTotals(groupRows),
+    money: suppressed
+      ? { ok: false, reason: "not-costed" }
+      : marginMoney(groupRows),
+    contributors,
+    suppressed,
+  };
+}
+
+/**
+ * Which work logs in a window have no fresh, rated cost.
+ *
+ * Resolved here, behind the finance gate, and handed to `timesheet()` as a
+ * plain id list. The alternative -- a NOT EXISTS against `work_log_costs`
+ * inside `timesheet()` -- looks equivalent and is not: that helper runs
+ * ungated, so the subquery sees zero rows through RLS and the filter matches
+ * EVERY entry. It would not error; the "not costed" drill-down would simply
+ * show the whole timesheet.
+ */
+export async function uncostedWorkLogIds(
+  range: { from: Date; to: Date },
+  scope: string[] | null,
+  role: GlobalRole,
+): Promise<string[]> {
+  if (!can(role, "finance.view")) return [];
+  if (scope !== null && scope.length === 0) return [];
+
+  const from = new Date(range.from);
+  from.setUTCHours(0, 0, 0, 0);
+  const toExclusive = new Date(range.to);
+  toExclusive.setUTCHours(0, 0, 0, 0);
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+
+  const rows = await withFinanceAccess((tx) =>
+    tx
+      .select({ id: workLogs.id })
+      .from(workLogs)
+      .leftJoin(workLogCosts, eq(workLogCosts.workLogId, workLogs.id))
+      .where(
+        and(
+          isNull(workLogs.deletedAt),
+          gte(workLogs.workDate, from),
+          lt(workLogs.workDate, toExclusive),
+          scope === null ? undefined : inArray(workLogs.projectId, scope),
+          sql`(${workLogCosts.workLogId} IS NULL
+               OR ${workLogCosts.revisionId} IS DISTINCT FROM ${workLogs.currentRevisionId}
+               OR ${workLogCosts.basis} IS DISTINCT FROM 'rated')`,
+        ),
+      ),
+  );
+  return rows.map((r) => r.id);
 }

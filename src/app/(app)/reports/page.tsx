@@ -6,6 +6,8 @@ import { getActor } from "@/lib/auth";
 import { accessibleProjectIds } from "@/lib/access";
 import { can } from "@/lib/rbac";
 import { parseRange, toISODate } from "@/lib/report-range";
+import { windowMargin, uncostedWorkLogIds } from "@/server/margin-queries";
+import { parseReportFilters, reportFilterParams } from "@/lib/report-filters";
 import {
   budgetedHoursFor,
   personReport,
@@ -31,7 +33,12 @@ const TIMESHEET_PREVIEW = 60;
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    billable?: string;
+    costed?: string;
+  }>;
 }) {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -46,20 +53,33 @@ export default async function ReportsPage({
   const sp = await searchParams;
   const range = parseRange(sp.from, sp.to);
   const scope = await accessibleProjectIds(actor);
+  const filters = parseReportFilters(sp.billable, sp.costed);
+
+  // Resolved behind the finance gate BEFORE the timesheet query, because
+  // `timesheet` is shared with the CSV route and must stay ungated.
+  const uncostedIds = filters.uncostedOnly
+    ? await uncostedWorkLogIds(range, scope, role)
+    : undefined;
 
   // Everyone gets a report; what it contains narrows to what they may read.
   const seesEveryone = can(role, "worklog.viewAll");
   const seesMoney = can(role, "finance.view");
 
-  const [projectRows, personRows, sheet, days, recon] = await Promise.all([
+  const [projectRows, personRows, sheet, days, recon, margin] = await Promise.all([
     projectReport(range, scope),
     seesEveryone ? personReport(range, scope) : Promise.resolve([]),
     timesheet(range, scope, {
       limit: TIMESHEET_PREVIEW,
       userId: seesEveryone ? null : actor.id,
+      billable: filters.billable,
+      workLogIds: uncostedIds,
     }),
     hoursByDay(range, scope),
     reconciliation(range, scope),
+    // Scoped to exactly the projects the hours above are built from, so the
+    // money describes the rows this reader can see rather than a company total
+    // they have no way to reconcile.
+    windowMargin(range, scope, role),
   ]);
 
   // Money is fetched only when the role allows it, and only inside the RLS
@@ -69,7 +89,11 @@ export default async function ReportsPage({
     : new Map<string, number>();
 
   const totalHours = projectRows.reduce((s, p) => s + p.loggedHours, 0);
-  const exportHref = `/api/reports/timesheet?from=${toISODate(range.from)}&to=${toISODate(range.to)}`;
+  const exportHref = `/api/reports/timesheet?${new URLSearchParams({
+    from: toISODate(range.from),
+    to: toISODate(range.to),
+    ...reportFilterParams(filters),
+  })}`;
 
   return (
     <>
@@ -134,6 +158,7 @@ export default async function ReportsPage({
           totalHours={totalHours}
           seesEveryone={seesEveryone}
           recon={recon}
+          margin={margin}
           rangeHref={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}`}
         />
 

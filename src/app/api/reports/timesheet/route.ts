@@ -4,6 +4,8 @@ import { can } from "@/lib/rbac";
 import { parseRange, toISODate } from "@/lib/report-range";
 import { toCsv } from "@/lib/csv";
 import { timesheet } from "@/server/reports";
+import { uncostedWorkLogIds } from "@/server/margin-queries";
+import { parseReportFilters } from "@/lib/report-filters";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -17,6 +19,7 @@ const HEADERS = [
   "Project",
   "Task",
   "Hours",
+  "Billable",
   "Notes",
 ] as const;
 
@@ -46,10 +49,22 @@ export async function GET(req: Request) {
   const range = parseRange(url.searchParams.get("from"), url.searchParams.get("to"));
   const scope = await accessibleProjectIds(actor);
 
+  // The strip's drill-down, read by the SAME parser the screen uses, so a CSV
+  // downloaded from a filtered view covers exactly the rows that view showed.
+  const filters = parseReportFilters(
+    url.searchParams.get("billable"),
+    url.searchParams.get("costed"),
+  );
+  const uncostedIds = filters.uncostedOnly
+    ? await uncostedWorkLogIds(range, scope, role)
+    : undefined;
+
   // Same rule the project page uses: without worklog.viewAll you get your own
   // entries, on the projects you can reach.
   const rows = await timesheet(range, scope, {
     userId: can(role, "worklog.viewAll") ? null : actor.id,
+    billable: filters.billable,
+    workLogIds: uncostedIds,
   });
 
   const csv = toCsv(
@@ -61,6 +76,7 @@ export async function GET(req: Request) {
       r.projectName,
       r.taskTitle ?? "General project work",
       r.hours.toFixed(2),
+      r.billable ? "yes" : "no",
       r.notes,
     ]),
   );

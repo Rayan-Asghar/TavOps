@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BulletBar, ChartFrame, MiniBars, Sparkline } from "./charts";
 import { HealthBadge } from "./badges";
-import { hrs, pct } from "@/lib/format";
+import { hrs, money, pct } from "@/lib/format";
+import type { ProjectMargin } from "@/server/margin-queries";
 import type {
   DayHours,
   PersonReportRow,
@@ -36,6 +37,7 @@ export function ReportsVisual({
   totalHours,
   seesEveryone,
   recon,
+  margin,
   rangeHref,
 }: {
   days: DayHours[];
@@ -45,6 +47,8 @@ export function ReportsVisual({
   totalHours: number;
   seesEveryone: boolean;
   recon: Reconciliation;
+  /** Null when the reader does not hold `finance.view`. */
+  margin?: ProjectMargin | null;
   /** The current window, so each figure can link to the rows behind it. */
   rangeHref: string;
 }) {
@@ -74,18 +78,22 @@ export function ReportsVisual({
             note="everything in this window"
             href={`${rangeHref}#entries`}
           />
+          {/* 2.3 asks for the billable split, and it is buildable now that
+              work_logs.billable exists. It shares a total with the invoiced
+              split but is NOT a subdivision of it -- non-billable work can sit
+              behind a sent invoice -- so the two cannot share four cells. */}
           <ReconCell
-            label="Invoiced"
-            value={`${hrs(recon.invoiced)}h`}
-            note="behind a sent invoice, locked"
-            href={`${rangeHref}#entries`}
+            label="Billable"
+            value={`${hrs(recon.billable)}h`}
+            note="charged for at rate card"
+            href={`${rangeHref}&billable=yes#entries`}
           />
           <ReconCell
-            label="Not yet invoiced"
-            value={`${hrs(recon.uninvoiced)}h`}
-            note="done, not yet charged for"
-            href={`${rangeHref}#entries`}
-            emphasis
+            label="Non-billable"
+            value={`${hrs(recon.nonBillable)}h`}
+            note="internal, rework, meetings"
+            href={`${rangeHref}&billable=no#entries`}
+            emphasis={recon.nonBillable > 0}
           />
           <ReconCell
             label="Corrected"
@@ -102,11 +110,66 @@ export function ReportsVisual({
             href="/audit?action=work_log.edit"
           />
         </div>
+        {/* TIER 2. A second row, not more cells in the first: these figures
+            satisfy a different identity (revenue - cost = margin) and answer to
+            a different capability. Mixing them into one row of four would break
+            whichever identity lost. */}
+        {margin && margin.money.ok && (
+          <div className="grid grid-cols-2 gap-px border-t border-border bg-border lg:grid-cols-4">
+            <ReconCell
+              label="Revenue"
+              value={money(Number(margin.money.revenueAmount), margin.money.currency)}
+              note="billable hours at rate card"
+              href={`${rangeHref}&billable=yes#entries`}
+            />
+            <ReconCell
+              label="Cost"
+              value={money(Number(margin.money.costAmount), margin.money.currency)}
+              note="all hours at internal cost"
+              href={`${rangeHref}#entries`}
+            />
+            <ReconCell
+              label="Gross margin"
+              value={money(Number(margin.money.grossMargin), margin.money.currency)}
+              note={`${pct(margin.money.grossMarginPct)} of revenue`}
+              href={`${rangeHref}#entries`}
+              emphasis={Number(margin.money.grossMargin) < 0}
+            />
+            {/* The honesty cell. Without it the three figures beside it read as
+                complete, when they omit everyone whose rate is not set. */}
+            <ReconCell
+              label="Not costed"
+              value={`${hrs(Number(margin.totals.uncostedHours))}h`}
+              note={
+                Number(margin.totals.uncostedHours) > 0
+                  ? "no rate covers these"
+                  : "everything is costed"
+              }
+              href={`${rangeHref}&costed=no#entries`}
+              emphasis={Number(margin.totals.uncostedHours) > 0}
+            />
+          </div>
+        )}
+
+        {margin && !margin.money.ok && (
+          <p className="m-0 border-t border-border px-5 py-2.5 text-2xs text-warn">
+            {margin.money.reason === "currency-mismatch"
+              ? `Costs here are in more than one currency (${margin.money.currencies.join(", ")}). Margin needs one currency or an exchange rate, and neither exists yet.`
+              : margin.suppressed
+                ? "Cost is hidden when a single person logged everything in the window — the figure would be their pay rate."
+                : "Nothing in this window has a rate yet, so there is no money to show. Set rates under People."}
+          </p>
+        )}
+
         {/* 2.3: say which date the report counts on. With correction history in
             the table below, "when the work happened" and "when it was restated"
             are different windows, and a reader cannot tell which they are seeing. */}
         <p className="m-0 border-t border-border px-5 py-2.5 text-2xs text-fg-muted">
-          Counted by <strong className="font-bold text-fg">entry date</strong> —
+          <strong className="font-bold text-fg">{hrs(recon.invoiced)}h</strong>{" "}
+          invoiced ·{" "}
+          <strong className="font-bold text-fg">{hrs(recon.uninvoiced)}h</strong>{" "}
+          not yet charged for. Counted by{" "}
+          <strong className="font-bold text-fg">entry date</strong> —
           when the work happened, not when it was logged or later corrected.
         </p>
       </section>

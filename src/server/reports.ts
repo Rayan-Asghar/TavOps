@@ -242,6 +242,7 @@ export type TimesheetRow = {
   projectName: string;
   taskTitle: string | null;
   hours: number;
+  billable: boolean;
   notes: string;
 };
 
@@ -249,13 +250,36 @@ export type TimesheetRow = {
 export async function timesheet(
   range: DateRange,
   scope: Scope,
-  opts: { limit?: number; userId?: string | null } = {},
+  opts: {
+    limit?: number;
+    userId?: string | null;
+    /** Drill-down from the reconciliation strip. Undefined means "both". */
+    billable?: boolean;
+    /**
+     * Narrows to these work logs. Used by the "not costed" drill-down, which
+     * resolves the ids in a finance-gated query FIRST — see
+     * `uncostedWorkLogIds`. This helper must stay ungated: it is shared with
+     * /api/reports/timesheet, and that shared-ness is what guarantees a CSV can
+     * never contain a row its requester could not see on screen.
+     */
+    workLogIds?: string[];
+  } = {},
 ): Promise<TimesheetRow[]> {
   const ids = scoped(scope);
 
   const conditions = [rangeFilter(range)];
   if (ids !== null) conditions.push(inArray(workLogs.projectId, ids));
   if (opts.userId) conditions.push(eq(workLogs.userId, opts.userId));
+  if (opts.billable !== undefined) {
+    conditions.push(eq(workLogs.billable, opts.billable));
+  }
+  if (opts.workLogIds) {
+    // An empty list means "nothing matched", which must return no rows. Left to
+    // inArray it would produce `IN ()` and match everything -- the failure mode
+    // that turns an empty drill-down into the whole table.
+    if (opts.workLogIds.length === 0) return [];
+    conditions.push(inArray(workLogs.id, opts.workLogIds));
+  }
 
   return db
     .select({
@@ -265,6 +289,7 @@ export async function timesheet(
       projectName: projects.name,
       taskTitle: tasks.title,
       hours: sql<number>`${workLogs.hours}::float`,
+      billable: workLogs.billable,
       notes: workLogs.internalNotes,
     })
     .from(workLogs)
@@ -352,6 +377,10 @@ export type Reconciliation = {
   invoiced: number;
   /** The rest — work done and not yet charged for. */
   uninvoiced: number;
+  /** Of everything logged, the part charged for at rate card. */
+  billable: number;
+  /** Internal work, rework and meetings — real cost, no revenue. */
+  nonBillable: number;
   /** Entries in the window that have been corrected at least once. */
   correctedEntries: number;
   /** Net hours those corrections moved, signed. */
@@ -393,7 +422,15 @@ export async function reconciliation(
 ): Promise<Reconciliation> {
   const ids = scoped(scope);
   if (ids !== null && ids.length === 0) {
-    return { logged: 0, invoiced: 0, uninvoiced: 0, correctedEntries: 0, correctedHours: 0 };
+    return {
+      logged: 0,
+      invoiced: 0,
+      uninvoiced: 0,
+      billable: 0,
+      nonBillable: 0,
+      correctedEntries: 0,
+      correctedHours: 0,
+    };
   }
 
   // A join rather than two passes: "invoiced" is a property of the work log's
@@ -405,6 +442,14 @@ export async function reconciliation(
       invoiced: sql<number>`coalesce(sum(${workLogs.hours}) filter (
         where ${projects.invoicedThrough} is not null
           and ${workLogs.workDate}::date <= ${projects.invoicedThrough}
+      ),0)::float`,
+      // A SECOND, ORTHOGONAL split of the same hours. Billable/non-billable and
+      // invoiced/uninvoiced both sum to `logged`, and neither is a subdivision
+      // of the other -- non-billable work can sit behind a sent invoice. That
+      // is why they are two tiers on screen rather than four cells fighting for
+      // one identity. Same query, no extra pass.
+      billable: sql<number>`coalesce(sum(${workLogs.hours}) filter (
+        where ${workLogs.billable}
       ),0)::float`,
     })
     .from(workLogs)
@@ -438,10 +483,15 @@ export async function reconciliation(
 
   const logged = split?.logged ?? 0;
   const invoiced = split?.invoiced ?? 0;
+  const billable = split?.billable ?? 0;
   return {
     logged,
     invoiced,
     uninvoiced: Math.max(0, logged - invoiced),
+    billable,
+    // Derived rather than summed separately, so the two halves cannot disagree
+    // with the total they are meant to add up to.
+    nonBillable: Math.max(0, logged - billable),
     correctedEntries: corrections?.entries ?? 0,
     correctedHours: corrections?.net ?? 0,
   };
