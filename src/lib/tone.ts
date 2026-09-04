@@ -1,3 +1,5 @@
+import type { notificationKind } from "@/db/schema";
+
 /**
  * Status-to-colour, in one place.
  *
@@ -64,9 +66,20 @@ export const SIGNAL_COLOR: Record<Signal, string> = {
   waiting: "bg-fg-muted",
 };
 
-/** Notification kinds, as the inbox presents them. */
+/** Every kind the schema allows. Deriving it means adding a value to the enum
+ *  fails to compile until it has been given a label and a stream. */
+export type NotificationKind = (typeof notificationKind.enumValues)[number];
+
+/**
+ * Notification kinds, as the inbox presents them.
+ *
+ * `Record<NotificationKind, …>` rather than `Record<string, …>`, and that is
+ * load-bearing: with `string` this map silently covered 9 of the 15 kinds, and
+ * the missing six rendered their raw enum name as a label. The compiler now
+ * refuses a partial map.
+ */
 export const KIND_META: Record<
-  string,
+  NotificationKind,
   { label: string; tone: Tone; signal: Signal }
 > = {
   blocker_opened: { label: "Blocker", tone: "red", signal: "critical" },
@@ -78,6 +91,12 @@ export const KIND_META: Record<
   update_missing: { label: "Reporting", tone: "amber", signal: "warning" },
   sync_failed: { label: "Sync failed", tone: "red", signal: "critical" },
   project_at_risk: { label: "At risk", tone: "amber", signal: "warning" },
+  feasibility_requested: { label: "Feasibility", tone: "violet", signal: "review" },
+  feasibility_answered: { label: "Answered", tone: "green", signal: "review" },
+  followup_due: { label: "Follow-up", tone: "amber", signal: "warning" },
+  timer_left_running: { label: "Timer running", tone: "amber", signal: "warning" },
+  review_approved: { label: "Approved", tone: "green", signal: "review" },
+  revision_requested: { label: "Changes asked", tone: "violet", signal: "review" },
 };
 
 /** Title-cases an enum value: `tech_lead` becomes "Tech Lead". */
@@ -101,38 +120,88 @@ export function humanizeRole(role: string): string {
  * blocking a person, waiting on your judgement, or drifting. Severity is already
  * carried by the row's stripe.
  */
-export type StreamKey = "blocked" | "review" | "slipping";
+export type StreamKey = "blocked" | "attention" | "slipping";
 
 export const STREAMS: {
   key: StreamKey;
   label: string;
   /** What finishing this stream means, for its cleared state. */
   cleared: string;
-  kinds: string[];
 }[] = [
   {
     key: "blocked",
     label: "Blocked",
     cleared: "Nobody is waiting on an unblock.",
-    kinds: ["blocker_opened", "blocker_escalated"],
   },
   {
-    key: "review",
-    label: "Needs your review",
-    cleared: "Every submission has been through you.",
-    kinds: ["task_needs_review"],
+    key: "attention",
+    label: "Waiting on you",
+    cleared: "Nothing is waiting on your call.",
   },
   {
     key: "slipping",
     label: "Slipping",
     cleared: "Nothing is drifting.",
-    kinds: ["task_stalled", "update_missing", "project_at_risk", "sync_failed"],
   },
 ];
 
-/** Anything unmapped falls into `slipping` rather than disappearing. */
+/**
+ * Which stream each kind belongs to.
+ *
+ * Exhaustive over the enum on purpose. The first version listed kinds per stream
+ * and fell back to `slipping` for anything unlisted, which silently put
+ * "Assigned: About Page" under Slipping — being handed a task is not a slip, and
+ * the person reading it went looking for a problem that did not exist. Eight of
+ * the fifteen kinds were landing there.
+ *
+ * A fallback is the wrong shape for this: miscategorising quietly is worse than
+ * failing to build. Adding a kind to the enum now breaks the compile until it is
+ * placed here deliberately.
+ */
+export const STREAM_OF: Record<NotificationKind, StreamKey> = {
+  // Someone is stuck and needs a person to move.
+  blocker_opened: "blocked",
+  blocker_escalated: "blocked",
+
+  // Waiting on your judgement or your hands.
+  task_needs_review: "attention",
+  task_assigned: "attention",
+  feasibility_requested: "attention",
+  revision_requested: "attention",
+  followup_due: "attention",
+
+  // Drifting on its own, with nobody yet asking.
+  task_stalled: "slipping",
+  update_missing: "slipping",
+  project_at_risk: "slipping",
+  sync_failed: "slipping",
+  timer_left_running: "slipping",
+
+  // Resolutions. These arrive non-actionable and read in the Recent feed rather
+  // than the queue, but they still need a home if one is ever raised actionable.
+  blocker_resolved: "attention",
+  review_approved: "attention",
+  feasibility_answered: "attention",
+};
+
 export function streamOf(kind: string): StreamKey {
+  return STREAM_OF[kind as NotificationKind] ?? "attention";
+}
+
+/**
+ * Meta for a kind that arrived as a plain string — from a database row, where
+ * the enum has been widened to `string` on the way through.
+ *
+ * The fallback is a genuine unknown rather than a guess at a category: label it
+ * as the raw kind so it is obviously unhandled, and give it the quietest signal
+ * so an unrecognised row cannot shout.
+ */
+export function metaFor(kind: string): { label: string; tone: Tone; signal: Signal } {
   return (
-    STREAMS.find((s) => s.kinds.includes(kind))?.key ?? "slipping"
+    KIND_META[kind as NotificationKind] ?? {
+      label: kind.replace(/_/g, " "),
+      tone: "neutral",
+      signal: "waiting",
+    }
   );
 }

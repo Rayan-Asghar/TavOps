@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Badge, type Tone } from "./badges";
+import { Badge } from "./badges";
 import { ArrowRightIcon } from "./icons";
 import { SnoozeButton } from "./snooze-button";
 import { DismissButton } from "./dismiss-button";
-import { KIND_META, SIGNAL_COLOR, type Signal } from "@/lib/tone";
+import { metaFor, SIGNAL_COLOR, type Signal } from "@/lib/tone";
 import { timeAgo } from "@/lib/format";
 
 /**
@@ -53,11 +53,7 @@ export function AttentionQueue({ items }: { items: QueueItem[] }) {
   return (
     <ul>
       {items.map((n) => {
-        const meta = KIND_META[n.kind] ?? {
-          label: n.kind,
-          tone: "neutral" as Tone,
-          signal: "waiting" as Signal,
-        };
+        const meta = metaFor(n.kind);
         const href = hrefFor(n);
         return (
           <li

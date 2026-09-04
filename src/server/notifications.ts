@@ -87,12 +87,19 @@ export async function unresolvedCount(userId: string): Promise<number> {
       /**
        * 2.5: the counter shows total outstanding, never "unread", so the number
        * only falls when you act. Snoozing IS acting — a deferred item is not
-       * something you still owe today — so it leaves the count, and returns to
-       * it when the snooze lapses.
+       * something you still owe today — so it leaves the count, and returns
+       * when the snooze lapses.
+       *
+       * Actionable only, which was the missing half. Informational rows —
+       * "Approved: PDP template" — are things that happened TO you, with nothing
+       * to do about them, so counting them meant a badge that could not be
+       * cleared by working. A number that never reaches zero is the alert
+       * fatigue r18 warns about, and it was reading 4 on a queue with one item.
        */
       and(
         eq(notifications.userId, userId),
         isNull(notifications.resolvedAt),
+        eq(notifications.isActionable, true),
         notSnoozed,
       ),
     );

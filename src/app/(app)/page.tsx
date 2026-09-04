@@ -12,12 +12,12 @@ import { MiniBars } from "@/components/charts";
 import { AttentionQueue } from "@/components/attention-queue";
 import { UnsnoozeButton } from "@/components/unsnooze-button";
 import { SectionIntro } from "@/components/app-shell";
-import { Badge, HealthBadge, type Tone } from "@/components/badges";
+import { Badge, HealthBadge } from "@/components/badges";
 
 import { timeAgo } from "@/lib/format";
 
 
-import { KIND_META, STREAMS, streamOf, type Signal } from "@/lib/tone";
+import { metaFor, STREAMS, streamOf } from "@/lib/tone";
 import { EmptyState } from "@/components/ui";
 import { CheckIcon } from "@/components/icons";
 
@@ -62,7 +62,7 @@ export default async function InboxPage() {
   const informational = items.filter((i) => !i.isActionable);
   const fortnightTotal = days.reduce((sum, d) => sum + d.hours, 0);
   const urgent = actionable.filter(
-    (i) => KIND_META[i.kind]?.signal === "critical",
+    (i) => metaFor(i.kind).signal === "critical",
   ).length;
 
   return (
@@ -163,45 +163,59 @@ export default async function InboxPage() {
           reporting gaps land here the moment they are routed to you.
         </EmptyState>
       ) : (
-        STREAMS.map((stream) => {
-        const rows = actionable.filter((n) => streamOf(n.kind) === stream.key);
-        return (
-          <section key={stream.key} className="panel mb-4">
-            <div className="panel-head">
-              <div>
-                <p className="eyebrow">{stream.label.toUpperCase()}</p>
-                <h3 className="m-0 text-xl tracking-[-.035em]">
-                  {rows.length > 0
-                    ? `${rows.length} item${rows.length === 1 ? "" : "s"}`
-                    : "Clear"}
-                </h3>
-              </div>
-              {rows.length === 0 && (
-                <span className="inline-flex items-center gap-1.5 text-2xs font-bold text-ok">
-                  <CheckIcon /> Done
-                </span>
-              )}
-            </div>
+        <>
+          {/* Only streams with something in them get a panel. The first version
+              gave all three one regardless, so a person with a single item
+              scrolled past two full-height panels that existed to say "Clear" —
+              1.2 is explicit that calm comes from removing chrome, and an empty
+              container is chrome. The empty ones collapse to the line below,
+              which still makes per-stream zero visible (2.5) at a fraction of
+              the height. */}
+          {STREAMS.filter((stream) =>
+            actionable.some((n) => streamOf(n.kind) === stream.key),
+          ).map((stream) => {
+            const rows = actionable.filter(
+              (n) => streamOf(n.kind) === stream.key,
+            );
+            return (
+              <section key={stream.key} className="panel mb-4">
+                <div className="panel-head">
+                  <div>
+                    <p className="eyebrow">{stream.label.toUpperCase()}</p>
+                    <h3 className="m-0 text-xl tracking-[-.035em]">
+                      {rows.length} item{rows.length === 1 ? "" : "s"}
+                    </h3>
+                  </div>
+                </div>
+                <AttentionQueue
+                  items={rows.map((n) => ({
+                    id: n.id,
+                    kind: n.kind,
+                    title: n.title,
+                    body: n.body,
+                    projectId: n.projectId,
+                    createdAt: n.createdAt,
+                  }))}
+                />
+              </section>
+            );
+          })}
 
-            {rows.length > 0 ? (
-              <AttentionQueue
-                items={rows.map((n) => ({
-                  id: n.id,
-                  kind: n.kind,
-                  title: n.title,
-                  body: n.body,
-                  projectId: n.projectId,
-                  createdAt: n.createdAt,
-                }))}
-              />
-            ) : (
-              <p className="m-0 px-5 py-6 text-xs text-fg-muted">
-                {stream.cleared}
+          {(() => {
+            const clear = STREAMS.filter(
+              (stream) =>
+                !actionable.some((n) => streamOf(n.kind) === stream.key),
+            );
+            if (clear.length === 0) return null;
+            return (
+              <p className="mb-4 flex items-center gap-2 px-1 text-2xs text-fg-muted">
+                <CheckIcon />
+                {clear.map((s) => s.label).join(" and ")}{" "}
+                {clear.length === 1 ? "is" : "are"} clear
               </p>
-            )}
-            </section>
-          );
-        })
+            );
+          })()}
+        </>
       )}
 
       {/* 2.6: a queue you cannot look behind is one nobody trusts enough to
@@ -294,11 +308,7 @@ export default async function InboxPage() {
           </div>
           <ul>
             {informational.map((n) => {
-              const meta = KIND_META[n.kind] ?? {
-                label: n.kind,
-                tone: "neutral" as Tone,
-                signal: "waiting" as Signal,
-              };
+              const meta = metaFor(n.kind);
               return (
                 <li
                   key={n.id}
