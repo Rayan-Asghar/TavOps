@@ -15,6 +15,8 @@ import { fmtDate } from "@/lib/format";
 import { EmptyState, ListFilters, Pagination } from "@/components/ui";
 import { DensityToggle } from "@/components/density-toggle";
 import { BulletBar } from "@/components/charts";
+import { projectMoneyRows } from "@/server/margin-queries";
+import { CardMoney, MoneyCells } from "@/components/project-money-cells";
 import { DENSITY_COOKIE, parseDensity } from "@/lib/density";
 
 import {
@@ -88,6 +90,7 @@ export default async function ProjectsPage({
             health: projects.health,
             lifecycle: projects.lifecycle,
             clientName: clients.name,
+            billingModel: projects.billingModel,
             internalDueDate: projects.internalDueDate,
             totalTasks: sql<number>`(
               select count(*)::int from ${tasks}
@@ -118,6 +121,17 @@ export default async function ProjectsPage({
         .where(where)
         .then((r) => Number(r[0]?.n ?? 0)),
     ]);
+
+  const role = me?.globalRole ?? "developer";
+
+  // Money is fetched separately, never joined: project_financials and
+  // work_log_costs are RLS-forced, and a join from this ungated query would
+  // return NULLs rather than an error — which reads as "no budget set".
+  const moneyByProject = await projectMoneyRows(
+    rows.map((r) => r.id),
+    role,
+  );
+  const seesMoney = can(role, "finance.view");
 
   const info = pageInfo(list, total);
 
@@ -228,6 +242,19 @@ export default async function ProjectsPage({
                   <th scope="col" className="sticky top-0 z-10 h-[34px] w-[110px] border-b border-border bg-surface px-3 text-right text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
                     Logged
                   </th>
+                  {seesMoney && (
+                    <>
+                      <th scope="col" className="sticky top-0 z-10 h-[34px] w-[110px] border-b border-border bg-surface px-3 text-right text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                        Budget
+                      </th>
+                      <th scope="col" className="sticky top-0 z-10 h-[34px] w-[150px] border-b border-border bg-surface px-3 text-left text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                        Spent
+                      </th>
+                      <th scope="col" className="sticky top-0 z-10 h-[34px] w-[110px] border-b border-border bg-surface px-3 text-right text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
+                        Cost
+                      </th>
+                    </>
+                  )}
                   <th scope="col" className="sticky top-0 z-10 h-[34px] w-[130px] border-b border-border bg-surface px-3 text-left text-2xs font-bold uppercase tracking-[.1em] text-fg-label">
                     Health
                   </th>
@@ -247,6 +274,13 @@ export default async function ProjectsPage({
                           <span className="font-mono text-2xs text-fg-muted">{p.code}</span>
                           <span className="truncate">{p.name}</span>
                         </Link>
+                        {p.billingModel !== "time_and_materials" && (
+                          <span className="ml-2 align-middle">
+                            <Badge>
+                              {p.billingModel === "retainer" ? "Retainer" : "Fixed fee"}
+                            </Badge>
+                          </span>
+                        )}
                       </td>
                       <td className="px-3">
                         <span className="flex items-center gap-2">
@@ -268,6 +302,7 @@ export default async function ProjectsPage({
                       <td className="tabular px-3 text-right">
                         {Number(p.loggedHours).toFixed(1)}h
                       </td>
+                      {seesMoney && <MoneyCells money={moneyByProject.get(p.id)} logged={p.loggedHours} />}
                       <td className="px-3">
                         <HealthBadge health={p.health} />
                       </td>
@@ -296,8 +331,18 @@ export default async function ProjectsPage({
                   atRisk ? "border-t-brand" : "border-t-transparent"
                 }`}
               >
-                <div className="mb-6 flex items-center justify-between">
-                  <HealthBadge health={p.health} />
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <HealthBadge health={p.health} />
+                    {/* What KIND of deal this is. Harvest badges it on the row
+                        and Toggl exposes it on the project itself; without it
+                        a retainer and a fixed-fee build look identical. */}
+                    {p.billingModel !== "time_and_materials" && (
+                      <Badge>
+                        {p.billingModel === "retainer" ? "Retainer" : "Fixed fee"}
+                      </Badge>
+                    )}
+                  </span>
                   {p.openBlockers > 0 && (
                     <Badge tone="red">
                       {p.openBlockers} blocker{p.openBlockers === 1 ? "" : "s"}
@@ -322,6 +367,10 @@ export default async function ProjectsPage({
                 <div className="progress">
                   <span style={{ width: `${pct}%` }} />
                 </div>
+
+                {/* Both density modes carry the same facts: switching layout
+                    should change how much fits on screen, never what is true. */}
+                {seesMoney && <CardMoney money={moneyByProject.get(p.id)} logged={p.loggedHours} />}
 
                 <div className="mt-6 flex items-center justify-between">
                   <span className="font-mono text-2xs text-fg-subtle">

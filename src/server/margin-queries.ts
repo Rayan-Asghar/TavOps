@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
 import {
   projectFinancials,
@@ -186,4 +186,93 @@ export async function projectMoneyPanel(
       periods,
     };
   });
+}
+
+export type ProjectMoneyRow = {
+  budgetedHours: string | null;
+  contractValue: string | null;
+  currency: string;
+  /** Cost of the FRESH, rated entries only. Null when nothing is costed. */
+  costAmount: string | null;
+  /** Hours with no fresh rated cost — the figure that stops the others from
+   *  being read as complete. */
+  uncostedHours: string;
+  contributors: number;
+};
+
+/**
+ * Budget and cost for a page of projects, in ONE round trip.
+ *
+ * Deliberately a separate query rather than a join into the projects list.
+ * `project_financials` and `work_log_costs` are RLS-forced, and a LEFT JOIN
+ * from an ungated query does not error — it silently returns NULL for every
+ * one of their columns. That is exactly the "careless future join" the backstop
+ * exists to catch, and it would look like "no budgets are set" rather than like
+ * a permissions bug.
+ */
+export async function projectMoneyRows(
+  projectIds: string[],
+  role: GlobalRole,
+): Promise<Map<string, ProjectMoneyRow>> {
+  const out = new Map<string, ProjectMoneyRow>();
+  if (!can(role, "finance.view") || projectIds.length === 0) return out;
+
+  const seesRates = can(role, "rates.view");
+
+  await withFinanceAccess(async (tx) => {
+    const fins = await tx
+      .select({
+        projectId: projectFinancials.projectId,
+        budgetedHours: projectFinancials.budgetedHours,
+        contractValue: projectFinancials.contractValue,
+        currency: projectFinancials.currency,
+      })
+      .from(projectFinancials)
+      .where(inArray(projectFinancials.projectId, projectIds));
+
+    const costs = await tx
+      .select({
+        projectId: workLogs.projectId,
+        contributors: sql<number>`count(distinct ${workLogs.userId})::int`,
+        costAmount: sql<string | null>`sum(
+          case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                and ${workLogCosts.basis} = 'rated'
+               then ${workLogCosts.costAmount} end)::text`,
+        uncostedHours: sql<string>`coalesce(sum(
+          case when ${workLogCosts.revisionId} is distinct from ${workLogs.currentRevisionId}
+                 or ${workLogCosts.basis} is distinct from 'rated'
+               then ${workLogs.hours} end), 0)::text`,
+      })
+      .from(workLogs)
+      .leftJoin(workLogCosts, eq(workLogCosts.workLogId, workLogs.id))
+      .where(
+        and(
+          inArray(workLogs.projectId, projectIds),
+          isNull(workLogs.deletedAt),
+        ),
+      )
+      .groupBy(workLogs.projectId);
+
+    const costByProject = new Map(costs.map((c) => [c.projectId, c]));
+
+    for (const id of projectIds) {
+      const fin = fins.find((f) => f.projectId === id);
+      const cost = costByProject.get(id);
+      const contributors = cost?.contributors ?? 0;
+      out.set(id, {
+        budgetedHours: fin?.budgetedHours ?? null,
+        contractValue: fin?.contractValue ?? null,
+        currency: fin?.currency ?? "USD",
+        // Same single-contributor rule as the project tab: a cost over one
+        // person's hours is that person's rate, so it is withheld here too
+        // rather than being safe on one screen and not the other.
+        costAmount:
+          contributors < 2 && !seesRates ? null : (cost?.costAmount ?? null),
+        uncostedHours: cost?.uncostedHours ?? "0",
+        contributors,
+      });
+    }
+  });
+
+  return out;
 }
