@@ -11,6 +11,7 @@ import {
   personReport,
   projectReport,
   timesheet,
+  hoursByDay,
 } from "@/server/reports";
 import { unresolvedCount } from "@/server/notifications";
 import { AppShell, SectionIntro } from "@/components/app-shell";
@@ -18,6 +19,7 @@ import { MetricCard, MetricGrid, HealthBadge } from "@/components/badges";
 
 import { fmtDate, hrs, pct } from "@/lib/format";
 import { DataTable, EmptyCell, Th } from "@/components/ui";
+import { ReportsVisual } from "@/components/reports-visual";
 
 export const metadata = { title: "Reports" };
 const TIMESHEET_PREVIEW = 60;
@@ -35,7 +37,7 @@ function utilTone(u: number | null): string {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; v?: string }>;
 }) {
   const actor = await getActor();
   if (!actor) redirect("/login");
@@ -55,7 +57,7 @@ export default async function ReportsPage({
   const seesEveryone = can(role, "worklog.viewAll");
   const seesMoney = can(role, "finance.view");
 
-  const [projectRows, personRows, sheet, count] = await Promise.all([
+  const [projectRows, personRows, sheet, count, days] = await Promise.all([
     projectReport(range, scope),
     seesEveryone ? personReport(range, scope) : Promise.resolve([]),
     timesheet(range, scope, {
@@ -63,7 +65,13 @@ export default async function ReportsPage({
       userId: seesEveryone ? null : actor.id,
     }),
     unresolvedCount(actor.id),
+    hoursByDay(range, scope),
   ]);
+
+  /* Two treatments of the same data, side by side, so the choice is made from
+     the real thing rather than from a description. `?v=visual` is temporary —
+     once a direction is picked the loser goes and this parameter with it. */
+  const visual = sp.v === "visual";
 
   // Money is fetched only when the role allows it, and only inside the RLS
   // opt-in — without both, the query returns nothing.
@@ -126,6 +134,37 @@ export default async function ReportsPage({
         </a>
       </form>
 
+      {/* Temporary: two treatments of the same data so the direction can be
+          chosen from the real thing. Whichever loses gets deleted. */}
+      <div className="mb-6 inline-flex rounded-lg border border-border bg-surface p-0.5 text-2xs font-bold">
+        <a
+          href={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}`}
+          aria-current={!visual ? "true" : undefined}
+          className={`rounded-md px-3 py-1.5 ${!visual ? "bg-fill-strong text-fill-strong-fg" : "text-fg-muted hover:text-fg"}`}
+        >
+          Tables
+        </a>
+        <a
+          href={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}&v=visual`}
+          aria-current={visual ? "true" : undefined}
+          className={`rounded-md px-3 py-1.5 ${visual ? "bg-fill-strong text-fill-strong-fg" : "text-fg-muted hover:text-fg"}`}
+        >
+          Visual
+        </a>
+      </div>
+
+
+      {visual ? (
+        <ReportsVisual
+          days={days}
+          projectRows={projectRows}
+          personRows={personRows}
+          budgets={budgets}
+          totalHours={totalHours}
+          seesEveryone={seesEveryone}
+        />
+      ) : (
+        <>
       <MetricGrid>
         <MetricCard label="Hours logged" value={hrs(totalHours)} accent />
         <MetricCard
@@ -279,6 +318,8 @@ export default async function ReportsPage({
               </tbody>
             </DataTable>
         </section>
+      )}
+        </>
       )}
 
       {/* ---------------- the entries ---------------- */}

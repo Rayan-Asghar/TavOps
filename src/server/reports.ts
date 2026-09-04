@@ -306,3 +306,49 @@ export async function budgetedHoursFor(
   );
   return new Map(rows.map((r) => [r.projectId, r.budgeted]));
 }
+
+export type DayHours = { day: string; hours: number };
+
+/**
+ * Hours per calendar day across the window, zero-filled.
+ *
+ * A group-by rather than summing 5,000 timesheet rows in JS, and zero-filled in
+ * the same pass because a bar chart with days missing is a lie: a quiet Tuesday
+ * and a Tuesday with no entries look identical once the gap closes up.
+ *
+ * The date is formatted in SQL rather than from a JS `Date`, so the day
+ * boundaries match the ones `work_date` was stored against instead of being
+ * shifted by the server's timezone.
+ */
+export async function hoursByDay(
+  range: DateRange,
+  scope: Scope,
+): Promise<DayHours[]> {
+  const ids = scoped(scope);
+  if (ids !== null && ids.length === 0) return [];
+
+  const rows = await db
+    .select({
+      day: sql<string>`to_char(${workLogs.workDate}, 'YYYY-MM-DD')`,
+      hours: sql<number>`coalesce(sum(${workLogs.hours}),0)::float`,
+    })
+    .from(workLogs)
+    .where(
+      ids === null
+        ? rangeFilter(range)
+        : and(inArray(workLogs.projectId, ids), rangeFilter(range)),
+    )
+    .groupBy(sql`to_char(${workLogs.workDate}, 'YYYY-MM-DD')`)
+    .orderBy(sql`to_char(${workLogs.workDate}, 'YYYY-MM-DD')`);
+
+  const found = new Map(rows.map((r) => [r.day, r.hours]));
+  const out: DayHours[] = [];
+  const cursor = new Date(range.from);
+  // Guard rail: parseRange already caps the window at 400 days.
+  for (let i = 0; i < 400 && cursor <= range.to; i++) {
+    const day = cursor.toISOString().slice(0, 10);
+    out.push({ day, hours: found.get(day) ?? 0 });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
