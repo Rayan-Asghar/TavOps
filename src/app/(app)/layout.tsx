@@ -93,6 +93,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const delivery: NavEntry[] = [
     { href: "/projects", label: "Projects", icon: "projects" },
+    // Tasks were reachable only inside the project that owned them.
+    { href: "/tasks", label: "Tasks", icon: "review" },
     // Scoped like Projects — you see the clients whose work you are on — so it
     // needs no capability of its own.
     { href: "/clients", label: "Clients", icon: "people" },
