@@ -35,12 +35,13 @@ export type ToastInput = {
   message: string;
   tone?: ToastTone;
   undo?: ToastUndo;
-  /** Defaults to 5s. Ignored for toasts that carry an undo or an error tone:
-   *  those persist until dismissed (4.6 r45). Pass a number to force a timer. */
+  /** Defaults to 2s, and pauses while the pointer or focus is on the toast so an
+   *  Undo stays reachable. Errors ignore this and persist until dismissed
+   *  (4.6 r45). Pass a number to override. */
   durationMs?: number;
 };
 
-type Toast = ToastInput & { id: number; tone: ToastTone };
+type Toast = ToastInput & { id: number; tone: ToastTone; leaving?: boolean };
 
 const ToastContext = createContext<((t: ToastInput) => void) | null>(null);
 
@@ -69,12 +70,24 @@ export function useActionToast(
   }, [state, toast]);
 }
 
+/** How long the exit animation runs. Must match `--animate-toast-out`. */
+const EXIT_MS = 160;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
 
+  /* Dismissal is two-phase: mark it leaving so the row can animate out, then
+     drop it once the animation has run. Removing the element immediately, which
+     is what this did before, means there is nothing left to animate. */
   const dismiss = useCallback((id: number) => {
-    setToasts((list) => list.filter((t) => t.id !== id));
+    setToasts((list) =>
+      list.map((t) => (t.id === id ? { ...t, leaving: true } : t)),
+    );
+    window.setTimeout(
+      () => setToasts((list) => list.filter((t) => t.id !== id)),
+      EXIT_MS,
+    );
   }, []);
 
   const push = useCallback((input: ToastInput) => {
@@ -112,27 +125,34 @@ function ToastRow({
   onDismiss: () => void;
 }) {
   const [undoing, startUndo] = useTransition();
+  /* Held while the pointer or keyboard focus is on the toast. */
+  const [held, setHeld] = useState(false);
 
-  /* A toast that carries an action must not time out, and a critical message must
-     never be timer-dismissed (DESIGN-STANDARD 4.6 r45, from Carbon's notification
-     pattern). This previously did the opposite of the rule: an Undo toast was given
-     a LONGER timer (10s) rather than none, so the one toast whose action the user
-     might still need was the one that expired while they were reading it. An error
-     that appears only as a timed toast is also a [FAIL IF] -- errors stay until
-     dismissed. Both now persist; everything routine still clears itself. */
-  const persists = Boolean(toast.undo) || toast.tone === "error";
-  const life = toast.durationMs ?? (persists ? null : 5_000);
+  /* Two seconds, which is what was asked for and is enough to read one line.
+     Errors are the exception and stay until dismissed: r45 makes an error that
+     appears only as a timed toast a [FAIL IF], and a message you looked away
+     from for two seconds is a message you never got. Row actions have nowhere
+     else to report a failure.
+
+     The hold is what makes two seconds workable for an Undo. Reaching for the
+     button stops the clock, so the shortest useful window is "as long as you are
+     looking at it" rather than a fixed number -- and it restarts on leave. */
+  const life = toast.durationMs ?? (toast.tone === "error" ? null : 2_000);
 
   useEffect(() => {
-    if (life === null) return;
+    if (life === null || held) return;
     const id = window.setTimeout(onDismiss, life);
     return () => window.clearTimeout(id);
-  }, [life, onDismiss]);
+  }, [life, held, onDismiss]);
 
   return (
     <div
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocusCapture={() => setHeld(true)}
+      onBlurCapture={() => setHeld(false)}
       className={`pointer-events-auto flex items-center gap-3 rounded-lg border px-3 py-2.5
-                  shadow-sm ${
+                  shadow-sm ${toast.leaving ? "animate-toast-out" : "animate-toast-in"} ${
                     toast.tone === "error"
                       ? "border-danger bg-danger-soft text-danger"
                       : "border-border bg-surface text-fg"
