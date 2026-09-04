@@ -1,14 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
-import {
-  blockers,
-  clients,
-  projectFinancials,
-  projects,
-  tasks,
-  users,
-  workLogs,
-} from "@/db/schema";
+import { blockers, clients, projectFinancials, projects, tasks, users, workLogs, worklogRevisions } from "@/db/schema";
 import { businessDaysBetween } from "@/lib/business-time";
 import type { DateRange } from "@/lib/report-range";
 
@@ -351,4 +343,98 @@ export async function hoursByDay(
     cursor.setDate(cursor.getDate() + 1);
   }
   return out;
+}
+
+export type Reconciliation = {
+  /** Everything logged in the window. */
+  logged: number;
+  /** Of that, the hours sitting behind an invoice already sent. */
+  invoiced: number;
+  /** The rest — work done and not yet charged for. */
+  uninvoiced: number;
+  /** Entries in the window that have been corrected at least once. */
+  correctedEntries: number;
+  /** Net hours those corrections moved, signed. */
+  correctedHours: number;
+};
+
+/**
+ * The reconciliation strip's four figures.
+ *
+ * 2.3 wants Reports to open with three or four numbers that each sum a named
+ * section of the detail below, the way Stripe's balance report does. Its example
+ * splits on billable/unbilled, which does not exist here and is not going to:
+ * Tavren invoices from Wise, there is no payment integration, and no work log
+ * carries a billable flag.
+ *
+ * `projects.invoiced_through` is the honest local equivalent, and it is already
+ * load-bearing rather than invented for this — it is the hard stop that prevents
+ * editing an entry behind a sent invoice, because restating those hours makes
+ * the invoice unexplainable. So "invoiced" means locked and charged, and
+ * "not yet invoiced" is the number an agency actually wants: work done that has
+ * not been billed.
+ *
+ * The correction figures are here because 2.3 also warns that a report over a
+ * work log with correction history has to say which date it is counting on. This
+ * one counts on **entry date** — when the work happened — not on when a
+ * correction was filed, and the UI says so.
+ */
+export async function reconciliation(
+  range: DateRange,
+  scope: Scope,
+): Promise<Reconciliation> {
+  const ids = scoped(scope);
+  if (ids !== null && ids.length === 0) {
+    return { logged: 0, invoiced: 0, uninvoiced: 0, correctedEntries: 0, correctedHours: 0 };
+  }
+
+  // A join rather than two passes: "invoiced" is a property of the work log's
+  // date against its own project's invoiced_through, so it cannot be decided
+  // without the project row.
+  const [split] = await db
+    .select({
+      logged: sql<number>`coalesce(sum(${workLogs.hours}),0)::float`,
+      invoiced: sql<number>`coalesce(sum(${workLogs.hours}) filter (
+        where ${projects.invoicedThrough} is not null
+          and ${workLogs.workDate}::date <= ${projects.invoicedThrough}
+      ),0)::float`,
+    })
+    .from(workLogs)
+    .innerJoin(projects, eq(projects.id, workLogs.projectId))
+    .where(
+      ids === null
+        ? rangeFilter(range)
+        : and(inArray(workLogs.projectId, ids), rangeFilter(range)),
+    );
+
+  // Version > 1 means the entry has been restated at least once. The first
+  // revision is the original, not a correction.
+  const [corrections] = await db
+    .select({
+      entries: sql<number>`count(distinct ${worklogRevisions.workLogId})::int`,
+      net: sql<number>`coalesce(sum(
+        case when ${worklogRevisions.isReversal} then -${worklogRevisions.hours}
+             else ${worklogRevisions.hours} end
+      ) filter (where ${worklogRevisions.version} > 1),0)::float`,
+    })
+    .from(worklogRevisions)
+    .innerJoin(workLogs, eq(workLogs.id, worklogRevisions.workLogId))
+    .where(
+      and(
+        sql`${worklogRevisions.version} > 1`,
+        ids === null
+          ? rangeFilter(range)
+          : and(inArray(workLogs.projectId, ids), rangeFilter(range)),
+      ),
+    );
+
+  const logged = split?.logged ?? 0;
+  const invoiced = split?.invoiced ?? 0;
+  return {
+    logged,
+    invoiced,
+    uninvoiced: Math.max(0, logged - invoiced),
+    correctedEntries: corrections?.entries ?? 0,
+    correctedHours: corrections?.net ?? 0,
+  };
 }

@@ -6,6 +6,7 @@ import type {
   DayHours,
   PersonReportRow,
   ProjectReportRow,
+  Reconciliation,
 } from "@/server/reports";
 
 /**
@@ -28,6 +29,8 @@ export function ReportsVisual({
   budgets,
   totalHours,
   seesEveryone,
+  recon,
+  rangeHref,
 }: {
   days: DayHours[];
   projectRows: ProjectReportRow[];
@@ -35,6 +38,9 @@ export function ReportsVisual({
   budgets: Map<string, number>;
   totalHours: number;
   seesEveryone: boolean;
+  recon: Reconciliation;
+  /** The current window, so each figure can link to the rows behind it. */
+  rangeHref: string;
 }) {
   const logged = days.map((d) => d.hours);
   const busiest = days.reduce<DayHours | null>(
@@ -53,6 +59,52 @@ export function ReportsVisual({
 
   return (
     <>
+      {/* ------------------------------------------- reconciliation (2.3, r38) */}
+      <section className="panel mb-4 overflow-hidden">
+        <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+          <ReconCell
+            label="Hours logged"
+            value={`${hrs(recon.logged)}h`}
+            note="everything in this window"
+            href={`${rangeHref}#entries`}
+          />
+          <ReconCell
+            label="Invoiced"
+            value={`${hrs(recon.invoiced)}h`}
+            note="behind a sent invoice, locked"
+            href={`${rangeHref}#entries`}
+          />
+          <ReconCell
+            label="Not yet invoiced"
+            value={`${hrs(recon.uninvoiced)}h`}
+            note="done, not yet charged for"
+            href={`${rangeHref}#entries`}
+            emphasis
+          />
+          <ReconCell
+            label="Corrected"
+            value={
+              recon.correctedEntries === 0
+                ? "None"
+                : `${recon.correctedEntries} ${recon.correctedEntries === 1 ? "entry" : "entries"}`
+            }
+            note={
+              recon.correctedEntries === 0
+                ? "nothing restated in this window"
+                : `${recon.correctedHours >= 0 ? "+" : ""}${hrs(recon.correctedHours)}h net`
+            }
+            href="/audit?action=work_log.edit"
+          />
+        </div>
+        {/* 2.3: say which date the report counts on. With correction history in
+            the table below, "when the work happened" and "when it was restated"
+            are different windows, and a reader cannot tell which they are seeing. */}
+        <p className="m-0 border-t border-border px-5 py-2.5 text-2xs text-fg-muted">
+          Counted by <strong className="font-bold text-fg">entry date</strong> —
+          when the work happened, not when it was logged or later corrected.
+        </p>
+      </section>
+
       {/* ------------------------------------------------------ hero: the shape */}
       <section className="panel mb-4 overflow-hidden">
         <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -220,6 +272,45 @@ export function ReportsVisual({
         </section>
       )}
     </>
+  );
+}
+
+/**
+ * One figure in the reconciliation strip.
+ *
+ * r38: every metric drills down to the rows underneath it, so each is a link
+ * rather than a number — supporting detail without leaving the screen.
+ */
+function ReconCell({
+  label,
+  value,
+  note,
+  href,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  href: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group block bg-surface p-5 transition-[background-color] duration-150 ease-out-quad hover:bg-surface-hover"
+    >
+      <span className="text-2xs font-bold uppercase tracking-[.1em] text-fg-muted">
+        {label}
+      </span>
+      <strong
+        className={`tabular mt-2 block text-3xl leading-none tracking-[-.04em] ${
+          emphasis ? "text-brand" : ""
+        }`}
+      >
+        {value}
+      </strong>
+      <span className="mt-2 block text-2xs text-fg-muted">{note}</span>
+    </Link>
   );
 }
 

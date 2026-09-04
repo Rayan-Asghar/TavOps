@@ -12,6 +12,7 @@ import {
   projectReport,
   timesheet,
   hoursByDay,
+  reconciliation,
 } from "@/server/reports";
 import { SectionIntro } from "@/components/app-shell";
 
@@ -49,7 +50,7 @@ export default async function ReportsPage({
   const seesEveryone = can(role, "worklog.viewAll");
   const seesMoney = can(role, "finance.view");
 
-  const [projectRows, personRows, sheet, days] = await Promise.all([
+  const [projectRows, personRows, sheet, days, recon] = await Promise.all([
     projectReport(range, scope),
     seesEveryone ? personReport(range, scope) : Promise.resolve([]),
     timesheet(range, scope, {
@@ -57,6 +58,7 @@ export default async function ReportsPage({
       userId: seesEveryone ? null : actor.id,
     }),
     hoursByDay(range, scope),
+    reconciliation(range, scope),
   ]);
 
   // Money is fetched only when the role allows it, and only inside the RLS
@@ -123,10 +125,14 @@ export default async function ReportsPage({
           budgets={budgets}
           totalHours={totalHours}
           seesEveryone={seesEveryone}
+          recon={recon}
+          rangeHref={`/reports?from=${toISODate(range.from)}&to=${toISODate(range.to)}`}
         />
 
       {/* ---------------- the entries ---------------- */}
-      <section className="panel">
+      {/* The reconciliation figures link here: r38 wants supporting detail
+          reachable without leaving the screen. */}
+      <section id="entries" className="panel scroll-mt-[72px]">
         <div className="panel-head">
           <div>
             <p className="eyebrow">
