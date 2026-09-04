@@ -76,8 +76,8 @@ Since then, three more things landed:
   the whole policy block for `work_log_costs`. Migrations stay hand-written; only
   the snapshot is generated. `0016`/`0017` still have no snapshots — `0019`'s is
   built on `0018`'s, which is sound.
-- **An unchecked HTML checkbox sends nothing**, so `formData.get()` cannot tell
-  "unticked" from "no such field". Use `readTriStateCheckbox`.
+- **An unchecked HTML checkbox sends nothing** — `formData.get()` cannot tell
+  "unticked" from "absent". Use `readTriStateCheckbox`.
 - **`overflow-x-auto` forces `overflow-y:auto`**, making that wrapper the sticky
   containing block — so the grid has no sticky header, and the fix would move
   geometry its roving-tabindex model depends on.
@@ -99,8 +99,7 @@ Since then, three more things landed:
   acceptable for these three jobs — they recompute current state rather than
   draining a backlog. Note GoDaddy/Hostinger *shared* hosting still cannot run
   this; a Hostinger VPS can.
-- **Seeded logs carry no revisions or costs.** Routing the seed through
-  `recordWorkInTx` would overwrite the `lastUpdateAt` values the staleness sweep
-  fixtures depend on. The backfill script skips them for the same reason.
+- **Seeded logs carry no revisions or costs** — routing the seed through
+  `recordWorkInTx` would break the staleness-sweep fixtures.
 - **Nine seed accounts still share `tavren123`.** Phase 5.
 - **Discord/Slack webhook URL** for the digest is still unset.
