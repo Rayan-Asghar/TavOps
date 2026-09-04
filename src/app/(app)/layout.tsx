@@ -93,6 +93,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const delivery: NavEntry[] = [
     { href: "/projects", label: "Projects", icon: "projects" },
+    // Scoped like Projects — you see the clients whose work you are on — so it
+    // needs no capability of its own.
+    { href: "/clients", label: "Clients", icon: "people" },
   ];
   if (can(role, "review.approve")) {
     delivery.push({ href: "/review", label: "Review queue", icon: "review" });

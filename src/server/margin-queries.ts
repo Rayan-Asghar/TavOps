@@ -395,3 +395,70 @@ export async function uncostedWorkLogIds(
   );
   return rows.map((r) => r.id);
 }
+
+/**
+ * Revenue and cost per client, scoped to the projects the reader can see.
+ *
+ * Scoped deliberately: a client total built from projects the reader cannot
+ * open would be a number they have no way to reconcile, and on a page listing
+ * who the agency works for it would also leak the size of engagements they are
+ * not on.
+ */
+export async function clientMoneyRows(
+  clientIds: string[],
+  scope: string[] | null,
+  role: GlobalRole,
+): Promise<
+  Map<string, { revenueAmount: string | null; costAmount: string | null; currency: string }>
+> {
+  const out = new Map<
+    string,
+    { revenueAmount: string | null; costAmount: string | null; currency: string }
+  >();
+  if (!can(role, "finance.view") || clientIds.length === 0) return out;
+  if (scope !== null && scope.length === 0) return out;
+
+  const seesRates = can(role, "rates.view");
+
+  await withFinanceAccess(async (tx) => {
+    const rows = await tx
+      .select({
+        clientId: projects.clientId,
+        contributors: sql<number>`count(distinct ${workLogs.userId})::int`,
+        costAmount: sql<string | null>`sum(
+          case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                and ${workLogCosts.basis} = 'rated'
+               then ${workLogCosts.costAmount} end)::text`,
+        revenueAmount: sql<string | null>`sum(
+          case when ${workLogCosts.revisionId} = ${workLogs.currentRevisionId}
+                and ${workLogCosts.basis} = 'rated'
+               then ${workLogCosts.revenueAmount} end)::text`,
+        currency: sql<string>`coalesce(max(${workLogCosts.currency}), 'USD')`,
+      })
+      .from(workLogs)
+      .innerJoin(projects, eq(projects.id, workLogs.projectId))
+      .leftJoin(workLogCosts, eq(workLogCosts.workLogId, workLogs.id))
+      .where(
+        and(
+          isNull(workLogs.deletedAt),
+          inArray(projects.clientId, clientIds),
+          scope === null ? undefined : inArray(workLogs.projectId, scope),
+        ),
+      )
+      .groupBy(projects.clientId);
+
+    for (const r of rows) {
+      if (!r.clientId) continue;
+      // Same single-contributor rule as everywhere else: a cost over one
+      // person's hours is that person's rate, whichever screen it appears on.
+      const hide = r.contributors < 2 && !seesRates;
+      out.set(r.clientId, {
+        revenueAmount: r.revenueAmount,
+        costAmount: hide ? null : r.costAmount,
+        currency: r.currency,
+      });
+    }
+  });
+
+  return out;
+}

@@ -19,9 +19,18 @@ export const setProjectMoneySchema = z.object({
   /** Blank clears the figure rather than storing zero — "not agreed yet" and
    *  "agreed at nothing" are different facts. */
   contractValue: optionalAmount,
+  /**
+   * 0-100. The regex alone allowed 123, which passed validation and made net
+   * contract negative — a platform fee larger than the contract is not a fee.
+   * Caught by someone typing it into the real form.
+   */
   platformFeePct: z
     .union([
-      z.string().trim().regex(/^\d{1,3}(\.\d{1,2})?$/, "Use a percentage like 10"),
+      z
+        .string()
+        .trim()
+        .regex(/^\d{1,3}(\.\d{1,2})?$/, "Use a percentage like 10")
+        .refine((v) => Number(v) <= 100, "A platform fee cannot exceed 100%."),
       z.literal(""),
     ])
     .optional(),
