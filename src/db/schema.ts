@@ -1368,3 +1368,38 @@ export const jobRuns = pgTable("job_runs", {
     .defaultNow()
     .notNull(),
 });
+
+/**
+ * A saved view is a saved link.
+ *
+ * Every list in this app keeps its filters in the query string, so a view needs
+ * to be nothing more than a name, a path and a query. There is no filter DSL to
+ * design and no way for a saved view to drift from the URL it was saved from,
+ * because it IS that URL.
+ */
+export const savedViews = pgTable(
+  "saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    /** The screen it belongs to, e.g. `/tasks`. */
+    path: varchar("path", { length: 120 }).notNull(),
+    /** The query string without its leading `?`. May be empty. */
+    query: text("query").notNull(),
+    isShared: boolean("is_shared").default(false).notNull(),
+    orderIndex: integer("order_index").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("saved_views_user_path_idx").on(t.userId, t.path, t.orderIndex),
+    uniqueIndex("saved_views_user_path_name_unique").on(t.userId, t.path, t.name),
+    index("saved_views_shared_idx")
+      .on(t.path, t.orderIndex)
+      .where(sql`${t.isShared}`),
+  ],
+);

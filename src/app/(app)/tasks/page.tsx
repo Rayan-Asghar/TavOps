@@ -7,6 +7,9 @@ import { DataTable, EmptyState, Pagination, Td, Th, TRow } from "@/components/ui
 import { Badge } from "@/components/badges";
 import { TASK_TONE } from "@/lib/tone";
 import { taskFilterOptions, taskList } from "@/server/task-queries";
+import { viewsFor } from "@/server/saved-view-queries";
+import { SavedViews } from "@/components/saved-views";
+import { normaliseViewQuery } from "@/lib/saved-view";
 import { fmtDate, hrs } from "@/lib/format";
 import {
   offsetFor,
@@ -65,6 +68,17 @@ export default async function TasksPage({
   ]);
 
   const info = pageInfo(list, total);
+
+  // The query as rendered, so "save this view" stores exactly what is on
+  // screen — normalised, so the same filters always produce the same string.
+  const currentQuery = normaliseViewQuery(
+    new URLSearchParams(
+      Object.entries(params).flatMap(([k, v]) =>
+        v === undefined ? [] : Array.isArray(v) ? v.map((x) => [k, x] as [string, string]) : [[k, v] as [string, string]],
+      ),
+    ).toString(),
+  );
+  const views = await viewsFor("/tasks", actor.id);
   const unassigned = rows.filter((r) => !r.assigneeName).length;
   const estimated = rows.reduce((s, r) => s + Number(r.estimatedHours ?? 0), 0);
   const logged = rows.reduce((s, r) => s + Number(r.loggedHours), 0);
@@ -151,6 +165,10 @@ export default async function TasksPage({
           </form>
         }
       />
+
+      <div className="mb-4">
+        <SavedViews path="/tasks" currentQuery={currentQuery} views={views} />
+      </div>
 
       {rows.length === 0 ? (
         <EmptyState
