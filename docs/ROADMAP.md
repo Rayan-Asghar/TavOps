@@ -49,7 +49,9 @@
         modes (the toggle changes density, never what is true), billing-model badge,
         uncosted hours shown beside the cost. Grouping by client deferred to 2B.3
         so it lands as a first-class control rather than one screen's special case
-  - [ ] 2.2 clients directory
+  - [x] 2.2 clients directory — `/clients` and `/clients/[id]`, scoped by
+        accessible projects rather than a new capability, money behind
+        `finance.view` with the same single-contributor rule
   - [x] 2.3 the two-tier reconciliation strip on `/reports` — hours identity in
         tier 1, money identity in tier 2 behind `finance.view`, "not costed" as the
         honesty cell, drill-downs shared by the screen and the CSV. **Closes
