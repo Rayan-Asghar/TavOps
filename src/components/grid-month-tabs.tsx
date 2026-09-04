@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listHref, type RawParams } from "@/lib/list-params";
 import type { GridMonth } from "@/server/grid-queries";
 import { LinkPending } from "./ui";
+import { Sparkline } from "./charts";
 
 /**
  * The month tabs above the grid — the same months the project's sheet has tabs
@@ -10,6 +11,11 @@ import { LinkPending } from "./ui";
  * A server component, unlike `ProjectTabs`: that one is a client component only
  * because it reads `usePathname`/`useSearchParams` to build hrefs, and this page
  * already has `searchParams` on the server. Same visual language, no JavaScript.
+ *
+ * `totalHours` arrives for every month and used to be dropped on the floor — the
+ * tabs showed an entry count, which is the less interesting of the two numbers.
+ * Now the hours are on the tab and the shape across months is a sparkline beside
+ * them, which is a trend the app had nowhere else.
  */
 export function GridMonthTabs({
   months,
@@ -34,8 +40,26 @@ export function GridMonthTabs({
         ...months,
       ].sort((a, b) => b.month.localeCompare(a.month));
 
+  /* Oldest to newest, so the line reads left to right like the tabs do. */
+  const trend = [...shown]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((m) => Number(m.totalHours) || 0);
+  const hasTrend = trend.length > 2 && trend.some((h) => h > 0);
+
   return (
     <div className="mb-5 border-b border-border">
+      {hasTrend && (
+        <div className="flex items-center justify-end gap-2.5 pb-1 text-2xs text-fg-muted">
+          <span>hours by month</span>
+          <Sparkline
+            values={trend}
+            label={`Hours per month across ${trend.length} months`}
+            width={96}
+            height={20}
+            className="text-fg-subtle"
+          />
+        </div>
+      )}
       <nav aria-label="Months" className="-mb-px flex gap-1 overflow-x-auto">
         {shown.map((m) => {
           const isActive = m.month === active;
@@ -55,11 +79,15 @@ export function GridMonthTabs({
               {m.label}
               <LinkPending />
               {m.entries > 0 && (
+                /* Hours, not the entry count: nobody asks how many rows a month
+                   has. The count moves to the title, where it is still available
+                   without spending a second pill on it. */
                 <span
-                  className={`grid tabular h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-2xs font-bold
+                  title={`${m.entries} ${m.entries === 1 ? "entry" : "entries"}`}
+                  className={`tabular rounded-full px-1.5 py-px text-2xs font-bold
                     ${isActive ? "bg-brand text-white" : "bg-surface-2 text-fg-muted"}`}
                 >
-                  {m.entries}
+                  {Number(m.totalHours).toFixed(1)}h
                 </span>
               )}
             </Link>

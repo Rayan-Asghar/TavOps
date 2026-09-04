@@ -175,10 +175,15 @@ export function MiniBars({
             x={x(i)}
             y={height - h}
             width={bandWidth}
-            height={Math.max(v > 0 ? 1 : 0, h)}
+            /* A real value gets a visible floor. At 1px a small day was
+               indistinguishable from the baseline itself. */
+            height={v > 0 ? Math.max(2, h) : 0}
             rx={1}
             className={
-              highlightLast && i === values.length - 1
+              /* Only highlight a bar that has something in it. A zero-value
+                 "today" was rendering as a 1px accent sliver on the baseline,
+                 which reads as a rendering fault rather than as no hours yet. */
+              highlightLast && i === values.length - 1 && v > 0
                 ? "fill-brand"
                 : "fill-fg-subtle"
             }
