@@ -1,0 +1,105 @@
+# HANDOFF
+
+> Overwrite this file — never append. Max 100 lines. No pasted code, file:line only.
+> Previous handoffs in `.claude/handoff-history/`.
+> **The plan is `docs/ROADMAP.md`.** This file is only "where we are right now".
+
+## Goal
+
+A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
+(single source of truth) → reporting and one-way mirrors. History in PROGRESS.md.
+
+## Branch topology — read this first
+
+`main`, 15 commits ahead of `origin/main`. **Nothing is pushed.** The `redesign`
+and `timesheet-grid` branches are merged; ignore them.
+
+Tree clean, `pnpm verify` (363 unit) and `pnpm test:db` (129 fixture) both green,
+production build green.
+**Build needs `NODE_OPTIONS=--max-old-space-size=4096`** or it dies with 137 —
+and **do not build while `next dev` is running**: 4096 is enough on its own but
+not alongside a dev server, which is what an unexplained 137 usually means.
+
+⚠️ **Up to six Claude sessions run against this repo at once.** The index is
+shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
+`git add -A` — a PreToolUse hook denies bulk staging. New files must be
+`git add`-ed by explicit path first; `--only` cannot reference an untracked one.
+
+## Current State
+
+**Phase 1 of `docs/ROADMAP.md` is done: the system now knows how a project earns
+and what an hour costs.** The roadmap was written after studying Toggl, Toggl
+Track, Plane and Harvest against their pricing tiers; the finding that drives it
+is that Tavren has premium-tier engineering (audit log, retroactive rates, RLS)
+under a free-tier feature set (no clients screen, no expenses, no money on the
+project list).
+
+Phase 1 (migration `0019`) shipped `billing_model` + `retainer_periods`,
+`task_types`, `billable` on logs and revisions, `work_log_costs`, the rate and
+margin modules, and `pnpm db:backfill-costs`. Detail in `docs/ROADMAP.md`.
+**Nothing reads the retainer or margin tables yet — that is Phase 2A.**
+
+Since then, three more things landed:
+
+- **Google sign-in.** One `maySignIn` rule for both providers, **no
+  auto-provisioning**. Needs `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` from a Google
+  OAuth *Web application* client (NOT the Sheets service account), or the button
+  stays hidden. Its DB lookup must never move into `auth.config.ts` (edge).
+- **Phase 2B.1/2B.2.** `PageHeader` (five bands); `SectionIntro` reimplemented on
+  it so pages migrate as rebuilt. `DateRangeStepper`; `/reports` migrated.
+- **In-app scheduler (migration `0020`).** `/api/heartbeat` +
+  `src/server/scheduler.ts`. Browser is a clock source only; the server decides
+  what is due from `job_runs`. **Removes the hosting-blocks-automation chain.**
+
+## Next Steps
+
+1. **Phase 2B.3 onward** — filter chips + grouping as one system, then the view
+   switchers and table conventions. `docs/ROADMAP.md` has the detail.
+2. Then 2A: the Harvest-style project list (Budget · Spent · Remaining · Costs),
+   the clients directory, the two-tier reconciliation strip on `/reports`.
+3. `/uxaudit` has NOT been re-run since the redesign work. Its last score (~60/92)
+   was estimated by the session that did the work, so it is not evidence.
+
+## What Failed / Dead Ends
+
+- **`work_log_costs` must never become columns on `work_logs`.** That table is
+  read by the grid, both CSV exports and `reports.ts::timesheet`, none of which
+  open the finance gate — a cost column there retires the RLS backstop silently,
+  with every test still passing. `tests/db/rls.test.ts` now asserts `work_logs`
+  has no column matching `%cost%`/`%rate%`. Do not "simplify" this.
+- **Do not reset the finance GUC in a `finally`.** On a SQL error the
+  subtransaction is already aborted, so the reset throws "current transaction is
+  aborted" and masks the real error. `ROLLBACK TO SAVEPOINT` already closes it.
+- **A raw `sql` template binds a `Date` differently from drizzle's operators**
+  and fails against `timestamptz`. Use `gt()`/`lte()`, not `sql\`a > ${date}\``.
+- **`drizzle-kit generate` does not model RLS or CHECK constraints.** It omitted
+  the whole policy block for `work_log_costs`. Migrations stay hand-written; only
+  the snapshot is generated. `0016`/`0017` still have no snapshots — `0019`'s is
+  built on `0018`'s, which is sound.
+- **An unchecked HTML checkbox sends nothing** — `formData.get()` cannot tell
+  "unticked" from "absent". Use `readTriStateCheckbox`.
+- **`overflow-x-auto` forces `overflow-y:auto`**, making that wrapper the sticky
+  containing block — so the grid has no sticky header, and the fix would move
+  geometry its roving-tabindex model depends on.
+- **A session-level advisory lock is held by a CONNECTION, and `db` is a pool.**
+  `pg_advisory_unlock` can land on a different connection than the lock did,
+  release nothing, and leak until that connection recycles. `scheduler.ts` uses
+  `pg_try_advisory_xact_lock`; **sync-worker.ts:490 still has the hazard.**
+- **`setState` in an effect is a lint error**; client-only values go through
+  `useSyncExternalStore` with a server snapshot. **A `RefObject` effect cannot
+  see a conditionally-mounted form** — use a callback ref.
+- The grid, CDP, Drive API, `loading.tsx` and rejected-shadcn notes in
+  `.claude/handoff-history/` still apply.
+
+## Open Questions / Blockers
+
+- **Hosting** — deferred to Phase 6. **No longer blocks automation**: the app
+  schedules itself while a browser is open, so a host needs only a Node process
+  and Postgres, not cron. Nothing runs overnight or over a weekend, which is
+  acceptable for these three jobs — they recompute current state rather than
+  draining a backlog. Note GoDaddy/Hostinger *shared* hosting still cannot run
+  this; a Hostinger VPS can.
+- **Seeded logs carry no revisions or costs** — routing the seed through
+  `recordWorkInTx` would break the staleness-sweep fixtures.
+- **Nine seed accounts still share `tavren123`.** Phase 5.
+- **Discord/Slack webhook URL** for the digest is still unset.
