@@ -4,6 +4,86 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-05 — The money layer, end to end
+
+- **Shipped:** Phases 1 and 2A of `docs/ROADMAP.md`, plus 2B.1/2B.2, an in-app
+  scheduler and Google sign-in. Migrations `0019` commercial foundation, `0020`
+  job_runs, `0021` saved_views — all hand-written, all diffed against the live
+  database before applying. 387 unit + 153 fixture tests, build clean.
+
+- **Why the roadmap says what it says.** It was written after studying Toggl,
+  Toggl Track, Plane and Harvest against their pricing tiers. The finding that
+  shaped everything: **Tavren had premium-tier engineering under a free-tier
+  feature set.** Append-only audit logs are Harvest Enterprise; retroactive
+  rates are Toggl Premium; nobody offers revision chains at all. Meanwhile a
+  clients directory, expenses, a billable split and budget-vs-spent on the
+  project list are free everywhere and were missing here. Nobody can see an RLS
+  policy; everyone can see that the project list has no money on it.
+
+- **What the system can do that it could not.** Every logged hour knows whether
+  it bills and what it cost. Billability is INHERITED from the kind of work
+  (`task_types`), never asked per entry — `quick-log.tsx` states the constraint
+  itself: it is used on a phone at 1am, and an unlogged hour is unrecoverable
+  where a wrongly-flagged one is one click. Retainers are expressible for the
+  first time. Rates, billing models and retainer periods all have writers; none
+  of them did.
+
+- **Decisions worth keeping:**
+  - **`work_log_costs` is its own RLS-forced table.** Columns on `work_logs`
+    would have retired the finance backstop overnight, silently, with every
+    test still passing — that table is read by the grid, both CSV exports and
+    `reports.ts::timesheet`, none of which open the gate. `rls.test.ts` now
+    asserts `work_logs` has no `%cost%`/`%rate%` column.
+  - **Rate changes are new rows, never updates**, closing the old row on the
+    same date the new one opens. A day's gap makes hours `unrated`; a day's
+    overlap makes them `ambiguous`. Both fail quietly, so it is a tested pure
+    function rather than three lines in an action.
+  - **No amounts in audit rows.** `head` holds `audit.view` but not
+    `rates.view`, so an amount written there is readable by exactly the role
+    `rbac.ts` withholds pay data from.
+  - **The single-contributor rule**, enforced in SQL on all three money screens:
+    a cost over one person's hours IS that person's rate.
+  - **"Not costed" as an honesty cell** everywhere money appears. Without it the
+    figures beside it read as complete when they omit everyone unrated.
+  - **The browser is a clock source and nothing else.** The heartbeat names no
+    job and sends no timestamp; the server decides from `job_runs`, so five open
+    laptops produce one run an hour. This removed the "hosting blocks
+    automation" chain that had headed HANDOFF's blockers for weeks.
+  - **A saved view is a saved link** — cheap only because every list keeps its
+    filters in the query string. Path allow-listed, so it cannot become an open
+    redirect.
+
+- **Bugs found by running things rather than trusting them.** Every one of these
+  failed silently, which is the reason they are worth recording:
+  - A correlated subquery interpolating `${projects.id}` renders the column
+    UNQUALIFIED, so Postgres resolved it against the inner aliased table:
+    `w.project_id = "id"` compared a work log to its own id, matched nothing and
+    returned 0. The client detail reported 0.00h against a project with 113.61h.
+  - `costEntry` was off by 100 — hundredths-of-an-hour times cents-per-hour is
+    cents times 100, not 10000. Caught by its own tests before anything used it.
+  - The rate lookup bounded `effective_from <= work_date` in SQL, comparing
+    instants, while `resolveRate` compares UTC days. A rate created at 14:32
+    excluded work logged at 12:00 the same day. Two implementations of one rule,
+    and the stricter one won quietly.
+  - `backfill-costs` never re-costed `unrated` rows, so its own closing advice
+    — "enter the missing rates, then run this again" — did nothing.
+  - A `NOT EXISTS` against an RLS-forced table from an ungated query sees zero
+    rows and matches EVERYTHING; the "not costed" drill-down would have shown
+    the whole timesheet.
+  - `viewsFor(path, userId)` in a `"use server"` module would have let any
+    caller read another user's saved views. Every export of one is an endpoint.
+  - A `finally` resetting the finance GUC masks the real error on a SQL failure.
+
+- **Found by Rayan driving the real form:** `platformFeePct` accepted 123, which
+  passed the regex and made net contract negative. Capped at 100.
+
+- **Still true and still blocking real use:** nine seed accounts share
+  `tavren123`, there is no login rate limiting, and deactivating somebody leaves
+  them signed in for up to 12 hours. That is Phase 5, and it is the gate before
+  the agency touches this — not more features.
+
+---
+
 ### 2026-09-03 — A spreadsheet inside the app
 
 - **Shipped, UNCOMMITTED:** `/timesheet`, an editable grid over `work_logs` —
