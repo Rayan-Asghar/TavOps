@@ -201,6 +201,23 @@ export const proposalStatus = pgEnum("proposal_status", [
 ]);
 
 /**
+ * Why a proposal was lost.
+ *
+ * An enum rather than free text because the only reason to record a loss is to
+ * be able to count them, and free text does not aggregate. Kept short: a
+ * taxonomy a rep has to think about is one they fill in wrongly.
+ */
+export const proposalLostReason = pgEnum("proposal_lost_reason", [
+  "price",
+  "no_response",
+  "client_hired_other",
+  "client_cancelled",
+  "timeline",
+  "scope_mismatch",
+  "other",
+]);
+
+/**
  * How a project earns. Lives on `projects` and not on `project_financials`,
  * which is RLS-gated: contract value is sensitive, the shape of the deal is
  * not, and the project list has to badge it without opening the finance gate.
@@ -813,6 +830,15 @@ export const notifications = pgTable(
     blockerId: uuid("blocker_id").references(() => blockers.id, {
       onDelete: "cascade",
     }),
+    /**
+     * The fourth link. A follow-up notification belongs to a proposal and to
+     * nothing else, and the inbox builds its href from whichever of these is
+     * set — so without this the chase produces rows a rep can read and cannot
+     * act on, which is how a signal becomes noise.
+     */
+    proposalId: uuid("proposal_id").references(() => proposals.id, {
+      onDelete: "cascade",
+    }),
     /** Actionable items stay in the inbox until dealt with, not just read. */
     isActionable: boolean("is_actionable").default(false).notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -1089,6 +1115,26 @@ export const proposals = pgTable(
     meetingAt: timestamp("meeting_at", { withTimezone: true }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
 
+    /**
+     * Set only while `status` is `lost`, and cleared if the deal comes back —
+     * a database CHECK enforces both halves, because a stale reason left on a
+     * revived deal quietly corrupts every count of why we lose.
+     */
+    lostReason: proposalLostReason("lost_reason"),
+    lostNote: text("lost_note"),
+
+    /**
+     * When somebody last chased this, NOT when they intend to.
+     *
+     * 0011 removed a `follow_up_due_at` the rep had to fill in; this is the
+     * opposite shape. The moment a chase falls due is derived from the status
+     * and the clock (see `lib/chase.ts`), so a rep who never touches the
+     * feature still gets a correct queue. NULL means never chased, and the
+     * clock then runs from `sentAt`.
+     */
+    lastChasedAt: timestamp("last_chased_at", { withTimezone: true }),
+    chaseCount: integer("chase_count").default(0).notNull(),
+
     wonValue: numeric("won_value", { precision: 12, scale: 2 }),
     /** The handoff: a won proposal points at the project it became. */
     wonProjectId: uuid("won_project_id").references(() => projects.id, {
@@ -1105,6 +1151,12 @@ export const proposals = pgTable(
   (t) => [
     index("proposals_owner_idx").on(t.ownerId, t.sentAt),
     index("proposals_status_idx").on(t.status),
+    /* Matches the chase sweep's predicate exactly, coalesce included, so the
+       queue is an index scan rather than a filter over the whole pipeline.
+       Drizzle does not model the partial WHERE or the expression — 0021 is
+       the authority; this entry exists so the snapshot knows the index. */
+    index("proposals_chase_idx").on(t.status),
+    index("proposals_client_idx").on(t.clientId),
   ],
 );
 

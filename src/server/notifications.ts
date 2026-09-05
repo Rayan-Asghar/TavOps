@@ -12,6 +12,8 @@ export type NotifyInput = {
   projectId?: string | null;
   taskId?: string | null;
   blockerId?: string | null;
+  /** A follow-up belongs to a proposal; it is what makes the inbox row clickable. */
+  proposalId?: string | null;
   /** Actionable items stay in the inbox until dealt with, not merely opened. */
   isActionable?: boolean;
   /**
@@ -33,6 +35,7 @@ export async function notify(input: NotifyInput, tx: Db | Parameters<Parameters<
       projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
       blockerId: input.blockerId ?? null,
+      proposalId: input.proposalId ?? null,
       isActionable: input.isActionable ?? false,
       dedupeKey: input.dedupeKey ?? null,
     })

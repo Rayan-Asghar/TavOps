@@ -35,14 +35,19 @@ export function Crumb() {
   const pathname = usePathname() ?? "/";
 
   const exact = LABEL[pathname];
-  // Only /projects/[id] is deeper than its own map entry.
-  const isProjectDetail =
-    !exact && pathname.startsWith("/projects/") && pathname !== "/projects/new";
 
-  const parent = isProjectDetail
-    ? { href: "/projects", label: "Projects" }
-    : null;
-  const title = exact ?? (isProjectDetail ? "Project" : "TavrenOPS");
+  /* Routes with a detail page under them. Was a single hardcoded check for
+     /projects/[id]; a second one arriving is the moment it becomes a table. */
+  const DETAIL_OF: { prefix: string; href: string; parent: string; title: string }[] = [
+    { prefix: "/projects/", href: "/projects", parent: "Projects", title: "Project" },
+    { prefix: "/sales/", href: "/sales", parent: "Pipeline", title: "Proposal" },
+  ];
+  const detail = exact
+    ? undefined
+    : DETAIL_OF.find((d) => pathname.startsWith(d.prefix));
+
+  const parent = detail ? { href: detail.href, label: detail.parent } : null;
+  const title = exact ?? detail?.title ?? "TavrenOPS";
 
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">

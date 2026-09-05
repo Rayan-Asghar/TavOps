@@ -31,6 +31,7 @@ export type QueueItem = {
   title: string;
   body: string | null;
   projectId: string | null;
+  proposalId: string | null;
   createdAt: Date;
 };
 
@@ -46,9 +47,13 @@ export function AttentionQueue({ items }: { items: QueueItem[] }) {
   const hrefFor = (n: QueueItem) =>
     n.kind === "task_needs_review"
       ? "/review"
-      : n.projectId
-        ? `/projects/${n.projectId}`
-        : null;
+      : // Checked before projectId: a follow-up carries no project, and a
+        // handoff nudge carries both but is answered on the proposal.
+        n.proposalId
+        ? `/sales/${n.proposalId}`
+        : n.projectId
+          ? `/projects/${n.projectId}`
+          : null;
 
   return (
     <ul>

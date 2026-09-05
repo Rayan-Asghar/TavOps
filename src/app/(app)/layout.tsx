@@ -19,6 +19,7 @@ import {
 import { Crumb } from "@/components/crumb";
 import { getActor } from "@/lib/auth";
 import { unresolvedCount } from "@/server/notifications";
+import { chaseDueCount } from "@/server/proposal-queries";
 import { activeSessionFor } from "@/server/timer";
 import { recentProjectsFor } from "@/server/recent";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
@@ -59,10 +60,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const userRole = role;
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
-  const [inboxCount, timer, recents] = await Promise.all([
+  const [inboxCount, timer, recents, chasesDue] = await Promise.all([
     unresolvedCount(actor.id),
     activeSessionFor(actor.id),
     recentProjectsFor(actor, 5),
+    // Owner-scoped even for a head: the badge counts what THIS person owes
+    // today, and a company-wide number there is a statistic wearing a task's
+    // clothes. Skipped entirely for roles with no pipeline.
+    can(role, "proposal.create") ? chaseDueCount(actor.id) : Promise.resolve(0),
   ]);
 
   /**
@@ -96,7 +101,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
      meant to be opened. It was filed under reporting when the page was a log of
      what had already happened. */
   if (can(role, "proposal.create")) {
-    today.push({ href: "/sales", label: "Sales", icon: "sales" });
+    today.push({
+      href: "/sales",
+      label: "Sales",
+      icon: "sales",
+      // Omitted at zero rather than shown as 0: an empty queue is the ordinary
+      // state here, and a zero badge reads as a problem.
+      count: chasesDue > 0 ? chasesDue : undefined,
+    });
   }
 
   const delivery: NavEntry[] = [

@@ -19,6 +19,9 @@ import {
 } from "@/lib/business-time";
 import { elapsedSeconds, RUNAWAY_TIMER_HOURS } from "@/lib/timer-utils";
 import { notify } from "./notifications";
+import { proposalsDueAChase } from "./proposal-queries";
+import { chaseDedupeKey } from "./proposal-schemas";
+import { chaseState } from "@/lib/chase";
 
 /** Level 2 waits a further full shift after the level 1 breach. */
 const ESCALATION_STEP_HOURS = HOURS_PER_DAY;
@@ -422,6 +425,56 @@ export async function flagEstimateOverruns() {
   return { flagged };
 }
 
+/**
+ * Puts a follow-up in a rep's inbox when a proposal has gone quiet.
+ *
+ * ## Not the feature 0011 deleted
+ *
+ * That migration dropped `follow_up_due_at` because it asked a rep to name a
+ * date and then nagged them about the date they named. Nothing here asks for
+ * anything: due-ness is derived from the status and the clock, so a rep who
+ * never touches the feature still gets a correct queue. It is the property
+ * `flagEstimateOverruns` above has, and it is why this is worth having when
+ * that one was not.
+ *
+ * One level, deliberately, unlike the blocker escalation. Blockers escalate
+ * because nobody is looking at them; a rep opens the pipeline every morning by
+ * construction, so a second, louder row is noise rather than pressure. The row
+ * clears itself when the proposal is chased or moved — see `markChased` and
+ * `advanceProposal`, both of which call `resolveByDedupeKey`.
+ */
+export async function flagFollowUpsDue() {
+  const due = await proposalsDueAChase();
+
+  let flagged = 0;
+  for (const p of due) {
+    // The SQL predicate selects by working DAYS; this re-derives the exact
+    // business-hours answer, so a row that is only borderline is not chased.
+    const state = chaseState(
+      {
+        status: p.status,
+        sentAt: p.sentAt,
+        lastChasedAt: p.lastChasedAt,
+        chaseCount: p.chaseCount,
+      },
+      new Date(),
+    );
+    if (!state.due) continue;
+
+    await notify({
+      userId: p.ownerId,
+      kind: "followup_due",
+      title: `Chase: ${p.jobTitle}`,
+      body: state.reason,
+      isActionable: true,
+      proposalId: p.id,
+      dedupeKey: chaseDedupeKey(p.id),
+    });
+    flagged++;
+  }
+  return { flagged };
+}
+
 export async function runAllSweeps() {
   const escalation = await escalateBlockers();
   const stale = await flagStaleTasks();
@@ -429,5 +482,6 @@ export async function runAllSweeps() {
   const overruns = await flagEstimateOverruns();
   const health = await recomputeProjectHealth();
   const timers = await flagRunawayTimers();
-  return { escalation, stale, overruns, health, timers };
+  const followUps = await flagFollowUpsDue();
+  return { escalation, stale, overruns, health, timers, followUps };
 }

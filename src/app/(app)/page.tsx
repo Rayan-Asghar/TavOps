@@ -194,6 +194,7 @@ export default async function InboxPage() {
                     title: n.title,
                     body: n.body,
                     projectId: n.projectId,
+                    proposalId: n.proposalId,
                     createdAt: n.createdAt,
                   }))}
                 />

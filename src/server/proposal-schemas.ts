@@ -45,10 +45,114 @@ export const createProposalSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
 });
 
-export const advanceProposalSchema = z.object({
+export const LOST_REASONS = [
+  "price",
+  "no_response",
+  "client_hired_other",
+  "client_cancelled",
+  "timeline",
+  "scope_mismatch",
+  "other",
+] as const;
+
+export type LostReason = (typeof LOST_REASONS)[number];
+
+/**
+ * Phrased from our side, not the client's, because the rep picking one is
+ * answering "what happened" rather than filing a complaint.
+ */
+export const LOST_REASON_LABEL: Record<LostReason, string> = {
+  price: "Too expensive",
+  no_response: "Never heard back",
+  client_hired_other: "Hired someone else",
+  client_cancelled: "Cancelled the job",
+  timeline: "Timeline did not work",
+  scope_mismatch: "Not what we do",
+  other: "Something else",
+};
+
+export const advanceProposalSchema = z
+  .object({
+    proposalId: z.string().uuid(),
+    status: z.enum(PROPOSAL_STATUSES),
+    wonValue: z.coerce.number().min(0).optional(),
+    lostReason: z.enum(LOST_REASONS).optional(),
+    lostNote: z.string().trim().max(500).optional(),
+  })
+  /* A loss with no reason is the row that teaches nothing, which is the whole
+     point of recording losses. The database enforces this too — this is here so
+     the rep is told which field, not handed a constraint violation. */
+  .refine((v) => v.status !== "lost" || v.lostReason !== undefined, {
+    message: "Why was it lost?",
+    path: ["lostReason"],
+  });
+
+export const markChasedSchema = z.object({
   proposalId: z.string().uuid(),
-  status: z.enum(PROPOSAL_STATUSES),
-  wonValue: z.coerce.number().min(0).optional(),
 });
 
+/**
+ * Links a proposal to a client that already exists.
+ *
+ * There is deliberately no `newClientName` here, unlike the handoff schema. A
+ * rep gets visibility of the client list, not ownership of it: creating a
+ * client is a consequence of winning work, and it happens in the handoff where
+ * a project is created to hang it on.
+ */
+export const linkProposalClientSchema = z.object({
+  proposalId: z.string().uuid(),
+  // Empty string is the "no client" option in the select, not a missing field.
+  clientId: z
+    .string()
+    .uuid()
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+});
+
+/** The pipeline views. `chase` is the default, which is why it is first. */
+export const PROPOSAL_VIEWS = ["chase", "open", "won", "lost", "all"] as const;
+export type ProposalView = (typeof PROPOSAL_VIEWS)[number];
+
+export const VIEW_LABEL: Record<ProposalView, string> = {
+  chase: "Needs a chase",
+  open: "Open",
+  won: "Won",
+  lost: "Lost",
+  all: "All",
+};
+
+export type ProposalStatusName = (typeof PROPOSAL_STATUSES)[number];
+
+/** The five a chase can apply to: everything that is not yet decided. */
+export const OPEN_STATUSES = [
+  "sent",
+  "viewed",
+  "responded",
+  "meeting",
+  "qualified",
+] as const satisfies readonly ProposalStatusName[];
+
+/** Which statuses each view admits. `chase` narrows further, by the clock. */
+export const VIEW_STATUSES: Record<
+  ProposalView,
+  readonly [ProposalStatusName, ...ProposalStatusName[]] | null
+> = {
+  chase: OPEN_STATUSES,
+  open: OPEN_STATUSES,
+  won: ["won"],
+  lost: ["lost"],
+  all: null,
+};
+
 export type CreateProposalInput = z.input<typeof createProposalSchema>;
+
+/**
+ * One inbox key per proposal, so a chase clears exactly its own line.
+ *
+ * Lives here rather than beside the action that writes it because a "use
+ * server" module may only export async functions — the same reason every other
+ * schema and label in this file is not in `proposals.ts`.
+ */
+export function chaseDedupeKey(proposalId: string): string {
+  return `followup:${proposalId}`;
+}
