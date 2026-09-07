@@ -41,6 +41,16 @@ const pool =
   postgres(connectionString, {
     max: poolMax,
     idle_timeout: 20,
+    /**
+     * Fail fast when the database cannot be reached at all.
+     *
+     * postgres.js waits forever by default, which turns "wrong host" or "no
+     * network" into a hang rather than an error. A build that reaches for a
+     * database it cannot see then dies on the framework's own 60s page timeout,
+     * reporting only that a page took too long — which says nothing about the
+     * connection and sends you looking at the page.
+     */
+    connect_timeout: 10,
     prepare: false,
   });
 

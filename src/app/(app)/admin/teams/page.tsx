@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { teamMembers, teams, users } from "@/db/schema";
+import { requireCapability } from "@/lib/authz";
 import { SectionIntro } from "@/components/app-shell";
 import {
   CreateTeamForm,
@@ -13,6 +14,23 @@ import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Teams" };
 export default async function TeamsPage() {
+  /**
+   * The gate this page never had.
+   *
+   * Every other screen under `(app)` calls one of `requireCapability`,
+   * `requirePageActor` or `getActor`; this one queried the database and
+   * rendered the whole active staff list to anybody who was merely signed in —
+   * a developer or a temp collaborator included. The writers in
+   * `team-actions.ts` have always asserted `team.manage`, so the reader was the
+   * only way in, and it was open.
+   *
+   * It also broke the production build, which is how it was found. Reading the
+   * session is what marks a route dynamic; with no such call Next treated this
+   * page as static, tried to prerender it, and hung for sixty seconds reaching
+   * for a database from the build container. The missing authorisation check
+   * and the failing build were one defect.
+   */
+  await requireCapability("team.manage");
 
   const [teamRows, memberRows, staff] = await Promise.all([
     db.select().from(teams).orderBy(asc(teams.name)),
