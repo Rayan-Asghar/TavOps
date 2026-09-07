@@ -11,95 +11,92 @@ A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
 
 ## Branch topology — read this first
 
-`main`, **36 commits ahead of `origin/main`. Nothing is pushed.** `redesign` and
-`timesheet-grid` are merged; ignore them.
+`main`, **41 commits ahead of `origin/main`. Nothing is pushed.**
 
-Tree clean. `pnpm verify` (387 unit) and `pnpm test:db` (153 fixture) green,
-production build green at `NODE_OPTIONS=--max-old-space-size=4096`.
-**Do not build while `next dev` is running** — 4096 is enough alone but not
-alongside a dev server, and an unexplained exit 137 is almost always that.
+Tree clean EXCEPT `docs/ROADMAP.md`, which **another session is editing right
+now** — it is adding Phase 5.7 (per-person money permissions, overloading
+`can()`) and 5.8 (invite by link). Leave it alone. **5.7 overlaps `src/lib/authz.ts`
+directly; coordinate before both land.**
 
-⚠️ **Up to six Claude sessions run against this repo at once.** The index is
-shared. Commit with `git commit --only -F <msgfile> -- <explicit paths>`, never
-`git add -A` — a PreToolUse hook denies bulk staging. New files must be
-`git add`-ed by explicit path first; `--only` cannot reference an untracked one.
+`pnpm verify` (399 unit) and `pnpm test:db` (160 fixture) green, build green at
+`NODE_OPTIONS=--max-old-space-size=4096`. **Do not build while `next dev` runs**,
+and **do not run `pnpm test:db` while another session is** — both collide, the
+second producing dozens of phantom failures against the shared test database.
+
+⚠️ **Up to six Claude sessions run against this repo at once.** Commit with
+`git commit --only -F <msgfile> -- <explicit paths>`, never `git add -A`.
+New files must be `git add`-ed by explicit path first.
 
 ## Current State
 
-**Phases 1 and 2A of `docs/ROADMAP.md` are done, plus 2B.1/2B.2.** The money
-layer exists end to end and is visible on every screen it belongs on.
+**Phases 1, 2A and 2B.1/2B.2 are done; Phase 5 is four items of six.**
 
-Migrations this session: `0019` commercial foundation, `0020` job_runs,
-`0021` saved_views. All hand-written, all diffed against the live DB first.
-
-- **Money**: `billing_model` + `retainer_periods`, `task_types` (billability is
-  INHERITED, never asked per entry), `billable` on logs and revisions,
-  `work_log_costs` (RLS-forced, its own table), `pnpm db:backfill-costs`.
-- **Writers that did not exist**: rates on `/admin/users`; billing model,
-  financials and retainer periods on `/projects/[id]?tab=money`.
-- **Screens**: money on the project list (both density modes), `/clients`,
-  `/reports` two-tier strip (closes `C5`), `/tasks`, saved views.
-- **In-app scheduler**: `/api/heartbeat` + `src/server/scheduler.ts`. The browser
-  is a clock source only; the server decides what is due from `job_runs`. **This
-  removed the "hosting blocks automation" chain.**
-- **Google sign-in**: one `maySignIn` rule for both providers, **no
-  auto-provisioning**. Needs `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` from a Google
-  OAuth *Web application* client (NOT the Sheets service account) or the button
-  stays hidden.
+Done this session (migration `0022` only):
+- **Seed safety.** Each account gets its own generated password, printed once.
+  The seed refuses to run against a database that already has users.
+- **Session revocation.** `users.session_version`, bumped on deactivation,
+  reactivation, password reset and self-service change.
+- **`src/lib/authz.ts`.** `loadPageActor` / `requirePageActor` /
+  `requireCapability` replaced the block 13 pages each repeated. Wrapped in
+  React's `cache()`. The role is still read from the DB, never the token.
+- **`/settings`** — name, password (requires the current one), theme, density.
+- **Dead notification kinds** are unreachable via `EmittableKind`, not a migration.
 
 ## Next Steps
 
-1. **Phase 5 hardening before the agency uses this.** Nine seed accounts share
-   `tavren123`, there is no login rate limiting, and deactivating somebody
-   leaves them signed in for up to 12h. None of it blocks feature work; all of
-   it blocks real use.
-2. **Phase 2B.3 onward** — filter chips + grouping as one system (client
+1. **Login rate limiting is the last Phase 5 item** and needs a table. It was
+   deliberately NOT started: another session is mid-flight on migrations and a
+   number collision is what broke the test database earlier today. Agree a
+   migration number first, or wait for theirs to land.
+2. **Audit the migration ledger before deploying** — see the blocker below.
+3. **Phase 2B.3 onward** — filter chips + grouping as one system (client
    grouping on `/projects` was deferred to land there), then view switchers,
    table conventions, global search over content.
-3. `/uxaudit` has NOT been re-run. The ~60/92 figure was scored by the session
+4. `/uxaudit` has NOT been re-run. The ~60/92 figure was scored by the session
    that did the work, so it is not evidence.
 
 ## What Failed / Dead Ends
 
+- **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
+  than the newest applied row.** A concurrent session's migration therefore
+  silently strands yours: `db:migrate` reports success and your DDL never runs.
+  Symptom is a column missing in one database and present in another.
 - **A correlated subquery must not interpolate `${table.column}`.** Drizzle
-  renders it UNQUALIFIED (`"id"`), so Postgres resolves it against the inner
-  table: `w.project_id = "id"` compared a work log to its own id, matched
-  nothing, returned 0 with no error. Write `projects.id` out longhand. Existing
-  subqueries that pass unaliased drizzle table objects are fine.
+  renders it UNQUALIFIED, so Postgres resolves it against the inner table.
+  Returned 0 with no error. Write `projects.id` out longhand.
 - **`sql<Date>` is a claim, not a conversion**, and a raw `sql` template binds a
-  `Date` differently from drizzle's operators. Use `gt()`/`lte()`, and expect a
-  string back from any raw expression.
-- **`work_log_costs` must never become columns on `work_logs`** — that table is
-  read by the grid, both CSV exports and `reports.ts::timesheet`, none of which
-  open the finance gate. `tests/db/rls.test.ts` asserts it.
-- **An RLS-forced table cannot be filtered from an ungated query.** `NOT EXISTS`
-  against `work_log_costs` inside `timesheet()` sees zero rows and matches
-  EVERYTHING. Resolve ids in a gated query and pass them in — and guard the
-  empty list, because `inArray(id, [])` is `IN ()` and matches everything too.
-- **Every export of a `"use server"` module is a callable endpoint.** A query
-  taking a `userId` there lets any caller read another user's rows.
+  `Date` differently from drizzle's operators. Use `gt()`/`lte()`.
+- **`notFound()` mid-stream still returns HTTP 200** — Next commits the status
+  before the throw. Assert on the rendered body, not the status code.
+- **`work_log_costs` must never become columns on `work_logs`.**
+  `tests/db/rls.test.ts` asserts it.
+- **An RLS-forced table cannot be filtered from an ungated query** — `NOT
+  EXISTS` sees zero rows and matches EVERYTHING. Resolve ids in a gated query,
+  and guard the empty list: `inArray(id, [])` is `IN ()` and matches everything.
+- **Every export of a `"use server"` module is a callable endpoint.**
+- **`vi.importActual("@/lib/auth")` breaks fixture tests** — it reaches
+  next-auth, which reaches `next/server`. Use a plain factory.
 - **`drizzle-kit generate` models neither RLS nor CHECK constraints.**
-  Migrations stay hand-written; only the snapshot is generated.
 - **An unchecked HTML checkbox sends nothing** — use `readTriStateCheckbox`.
-- **Do not reset the finance GUC in a `finally`**: on a SQL error the
-  subtransaction is already aborted, so the reset masks the real error.
-- **A session-level advisory lock belongs to a CONNECTION and `db` is a pool**,
-  so `pg_advisory_unlock` can release nothing. `scheduler.ts` uses the xact
-  variant; **`sync-worker.ts:490` still has the hazard.**
+- **Do not reset the finance GUC in a `finally`**: the subtransaction is already
+  aborted, so the reset masks the real error.
+- **A session-level advisory lock belongs to a CONNECTION and `db` is a pool.**
+  `scheduler.ts` uses the xact variant; **`sync-worker.ts:490` still has the hazard.**
 - **`pkill -f "next dev"` matches its own command chain.** Bracket the pattern.
 - **`setState` in an effect is a lint error**; a `RefObject` effect cannot see a
   conditionally-mounted form — use a callback ref.
-- Grid, CDP, Drive API, `loading.tsx` and rejected-shadcn notes live in
-  `.claude/handoff-history/`.
+- Grid, CDP, Drive API and shadcn notes: `.claude/handoff-history/`.
 
 ## Open Questions / Blockers
 
-- **Hosting** — Phase 6, and **no longer blocks automation**. Needs only Node +
-  Postgres, not cron. Nothing runs overnight or over a weekend, which is fine
-  for these three jobs. GoDaddy/Hostinger *shared* hosting cannot run this; a
-  VPS can.
-- **`retainer_periods` has one writer and no reader on the project list** —
-  a retainer's period burn shows on the money tab only.
+- **MIGRATION LEDGER DRIFT — audit before deploying.** The dev database has two
+  applied migrations, timestamps `1788796370256` and `1788796371256`, matching
+  NO file in the journal: a session generated, applied and then deleted them.
+  The dev schema may therefore contain changes no migration can reproduce, so a
+  fresh environment would not match it. Diff dev against a clean migrate.
+- **The dev database still has the nine shared-password accounts.** The fix
+  applies to future seeds; those rows predate it and were not rotated.
+- **Hosting** — Phase 6, and no longer blocks automation.
 - **Seeded logs carry no revisions or costs** (routing the seed through
   `recordWorkInTx` would break the staleness-sweep fixtures).
 - **Discord/Slack webhook URL** for the digest is still unset.
