@@ -4,6 +4,50 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 (merge) — Six sessions' work becomes one branch
+
+Rayan asked for everything merged into `main` and pushed. Four sessions were
+live on this repo at the time, so the merge was mostly coordination.
+
+- **Asked before touching anything.** The primary checkout had five dirty
+  files. Three sessions confirmed they were not theirs; the fourth said Rayan
+  had explicitly told them to leave those files uncommitted and went to check
+  with him rather than take a peer's word for it. That was the right call and
+  it cost twenty minutes, against the alternative of committing somebody else's
+  in-progress deploy config.
+- **The journal was a UNION, not a side.** `sales-ops` was cut before
+  `0021_saved_views` and `0022_session_version` landed, so taking either
+  version of `_journal.json` wholesale would have dropped two migrations from
+  every database built from the repo. Caught by a peer comparing both journals
+  directly rather than reading one.
+- **Fourth migration-number collision of the day.** `main` took `0023` for
+  invitations at a later timestamp than either of the branch's two. Leaving
+  them would have worked on a fresh database and silently skipped them on any
+  database that had invitations and not them — including a first deploy
+  restored from a dev dump. Renumbered to `0024`/`0025`, timestamps moved past
+  invitations, and the applied rows repaired in all three databases.
+- **The prediction that paid off.** Migration `0011` deleted a follow-up
+  chaser; `009fe46` then fenced its notification kind behind a type so nothing
+  could emit it. This branch revives the chase, so `notify()` stopped
+  compiling on merge — which was written into the roadmap weeks earlier as the
+  thing that would happen. `followup_due` came off the exclusion list; the
+  other two are still dead.
+- **The snapshot chain had been broken since 0022.** `db:generate` was
+  re-emitting the DDL of three applied migrations, so the next person to run it
+  would have been handed a migration recreating existing tables. Regenerated to
+  `0025`; `db:generate` now says "nothing to migrate".
+- **Corrected a blocker that was not one.** Two applied migrations matching no
+  file had been recorded as ledger drift — "a session generated, applied and
+  deleted them". They were this branch's, one branch away. Withdrawn.
+- **Proof, not assertion:** a database created from nothing and migrated from
+  the merged journal passes all 224 fixture tests. 441 unit tests green.
+- **The push is BLOCKED** by this session's permission settings and was not
+  attempted a second way. 69 commits are merged and verified on `main`,
+  unpushed. Asking a peer session to push would have laundered the permission
+  decision, so it goes back to Rayan.
+
+---
+
 ### 2026-09-07 (second bug pass) — One rule, implemented twice
 
 The first pass asked what happens the second time a condition occurs. This

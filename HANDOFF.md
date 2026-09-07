@@ -11,8 +11,10 @@ PostgreSQL; reporting and the one-way mirrors read from it.
 
 ## Branch topology — read this first
 
-`main`. Do not trust a commit count written here; run
-`git rev-list --count origin/main..main`.
+`main`, and **everything is merged into it** — `sales-ops` is fully contained
+and can be deleted. **69 commits are UNPUSHED**: the push was blocked by a
+session permission rule, not by anything wrong with the tree. Do not trust a
+count written here; run `git rev-list --count origin/main..main`.
 
 `pnpm verify` (441 unit) and `pnpm test:db` (224 fixture) green; build green at
 `NODE_OPTIONS=--max-old-space-size=4096`. **Do not build while `next dev` runs.**
