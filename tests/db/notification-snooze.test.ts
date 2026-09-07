@@ -35,9 +35,14 @@ async function seed(userId: string, dedupeKey: string | null = "k1") {
   return row;
 }
 
+/* File level, not inside the first describe. A describe-scoped `owner.end()`
+   closes the connection as soon as that block finishes, so the next describe
+   in the file dies with CONNECTION_ENDED — which reads like a database problem
+   rather than a lifecycle one. */
+beforeEach(resetDb);
+afterAll(() => owner.end());
+
 describe("snoozing", () => {
-  beforeEach(resetDb);
-  afterAll(() => owner.end());
 
   it("hides the item until its time, then lets it back", async () => {
     const user = await makeUser({}); // returns the id string, not a row
@@ -126,5 +131,76 @@ describe("snoozing", () => {
 
     await resolveNotification(n.id, theirs);
     expect(await inboxFor(mine)).toHaveLength(1); // still untouched
+  });
+});
+
+describe("a dismissed condition that recurs", () => {
+  /**
+   * `resolveNotification` is the inbox's Dismiss button, and the upsert on
+   * (user_id, dedupe_key) does not clear `resolved_at`. So without `reopen`,
+   * dismissing a sweep's warning once buys permanent silence about that key:
+   * the task goes quiet again, the project slips again, and nobody is told.
+   *
+   * Both halves are asserted, because the default must stay as it was for the
+   * callers that want a genuinely one-off row.
+   */
+  it("stays silent on the same key by default", async () => {
+    const userId = await makeUser({ name: "Reader" });
+    const first = await seed(userId, "recurring");
+    await resolveNotification(first.id, userId);
+    expect(await inboxFor(userId)).toHaveLength(0);
+
+    await notify({
+      userId,
+      kind: "sync_failed",
+      title: "It happened again",
+      isActionable: true,
+      dedupeKey: "recurring",
+    });
+    expect(await inboxFor(userId)).toHaveLength(0);
+  });
+
+  it("comes back, with current wording, when the caller asks it to", async () => {
+    const userId = await makeUser({ name: "Reader" });
+    const first = await seed(userId, "recurring");
+    await resolveNotification(first.id, userId);
+
+    await notify({
+      userId,
+      kind: "sync_failed",
+      title: "It happened again",
+      body: "Second time",
+      isActionable: true,
+      dedupeKey: "recurring",
+      reopen: true,
+    });
+
+    const inbox = await inboxFor(userId);
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0].id).toBe(first.id);
+    // Refreshed: a reopened alert must not describe the last time it fired.
+    expect(inbox[0].title).toBe("It happened again");
+    expect(inbox[0].body).toBe("Second time");
+  });
+
+  it("leaves an open row completely alone", async () => {
+    // The guard on the refresh. Rewriting created_at on every hourly sweep
+    // would shuffle the inbox and make "raised 3 days ago" always read "now".
+    const userId = await makeUser({ name: "Reader" });
+    const first = await seed(userId, "recurring");
+    await new Promise((r) => setTimeout(r, 25));
+
+    await notify({
+      userId,
+      kind: "sync_failed",
+      title: "Changed title",
+      isActionable: true,
+      dedupeKey: "recurring",
+      reopen: true,
+    });
+
+    const [row] = await inboxFor(userId);
+    expect(row.title).toBe(first.title);
+    expect(row.createdAt.getTime()).toBe(first.createdAt.getTime());
   });
 });

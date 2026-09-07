@@ -189,6 +189,9 @@ export async function flagStaleTasks() {
       taskId: t.id,
       isActionable: true,
       dedupeKey: `update_missing:${t.id}`,
+      // A task can go quiet, be updated, and go quiet again. Without this the
+        // second silence is never reported to anyone who dismissed the first.
+      reopen: true,
     });
   }
 
@@ -308,6 +311,9 @@ export async function recomputeProjectHealth() {
         projectId: p.id,
         isActionable: true,
         dedupeKey: `health:${p.id}:${health}`,
+        // A project recovering and slipping again is the case this exists for, and
+          // dismissing the first warning must not buy permanent silence.
+        reopen: true,
       });
     }
   }
@@ -420,6 +426,8 @@ export async function flagEstimateOverruns() {
         taskId: t.id,
         isActionable: true,
         dedupeKey: `overrun:${t.id}`,
+        // The overrun can widen after somebody dismissed the first warning.
+        reopen: true,
       });
     }
     flagged++;

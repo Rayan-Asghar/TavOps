@@ -646,10 +646,28 @@ describe("the drain lock", () => {
     return rows[0].n as number;
   }
 
+  /**
+   * Runs a drain and asserts it left no lock of its own behind.
+   *
+   * Compared against a BASELINE rather than against zero. `pg_locks` is
+   * cluster-wide and vitest runs each test file in its own process against one
+   * shared database, so `scheduler.test.ts` — which drains too — can still be
+   * closing a connection that holds this lock when this file starts. A foreign
+   * lock shows up in both readings and cancels out; a leak of our own does not.
+   *
+   * Polling for zero instead would be wrong, and was tried: it passes against
+   * the buggy implementation, because a leaked lock is released as soon as the
+   * pool recycles that connection. The point is that the drain must not leak it
+   * in the first place.
+   */
+  async function expectNoLeak(run: () => Promise<unknown>) {
+    const before = await heldLocks();
+    await run();
+    expect(await heldLocks()).toBeLessThanOrEqual(before);
+  }
+
   it("releases the lock when the drain finds nothing to do", async () => {
-    expect(await heldLocks()).toBe(0);
-    await runSyncWorker();
-    expect(await heldLocks()).toBe(0);
+    await expectNoLeak(() => runSyncWorker());
   });
 
   it("releases the lock after a real drain, so the next one runs", async () => {
@@ -657,13 +675,42 @@ describe("the drain lock", () => {
     const log = await makeWorkLog({ projectId, userId, hours: "2.00" });
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
-    await runSyncWorker();
-    expect(await heldLocks()).toBe(0);
+    await expectNoLeak(() => runSyncWorker());
 
     // The real symptom of the old bug: the SECOND call refusing to run.
     const second = await runSyncWorker();
     expect(second).not.toHaveProperty("skipped", "another drain is running");
-    expect(await heldLocks()).toBe(0);
+  });
+
+  it("leaks nothing when several drains race, which is the real case", async () => {
+    /* Read this before trusting it. The old bug is INTERMITTENT by nature:
+       `db.execute` takes whatever pooled connection is free, so on a quiet run
+       the lock and the unlock often land on the same one and nothing leaks.
+       Concurrency separates them — and concurrency is the normal case here,
+       because every logged entry schedules a drain, so ten people logging at
+       once means ten of these at once (see the DRAIN_LOCK_KEY docstring).
+
+       Measured against the old implementation this catches the leak roughly
+       half the time, so it is a probabilistic guard, not a proof. The proof is
+       the reasoning: a session-level advisory lock belongs to the connection
+       that took it, so releasing it through a pool is not release at all. The
+       test is here to notice a regression eventually, and to say why. */
+    const { userId, projectId, connectionId } = await scenario();
+    for (let i = 0; i < 3; i++) {
+      const log = await makeWorkLog({ projectId, userId, hours: "1.00" });
+      await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+    }
+
+    await expectNoLeak(async () => {
+      await Promise.all(
+        Array.from({ length: 8 }, () => runSyncWorker().catch(() => undefined)),
+      );
+    });
+
+    // And the queue is still drainable afterwards, which is the thing a leak
+    // actually costs: sync stops until somebody restarts the process.
+    const after = await runSyncWorker();
+    expect(after).not.toHaveProperty("skipped", "another drain is running");
   });
 
   it("releases the lock even when the drain throws", async () => {
@@ -677,9 +724,8 @@ describe("the drain lock", () => {
       } as unknown as sheets_v4.Sheets["spreadsheets"],
     } as unknown as sheets_v4.Sheets);
 
-    await runSyncWorker().catch(() => undefined);
     // A leaked lock after a failure is the worst version of this bug: the
     // thing that broke also stops anything from retrying.
-    expect(await heldLocks()).toBe(0);
+    await expectNoLeak(() => runSyncWorker().catch(() => undefined));
   });
 });
