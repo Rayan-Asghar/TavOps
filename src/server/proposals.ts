@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, proposals } from "@/db/schema";
+import { clients, connectLedger, proposals } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { assertCan, can } from "@/lib/rbac";
 import { notify, resolveByDedupeKey } from "./notifications";
@@ -17,6 +17,7 @@ import {
   linkProposalClientSchema,
   markChasedSchema,
 } from "./proposal-schemas";
+import { bidCostSchema } from "./connects-schemas";
 import { safeErrorMessage } from "./action-errors";
 
 
@@ -56,16 +57,42 @@ export async function createProposal(
       notes: formData.get("notes") ?? undefined,
     });
 
-    // A single insert, so no transaction: logging a proposal writes one row and
-    // notifies nobody. Chasing it is the rep's own business.
-    await db.insert(proposals).values({
-      ownerId: actor.id,
-      jobTitle: data.jobTitle,
-      jobUrl: data.jobUrl,
-      category: data.category,
-      source: data.source,
-      budgetAmount: data.budgetAmount?.toFixed(2),
-      notes: data.notes,
+    const cost = bidCostSchema.parse({
+      connects: formData.get("connects") || undefined,
+      boost: formData.get("boost") || undefined,
+    });
+
+    /* This used to be a bare insert with a comment saying no transaction was
+       needed. That stopped being true once a bid spends connects: the proposal
+       and what it cost to place have to land together, or a failure halfway
+       leaves the balance wrong with nothing to point at. */
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(proposals)
+        .values({
+          ownerId: actor.id,
+          jobTitle: data.jobTitle,
+          jobUrl: data.jobUrl,
+          category: data.category,
+          source: data.source,
+          budgetAmount: data.budgetAmount?.toFixed(2),
+          notes: data.notes,
+        })
+        .returning({ id: proposals.id });
+
+      const spends: { kind: "bid" | "boost"; count: number }[] = [];
+      if (cost.connects) spends.push({ kind: "bid", count: cost.connects });
+      if (cost.boost) spends.push({ kind: "boost", count: cost.boost });
+
+      for (const spend of spends) {
+        await tx.insert(connectLedger).values({
+          kind: spend.kind,
+          // Negative: the sign belongs to the kind, and 0023 checks it.
+          delta: -spend.count,
+          proposalId: row.id,
+          recordedById: actor.id,
+        });
+      }
     });
 
     revalidatePath("/sales");

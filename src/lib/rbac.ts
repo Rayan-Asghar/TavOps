@@ -27,6 +27,7 @@ export const CAPABILITIES = [
   "deadline.viewClient",
   "proposal.create",
   "proposal.viewAll",
+  "connects.manage",
   "finance.view",
   "rates.view",
   "user.manage",
@@ -69,6 +70,7 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
     "deadline.viewClient",
     "proposal.create",
     "proposal.viewAll",
+    "connects.manage",
     "finance.view",
     "audit.view",
   ],
@@ -80,7 +82,12 @@ const ROLE_CAPABILITIES: Record<GlobalRole, readonly Capability[]> = {
    * BD time is real, non-billable cost, but it is not entered by the rep — see
    * `task_types`, where Business Development exists for whoever does log it.
    */
-  sales: ["blocker.create", "proposal.create", "deadline.viewClient"],
+  sales: [
+    "blocker.create",
+    "proposal.create",
+    "connects.manage",
+    "deadline.viewClient",
+  ],
 
   developer: ["worklog.create", "blocker.create", "task.edit"],
 

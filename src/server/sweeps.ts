@@ -18,7 +18,10 @@ import {
   HOURS_PER_DAY,
 } from "@/lib/business-time";
 import { elapsedSeconds, RUNAWAY_TIMER_HOURS } from "@/lib/timer-utils";
-import { notify } from "./notifications";
+import { notify, resolveByDedupeKey } from "./notifications";
+import { connectsStatus } from "./connects-queries";
+import { usersWithCapability } from "./recipients";
+import { connectsAlertKey } from "@/lib/connects";
 import { proposalsDueAChase } from "./proposal-queries";
 import { chaseDedupeKey } from "./proposal-schemas";
 import { chaseState } from "@/lib/chase";
@@ -475,6 +478,57 @@ export async function flagFollowUpsDue() {
   return { flagged };
 }
 
+/**
+ * Tells whoever buys connects when there are not enough left to bid with.
+ *
+ * NOT a blocker, and that is structural rather than stylistic:
+ * `blockers.project_id` is NOT NULL, `reportBlocker` calls
+ * `assertProjectAccess`, and `escalateBlockers` inner-joins `projects` —
+ * "we are out of connects" belongs to no project. `blocker-routing.ts` could
+ * not express it either: its axis is internal-vs-client owner side, which
+ * answers "whose fault is the wait", and connects are nobody's fault.
+ * `usersWithCapability` says "whoever buys connects" exactly, with no new
+ * taxonomy and no fourth OwnerKind bolted onto a model that was deliberately
+ * shrunk from thirteen branches to three.
+ *
+ * The dedupe key carries the LEVEL, never the balance: a balance in the key
+ * files a fresh row every time it moves by one, which is how a warning becomes
+ * noise. And recovery RESOLVES — a purchase that lifts the balance clears the
+ * levels no longer breached, because a queue that cannot be emptied is one
+ * people stop reading.
+ */
+export async function flagLowConnects() {
+  const status = await connectsStatus();
+  const buyers = await usersWithCapability("connects.manage");
+
+  let flagged = 0;
+  let cleared = 0;
+  for (const person of buyers) {
+    for (const level of [1, 2] as const) {
+      const key = connectsAlertKey(level);
+      /* ONLY the level actually reached, not every level below it. Firing L1
+         and L2 together puts "running out" and "out" in the same inbox at the
+         same moment -- two rows saying one thing, which is the noise the level
+         key exists to prevent. Crossing from 1 to 2 resolves 1 and raises 2. */
+      if (status.level === level) {
+        await notify({
+          userId: person.id,
+          kind: "connects_low",
+          title: level === 2 ? "Out of connects" : "Connects are running out",
+          body: status.reason,
+          isActionable: true,
+          dedupeKey: key,
+        });
+        flagged++;
+      } else {
+        await resolveByDedupeKey(person.id, key);
+        cleared++;
+      }
+    }
+  }
+  return { flagged, cleared, balance: status.balance, level: status.level };
+}
+
 export async function runAllSweeps() {
   const escalation = await escalateBlockers();
   const stale = await flagStaleTasks();
@@ -483,5 +537,6 @@ export async function runAllSweeps() {
   const health = await recomputeProjectHealth();
   const timers = await flagRunawayTimers();
   const followUps = await flagFollowUpsDue();
-  return { escalation, stale, overruns, health, timers, followUps };
+  const connects = await flagLowConnects();
+  return { escalation, stale, overruns, health, timers, followUps, connects };
 }

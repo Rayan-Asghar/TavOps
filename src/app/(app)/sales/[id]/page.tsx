@@ -15,6 +15,8 @@ import {
   handoffOptions,
   proposalDetail,
 } from "@/server/proposal-queries";
+import { connectsForProposal } from "@/server/connects-queries";
+import { KIND_LABEL, type LedgerKind } from "@/server/connects-schemas";
 import { LOST_REASON_LABEL, STATUS_LABEL, type LostReason } from "@/server/proposal-schemas";
 import { PageHeader } from "@/components/app-shell";
 import { Badge, HealthBadge } from "@/components/badges";
@@ -76,12 +78,14 @@ export default async function ProposalPage({
   if (p.ownerId !== actor.id && !seesAll) notFound();
 
   const canConvert = can(role, "project.create");
-  const [clients, handoff] = await Promise.all([
+  const [clients, handoff, spend] = await Promise.all([
     clientOptions(),
     canConvert && p.status === "won" && !p.wonProjectId
       ? handoffOptions()
       : Promise.resolve(null),
+    connectsForProposal(id),
   ]);
+  const connectsSpent = spend.reduce((n, e) => n + Math.abs(e.delta), 0);
 
   /* What became of it. Hours only, never money: a rep has no finance.view, and
      the project's own money tab already refuses without both the capability and
@@ -216,6 +220,32 @@ export default async function ProposalPage({
         </div>
 
         <aside className="space-y-4">
+          {connectsSpent > 0 && (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <p className="eyebrow">WHAT IT COST TO PLACE</p>
+                  <h3 className="m-0 text-lg tracking-[-.03em]">Connects</h3>
+                </div>
+                <strong className="tabular text-lg">{connectsSpent}</strong>
+              </div>
+              <ul className="m-0 list-none p-0">
+                {spend.map((e) => (
+                  <li
+                    key={`${e.kind}-${e.occurredAt.toISOString()}`}
+                    className="flex items-baseline justify-between border-b border-border px-5 py-2.5 last:border-b-0 text-xs"
+                  >
+                    <span>{KIND_LABEL[e.kind as LedgerKind] ?? e.kind}</span>
+                    <span className="tabular text-fg-muted">{Math.abs(e.delta)}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* Connects, never dollars. Pricing a spend needs a costing
+                  basis, and a basis chosen for a report is a number somebody
+                  will price a decision off — see 0023. */}
+            </section>
+          )}
+
           <section className="panel">
             <div className="panel-head">
               <div>

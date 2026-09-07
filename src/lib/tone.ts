@@ -95,6 +95,7 @@ export const KIND_META: Record<
   feasibility_answered: { label: "Answered", tone: "green", signal: "review" },
   followup_due: { label: "Follow-up", tone: "amber", signal: "warning" },
   timer_left_running: { label: "Timer running", tone: "amber", signal: "warning" },
+  connects_low: { label: "Connects", tone: "amber", signal: "warning" },
   review_approved: { label: "Approved", tone: "green", signal: "review" },
   revision_requested: { label: "Changes asked", tone: "violet", signal: "review" },
 };
@@ -169,6 +170,8 @@ export const STREAM_OF: Record<NotificationKind, StreamKey> = {
   feasibility_requested: "attention",
   revision_requested: "attention",
   followup_due: "attention",
+  // Asks for your hands, not your patience: somebody has to go and buy some.
+  connects_low: "attention",
 
   // Drifting on its own, with nobody yet asking.
   task_stalled: "slipping",

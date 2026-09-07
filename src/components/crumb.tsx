@@ -25,6 +25,7 @@ const LABEL: Record<string, string> = {
   "/reports": "Reports",
   "/review": "Review queue",
   "/sales": "Pipeline",
+  "/sales/connects": "Connects",
   "/audit": "Audit log",
   "/admin/users": "People",
   "/admin/teams": "Teams",

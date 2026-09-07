@@ -9,6 +9,7 @@ import { chaseState } from "@/lib/chase";
 import { pageInfo, parseListParams, type RawParams } from "@/lib/list-params";
 import { fmtDate } from "@/lib/format";
 import { PROPOSAL_TONE } from "@/lib/tone";
+import { connectsStatus } from "@/server/connects-queries";
 import {
   bdStats,
   chaseDueCount,
@@ -79,12 +80,13 @@ export default async function SalesPage({
   });
   const opts = { view, list };
 
-  const [stats, rows, total, dueNow, pendingHandoffs] = await Promise.all([
+  const [stats, rows, total, dueNow, pendingHandoffs, connects] = await Promise.all([
     bdStats(actor.id, seesAll),
     listProposals(actor.id, seesAll, opts),
     countProposals(actor.id, seesAll, opts),
     chaseDueCount(actor.id),
     pendingHandoffCount(actor.id, seesAll),
+    connectsStatus(),
   ]);
 
   const info = pageInfo(list, total);
@@ -107,6 +109,10 @@ export default async function SalesPage({
             + Log a proposal
           </Link>
         }
+        tabs={[
+          { href: "/sales", label: "Pipeline", active: true },
+          { href: "/sales/connects", label: "Connects", active: false },
+        ]}
         controls={
           <div className="flex w-full flex-col gap-3">
             {/* Chips, not a select: which view you are in has to be visible at
@@ -172,10 +178,18 @@ export default async function SalesPage({
               change={`${stats.responsesToday} today`}
               note="Replies, meetings and wins on proposals you sent."
             />
+            {/* Displaces "meetings booked", which is readable off the table
+                below. Whether the next bid can be placed at all is not. */}
             <MetricCard
-              label="Meetings booked"
-              value={String(stats.meetingsBooked)}
-              note="Last 30 days."
+              label="Connects"
+              value={String(connects.balance)}
+              changeTone={connects.level === 0 ? "positive" : "negative"}
+              change={
+                connects.runwayDays === null
+                  ? `${stats.meetingsBooked} meetings`
+                  : `~${connects.runwayDays}d left`
+              }
+              note={connects.reason}
             />
             <MetricCard
               label="Won this month"

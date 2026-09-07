@@ -6,6 +6,7 @@ import {
   varchar,
   timestamp,
   integer,
+  bigint,
   numeric,
   boolean,
   date,
@@ -145,15 +146,38 @@ export const notificationKind = pgEnum("notification_kind", [
   "project_at_risk",
   "review_approved",
   "revision_requested",
-  // Dead with feasibility routing and follow-up chasing, both removed when BD
-  // was cut back to "what was sent" and "what landed". Postgres cannot drop a
-  // value from an enum type still in use, so these survive as labels the way
-  // 'sync_failed' does. Never emitted; existing rows still render, because the
-  // inbox reads title and body rather than kind.
+  // Dead with feasibility routing, removed when BD was cut back to "what was
+  // sent" and "what landed". Postgres cannot drop a value from an enum type
+  // still in use, so these survive as labels the way 'sync_failed' does.
   "feasibility_requested",
   "feasibility_answered",
+  // NOT dead any more. 0011 removed the follow-up chaser and left this label
+  // behind; 0022 brought the chase back in a form that derives due-ness rather
+  // than asking a rep to name a date, and `flagFollowUpsDue` emits this again.
+  // Its surviving ROWS were the problem — see the DELETE at the end of 0022.
   "followup_due",
   "timer_left_running",
+  // Raised by `flagLowConnects` to whoever holds `connects.manage`. Not a
+  // blocker: `blockers.project_id` is NOT NULL and running out of connects
+  // belongs to no project. See 0023.
+  "connects_low",
+]);
+
+/**
+ * What a connect ledger row is.
+ *
+ * The sign is decided by the kind, not by the writer (a CHECK in 0023): a
+ * purchase that decremented the balance would be indistinguishable from a bid
+ * in every report built on this table.
+ */
+export const connectEntryKind = pgEnum("connect_entry_kind", [
+  "purchase",
+  "grant",
+  "bid",
+  "boost",
+  "refund",
+  "expiry",
+  "reconcile",
 ]);
 
 /** `shareable` withholds the work note — see sheetVisibility. */
@@ -1420,3 +1444,52 @@ export const jobRuns = pgTable("job_runs", {
     .defaultNow()
     .notNull(),
 });
+
+/**
+ * Every connect that came in or went out.
+ *
+ * Append-only and signed: the balance is `sum(delta)` and there is no second
+ * place for it to be wrong. Deliberately NOT a `connect_purchases` table plus a
+ * `connects_spent` column on `proposals` — Upwork also grants, refunds, expires
+ * and charges extra to boost, and under that shape each becomes another column.
+ * A spend column would also be a second copy of a fact, which is the same
+ * decision that keeps `work_log_costs` off `work_logs`.
+ *
+ * Money lives on `purchase` rows and nowhere else. That is a CHECK in 0023, not
+ * a convention, because it is what stops this becoming an acquisition-cost
+ * model: pricing a spend needs a costing basis, and a basis picked for a report
+ * is a number somebody will price a hiring decision off.
+ *
+ * Not RLS-gated. The 0001 backstop is for contract value and pay; connects cost
+ * pennies and everyone who may bid needs the balance. `tests/db/rls.test.ts`
+ * asserts the absence so it reads as a decision.
+ *
+ * Drizzle models none of the CHECKs — 0023 is the authority.
+ */
+export const connectLedger = pgTable(
+  "connect_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: connectEntryKind("kind").notNull(),
+    /** Signed, always. Positive adds, negative spends. Never zero. */
+    delta: integer("delta").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    /** Purchases only, in cents — never a float, like every other money here. */
+    amountCents: bigint("amount_cents", { mode: "number" }),
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    /** Set on `bid`, `boost` and `refund`. RESTRICT: see 0023. */
+    proposalId: uuid("proposal_id").references(() => proposals.id, {
+      onDelete: "restrict",
+    }),
+    recordedById: uuid("recorded_by_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("cl_occurred_idx").on(t.occurredAt)],
+);

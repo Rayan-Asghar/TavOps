@@ -7,10 +7,12 @@
 -- proposals_client_idx was present. proposals.client_id already exists and
 -- is written by nothing.
 --
--- Numbered 0022 because another session took 0021 for saved_views while this
--- was being written. Both are applied to the shared dev database, saved_views
--- first, and the journal `when` here is later than its -- so the file order,
--- the journal order and the database order all agree.
+-- Numbered 0023 after two renumbers: another session took 0021 for saved_views
+-- and then 0022 for session_version while this branch was open. Its journal
+-- `when` was bumped past both so that file order, journal order and database
+-- order agree, and the already-applied row in __drizzle_migrations was updated
+-- to match -- otherwise a fresh database applies session_version, sees this
+-- one's older timestamp, and silently skips it.
 --
 -- READ THIS BEFORE ASSUMING IT REVERTS 0011.
 --

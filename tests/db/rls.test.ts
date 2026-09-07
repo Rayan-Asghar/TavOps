@@ -213,6 +213,21 @@ describe("the configuration the backstop depends on", () => {
     }
   });
 
+  it("leaves connect_ledger deliberately UNprotected", async () => {
+    /* Recorded as a decision rather than left as an absence, because the next
+       reader will reasonably ask why a money-adjacent table is not behind the
+       gate. The 0001 backstop exists for contract value and for pay -- the two
+       things whose leak damages a person. Connects cost pennies, everyone who
+       may bid needs the balance in order to know whether they can, and gating
+       it would drag withFinanceAccess into the hourly sweep and onto a screen
+       with no finance on it. If this ever needs protecting, this test failing
+       is the prompt to think about it. */
+    const [row] = await owner`
+      SELECT relrowsecurity FROM pg_class WHERE relname = 'connect_ledger'`;
+    expect(row).toBeDefined();
+    expect(row.relrowsecurity).toBe(false);
+  });
+
   it("keeps a policy on each protected table", async () => {
     const rows = await owner`
       SELECT tablename FROM pg_policies

@@ -150,10 +150,17 @@
       "breakpoints": true
     },
     {
-      "idx": 22,
+      "idx": 23,
       "version": "7",
-      "when": 1788558664649,
-      "tag": "0022_sales_pipeline_record",
+      "when": 1788796370256,
+      "tag": "0023_sales_pipeline_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788796371256,
+      "tag": "0024_connect_ledger",
       "breakpoints": true
     }
   ]

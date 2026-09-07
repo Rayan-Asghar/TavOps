@@ -78,6 +78,31 @@ export function ProposalForm() {
           </select>
         </div>
 
+        {/* What the bid cost to place. Written to the ledger in the SAME
+            transaction as the proposal: a failure halfway would otherwise
+            leave the balance wrong with nothing to point at. Both optional —
+            a referral or an inbound lead costs no connects at all. */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label" htmlFor="connects">Connects spent</label>
+            <input
+              id="connects" name="connects" type="number" min={0} step={1}
+              className="field" placeholder="16"
+              aria-invalid={!!err.connects}
+            />
+            {err.connects && <p className="mt-1 text-xs text-danger">{err.connects}</p>}
+          </div>
+          <div>
+            <label className="label" htmlFor="boost">Boost (extra)</label>
+            <input
+              id="boost" name="boost" type="number" min={0} step={1}
+              className="field" placeholder="0"
+              aria-invalid={!!err.boost}
+            />
+            {err.boost && <p className="mt-1 text-xs text-danger">{err.boost}</p>}
+          </div>
+        </div>
+
         <div>
           <label className="label" htmlFor="notes">Notes</label>
           <textarea id="notes" name="notes" rows={2} className="field"
