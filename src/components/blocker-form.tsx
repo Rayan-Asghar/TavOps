@@ -13,7 +13,7 @@ const initial: FormState = {};
 
 /** Grouped so the reporter picks by "who owns this", which is what routing
  *  keys off — a flat list of thirteen invites the wrong choice. */
-const GROUPS: { label: string; items: BlockerCategory[] }[] = [
+export const BLOCKER_GROUPS: { label: string; items: BlockerCategory[] }[] = [
   {
     label: "Waiting on the client",
     items: ["missing_access", "missing_asset", "client_approval", "waiting_on_client"],
@@ -46,18 +46,43 @@ const ROUTE_HINT: Record<BlockerCategory, string> = {
   other: "Goes to the delivery lead, PM copied.",
 };
 
+const GROUPS = BLOCKER_GROUPS;
+
+/**
+ * What a reporter whose only standing on a project is `sales_owner` can
+ * honestly report: the client has gone quiet, or somebody promised something
+ * that is not in scope. Not that a deployment is broken.
+ */
+export const SALES_BLOCKER_GROUPS = BLOCKER_GROUPS.filter((g) =>
+  g.label === "Waiting on the client" || g.label === "Scope & requirements",
+);
+
 export function BlockerForm({
   projectId,
   tasks,
   members,
+  groups = GROUPS,
 }: {
   projectId: string;
   tasks: { id: string; title: string }[];
   members: { id: string; name: string }[];
+  /**
+   * Which groups this reporter may choose from.
+   *
+   * Routing is untouched — `blocker-routing.ts` still decides who owns what.
+   * This narrows the OFFER: somebody whose only role on a project is
+   * `sales_owner` is not the person who reports that production is broken, and
+   * a list of thirteen invites the wrong choice from exactly the reporter least
+   * equipped to make it. Defaults to everything, so every existing caller is
+   * unaffected.
+   */
+  groups?: { label: string; items: BlockerCategory[] }[];
 }) {
   const [state, action, pending] = useActionState(reportBlockerFormAction, initial);
   const formRef = useRef<HTMLFormElement>(null);
-  const [category, setCategory] = useState<BlockerCategory>("missing_access");
+  const [category, setCategory] = useState<BlockerCategory>(
+    groups[0]?.items[0] ?? "missing_access",
+  );
 
   useEffect(() => {
     if (state.ok) formRef.current?.reset();
@@ -94,7 +119,7 @@ export function BlockerForm({
             value={category}
             onChange={(e) => setCategory(e.target.value as BlockerCategory)}
           >
-            {GROUPS.map((g) => (
+            {groups.map((g) => (
               <optgroup key={g.label} label={g.label}>
                 {g.items.map((c) => (
                   <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>

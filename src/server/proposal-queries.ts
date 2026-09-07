@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, projects, proposals, users } from "@/db/schema";
+import { blockers, clients, projects, proposals, users } from "@/db/schema";
 import { CHASE_AFTER_DAYS, CHASE_LIMIT } from "@/lib/chase";
 import { HOURS_PER_DAY } from "@/lib/business-time";
 import { offsetFor, type ListParams } from "@/lib/list-params";
@@ -356,3 +356,35 @@ export async function pendingHandoffCount(
 
 /** Unused for now; `HOURS_PER_DAY` keeps the SQL and chase.ts in one story. */
 export const CHASE_SHIFT_HOURS = HOURS_PER_DAY;
+
+/**
+ * Blockers that were routed TO this rep.
+ *
+ * `resolveBlockerRouting` has always sent the four client-side categories and
+ * `commercial_scope` to the deal owner — "not the client's fault, but the rep
+ * answers" — and that half of the model has never had a screen. A rep only ever
+ * met it as a row on a project page they had little other reason to open.
+ *
+ * Assigned-to, not owner-side: what belongs on a rep's own queue is what
+ * somebody actually put in their hands.
+ */
+export async function blockersAssignedTo(actorId: string) {
+  return db
+    .select({
+      id: blockers.id,
+      description: blockers.description,
+      category: blockers.category,
+      severity: blockers.severity,
+      openedAt: blockers.createdAt,
+      slaDueAt: blockers.slaDueAt,
+      projectId: blockers.projectId,
+      projectCode: projects.code,
+    })
+    .from(blockers)
+    .innerJoin(projects, eq(blockers.projectId, projects.id))
+    .where(
+      and(eq(blockers.assignedToId, actorId), eq(blockers.status, "open")),
+    )
+    .orderBy(blockers.slaDueAt)
+    .limit(10);
+}

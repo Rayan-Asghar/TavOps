@@ -6,12 +6,14 @@ import { users } from "@/db/schema";
 import { getActor } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { chaseState } from "@/lib/chase";
+import { CATEGORY_LABELS } from "@/lib/blocker-routing";
 import { pageInfo, parseListParams, type RawParams } from "@/lib/list-params";
 import { fmtDate } from "@/lib/format";
 import { PROPOSAL_TONE } from "@/lib/tone";
 import { connectsStatus } from "@/server/connects-queries";
 import {
   bdStats,
+  blockersAssignedTo,
   chaseDueCount,
   countProposals,
   listProposals,
@@ -80,13 +82,15 @@ export default async function SalesPage({
   });
   const opts = { view, list };
 
-  const [stats, rows, total, dueNow, pendingHandoffs, connects] = await Promise.all([
+  const [stats, rows, total, dueNow, pendingHandoffs, connects, myBlockers] =
+    await Promise.all([
     bdStats(actor.id, seesAll),
     listProposals(actor.id, seesAll, opts),
     countProposals(actor.id, seesAll, opts),
     chaseDueCount(actor.id),
     pendingHandoffCount(actor.id, seesAll),
     connectsStatus(),
+    blockersAssignedTo(actor.id),
   ]);
 
   const info = pageInfo(list, total);
@@ -326,6 +330,49 @@ export default async function SalesPage({
           <Pagination info={info} pathname="/sales" params={params} unit="proposals" />
         )}
       </section>
+
+      {/* Rendered only when there is something in it.
+          `resolveBlockerRouting` has always sent the client-side categories and
+          commercial_scope to the deal owner -- "not the client's fault, but the
+          rep answers" -- and that half of the model has never had a screen. A
+          rep met it only as a row on a project page they had little other
+          reason to open. This is that routing finally arriving somewhere. */}
+      {myBlockers.length > 0 && (
+        <section className="panel mt-4">
+          <div className="panel-head">
+            <div>
+              <p className="eyebrow">ROUTED TO YOU</p>
+              <h3 className="m-0 text-lg tracking-[-.03em]">Waiting on you</h3>
+            </div>
+            <span className="text-xs text-fg-muted">
+              {myBlockers.length} open
+            </span>
+          </div>
+          <ul className="m-0 list-none p-0">
+            {myBlockers.map((b) => (
+              <li
+                key={b.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3 last:border-b-0"
+              >
+                <div className="min-w-0">
+                  <Link
+                    href={`/projects/${b.projectId}`}
+                    className="text-xs font-bold hover:underline"
+                  >
+                    {b.description}
+                  </Link>
+                  <p className="m-0 mt-1 text-2xs text-fg-muted">
+                    {b.projectCode} · {CATEGORY_LABELS[b.category] ?? b.category}
+                  </p>
+                </div>
+                <Badge tone={b.severity === "critical" ? "red" : "amber"}>
+                  {b.severity}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   );
 }

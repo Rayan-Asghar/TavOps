@@ -14,7 +14,19 @@ import path from "node:path";
  */
 loadEnv({ path: ".env.local", quiet: true });
 
-const TEST_DB = "tavren_ops_test";
+/**
+ * Overridable because several worktrees share one Postgres.
+ *
+ * Two sessions running `pnpm test:db` at once truncate the same tables from
+ * different harnesses, and the result is not a clean failure — it is dozens of
+ * foreign-key violations and the occasional deadlock, in a different set every
+ * run, which reads exactly like a real race in the code under test. Setting
+ * TEST_DB_NAME gives a branch its own database; `global-setup` creates and
+ * grants it on first use, so there is nothing else to do. The name must still
+ * end in `_test` -- the harness refuses to truncate anything else, and that
+ * guard is the reason this is safe to make configurable at all.
+ */
+const TEST_DB = process.env.TEST_DB_NAME ?? "tavren_ops_test";
 
 function intoTestDb(url: string | undefined, fallback: string): string {
   if (!url) return fallback;
@@ -29,6 +41,13 @@ const ownerUrl = intoTestDb(
   process.env.MIGRATION_DATABASE_URL,
   `postgresql://tavren:tavren_dev_pw@localhost:5433/${TEST_DB}`,
 );
+
+/* `test.env` below reaches the test FILES, not `globalSetup` — that runs in the
+   main process and would otherwise fall back to its own hardcoded default,
+   creating and migrating the shared database while the tests talked to a
+   different one. Publishing the derived URLs here is what keeps the two in
+   step. */
+process.env.TEST_MIGRATION_DATABASE_URL = ownerUrl;
 
 export default defineConfig({
   test: {

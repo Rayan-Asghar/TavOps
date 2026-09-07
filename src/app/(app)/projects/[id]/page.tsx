@@ -8,7 +8,11 @@ import { activeSessionFor } from "@/server/timer";
 import { loadProjectDetail, projectTitle } from "@/server/project-queries";
 import { activateProject } from "@/server/project-actions";
 import { HealthBadge, TaskStatusBadge, Badge } from "@/components/badges";
-import { BlockerForm } from "@/components/blocker-form";
+import {
+  BlockerForm,
+  BLOCKER_GROUPS,
+  SALES_BLOCKER_GROUPS,
+} from "@/components/blocker-form";
 import { TaskForm } from "@/components/task-form";
 import { ReviewForm } from "@/components/review-form";
 import { ProjectTeam } from "@/components/project-team";
@@ -162,11 +166,15 @@ export default async function ProjectPage({
   const canEditOthersWork = can(role, "worklog.edit");
   // Attaching a sheet belongs to whoever runs the project, so a developer who
   // types ?tab=sheet lands somewhere useful rather than on a blank pane.
-  const canConfigureSheet = canInProject(
-    role,
-    await projectRoleOf(actor, id),
-    "sheet.configure",
-  );
+  const myProjectRole = await projectRoleOf(actor, id);
+  const canConfigureSheet = canInProject(role, myProjectRole, "sheet.configure");
+  /* Somebody whose only standing here is that they SOLD it is not the person
+     who reports a production incident. Narrow what is offered, never the
+     routing: blocker-routing.ts still decides who owns whatever is filed. */
+  const blockerGroups =
+    myProjectRole === "sales_owner" && !can(role, "project.viewAll")
+      ? SALES_BLOCKER_GROUPS
+      : BLOCKER_GROUPS;
   // finance.view is what the money tab is made of; without it the tab is not in
   // the list, and a hand-edited ?tab=money falls through to overview.
   const canSeeMoney = can(role, "finance.view");
@@ -691,6 +699,7 @@ export default async function ProjectPage({
                   projectId={project.id}
                   tasks={openTasks.map((t) => ({ id: t.id, title: t.title }))}
                   members={assignableMembers.filter((m) => m.id !== actor.id)}
+                  groups={blockerGroups}
                 />
               ) : null
             }
