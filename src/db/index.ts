@@ -15,10 +15,31 @@ const globalForDb = globalThis as unknown as {
   tavrenPool?: ReturnType<typeof postgres>;
 };
 
+/**
+ * Pool size, per process.
+ *
+ * Ten is right for one long-lived Node process. It is wrong on a serverless
+ * host, where every concurrent invocation is its own process with its own pool:
+ * ten instances become a hundred connections against a database that permits
+ * far fewer, and the failure arrives as "too many clients" under exactly the
+ * load that caused it.
+ *
+ * Those deployments put a transaction-mode pooler in front (Supabase's
+ * Supavisor, PgBouncer), which is where pooling should happen — so each instance
+ * wants the smallest pool that still lets one request run its queries. Set
+ * `DATABASE_POOL_MAX=1` there. `prepare: false` below is the other half of that
+ * contract: a transaction pooler hands each statement to whichever backend is
+ * free, and a statement prepared on one is not there on the next.
+ *
+ * Left explicit rather than sniffed from a host's env var, so the value is
+ * visible in the deployment that chose it.
+ */
+const poolMax = Number(process.env.DATABASE_POOL_MAX) || 10;
+
 const pool =
   globalForDb.tavrenPool ??
   postgres(connectionString, {
-    max: 10,
+    max: poolMax,
     idle_timeout: 20,
     prepare: false,
   });

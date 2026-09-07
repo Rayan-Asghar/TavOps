@@ -67,6 +67,10 @@
         nulls-last on due date, filter options built from the reader's own scope)
         and saved views as named URLs (migration `0021`), path allow-listed so a
         stored view cannot become an open redirect
+- [ ] **Phase 2C — Sales capture** — paste an Upwork posting on `/sales` to
+      pre-fill the proposal form; captures the competition count, which is the
+      one field here that cannot be backfilled. Never infers a budget, never
+      lets the client's own domain become the job link
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening ← in progress
@@ -577,6 +581,14 @@ is a later question.
 | `src/components/proposal-form.tsx` | accept initial values; mark which fields came from the paste so the rep knows what to check; surface the competition count prominently — "50+ already" is decision-relevant *before* bidding |
 | `src/components/proposal-paste.tsx` *(new)* | document-level `paste` listener, **ignored when the target is an input, textarea or contenteditable** or it hijacks typing into the form. Plus an explicit "Paste a job posting" textarea: a keyboard-only affordance nobody is told about is a feature nobody uses. On a recognised paste, focus the Job link field — the one thing the paste cannot supply, so the rep's second Ctrl+V lands where it belongs. |
 | `src/app/(app)/sales/page.tsx` | mount it. **`/sales` only, never app-wide** — a job posting pasted on `/timesheet` must not summon a proposal draft. |
+
+**Depends on Phase S.** The proposal form now also carries connects spent and
+boost, which write bid/boost rows to the connect ledger *in the same transaction
+as the proposal*. A pre-filled draft must therefore fill those two as well —
+neither is in the posting, so they stay manual and the confirm step is where
+they get entered. Skipping them does not leave a gap, it makes the ledger
+balance drift from the very first bid, and a running balance that is quietly
+wrong is worse than one that was never kept.
 
 ## Verification
 
