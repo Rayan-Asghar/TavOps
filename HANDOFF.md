@@ -6,113 +6,94 @@
 
 ## Goal
 
-A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
-(single source of truth) → reporting and one-way mirrors. History in PROGRESS.md.
+A strictly internal, Postgres-centred operations system: the web app writes to
+PostgreSQL; reporting and the one-way mirrors read from it.
 
 ## Branch topology — read this first
 
 `main`, well ahead of `origin/main` and **nothing is pushed**. Do not trust a
 commit count written here; run `git rev-list --count origin/main..main`.
 
-Tree clean as of this writing except another session's staged removal of
-`ux-audit/` and `.claude/commands/uxaudit.md` — **leave that alone**; the
-harness under `ux-audit/_harness/` is not part of it and still works.
-
-`pnpm verify` (411 unit) and `pnpm test:db` (160 fixture) green, build green at
+`ux-audit/` and `/uxaudit` were retired in `6f4023e` — snapshots of an interface
+still moving; `ux-audit/_harness/` survives for driving a browser. `pnpm verify`
+(411 unit) and `pnpm test:db` (160 fixture) green, build green at
 `NODE_OPTIONS=--max-old-space-size=4096`. **Do not build while `next dev` runs**,
-and **do not run `pnpm test:db` while another session is** — both collide, the
-second producing phantom failures against the shared test database.
+and **do not run `pnpm test:db` while another session is** — both collide.
 
 ⚠️ **Up to six Claude sessions run against this repo at once.** Commit with
-`git commit --only -F <msgfile> -- <explicit paths>`, never `git add -A`. New
-files need an explicit `git add` first — `--only` cannot name an untracked one.
+`git commit --only -F <msgfile> -- <explicit paths>`, never `git add -A`; a new
+file needs an explicit `git add` first, as `--only` cannot name an untracked one.
 
 **Migration `0023` is taken (invitations, applied). Take `0024`.**
 
-## Current State
+## Current State — phases 1, 2A, 2B.1/2B.2 done; Phase 5 is five of six
 
-**Phases 1, 2A and 2B.1/2B.2 done; Phase 5 is five items of six.**
+Phase 5.8 — invitations — landed this session on migration `0023`. Creating
+somebody now mints no password: the row is `password_hash NULL` and the admin
+hands over a one-time link (`src/lib/invite-token.ts`, seven days, stored
+SHA-256). Where Google is configured that link is optional, because the admin
+choosing an address IS the authorisation — `sign-in-eligibility.test.ts` pins
+that an invite never gates Google. Reset password is a separate control for
+being locked out; a row offers one or the other, never both.
 
-Phase 5.8 — invitations — landed this session (migration `0023`):
-
-- **Creating somebody mints no password.** The row is created with
-  `password_hash NULL` and the admin gets a one-time link valid seven days. A
-  link, not an email: the app has no mail capability, and adding one is a
-  service and a bill in exchange for saving a paste.
-- **Where Google is configured the link is optional** — `maySignIn` passes the
-  moment the row exists, because the admin choosing that address IS the
-  authorisation. `/invite/[token]` offers both paths and says which.
-  `sign-in-eligibility.test.ts` pins that an invite never gates Google.
-- `src/lib/invite-token.ts` — 32 random bytes, base64url, stored SHA-256, shown
-  once. Deliberately shares nothing with `password.ts`; both files say why.
-- Reads live in `invite-queries.ts`, **not** the action module, because every
-  export of a `"use server"` file is a callable endpoint.
-- Reset password stays and is a *different* control: an invite is for arriving,
-  a reset is for being locked out. A row offers one or the other, never both.
-
-Earlier Phase 5 work — seed safety, `session_version`, `src/lib/authz.ts`,
-`/settings`, dead notification kinds — is described in
+Before that the interface was rebuilt against `DESIGN-STANDARD.md`, and the app
+shell moved into `src/app/(app)/layout.tsx` — a route group, so no URL changed —
+where the auth check runs once per navigation instead of thirteen times.
+Reasoning for both is in PROGRESS.md, 2026-09-07; earlier Phase 5 work is in
 `.claude/handoff-history/2026-09-07_pre-invitations.md`.
 
 ## Next Steps
 
-1. **Phase 5.7 — per-person money permissions.** Fully specified in
-   `docs/ROADMAP.md`. `can()` gets *overloaded* rather than taking a third
-   argument, so all 24 `finance.view` / `rates.view` call sites stop
-   typechecking until each passes an actor — the compiler finds them, not a
-   grep. Overlaps `src/lib/authz.ts`; read that first.
+1. **Phase 5.7 — per-person money permissions**, specified in `docs/ROADMAP.md`.
+   `can()` gets *overloaded* rather than taking a third argument, so all 24
+   `finance.view` / `rates.view` call sites stop typechecking until each passes
+   an actor — the compiler finds them, not a grep. Read `src/lib/authz.ts` first.
 2. **Login rate limiting** — the last Phase 5 item. Needs a table; take `0024`.
 3. **Audit the migration ledger before deploying** — see the blocker below.
-4. **Phase 2B.3 onward** — filter chips + grouping as one system (client
-   grouping on `/projects` was deferred to land there), then view switchers,
-   table conventions, global search over content.
+4. **Phase 2B.3 onward** — filter chips and grouping as one system (client
+   grouping on `/projects` was deferred to land there), then view switchers.
 
 ## What Failed / Dead Ends
 
-- **A hand-written migration is invisible until it is in `_journal.json`.** The
-  migrator reads that file, not the directory: `db:migrate` reported success and
-  the DDL never ran. Add the entry (`idx`, `version`, `when`, `tag`) by hand.
+- **A hand-written migration is invisible until it is in `_journal.json`** — the
+  migrator reads that file, not the directory, so `db:migrate` reports success
+  and the DDL never runs. Add `idx`/`version`/`when`/`tag` by hand.
 - **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
-  than the newest applied row**, so a concurrent session's migration silently
-  strands yours. Symptom is a column in one database and missing in another.
+  than the newest applied row**, so a concurrent session's migration strands
+  yours. `generate` models neither RLS nor CHECK constraints.
 - **A correlated subquery must not interpolate `${table.column}`** — drizzle
-  renders it unqualified and Postgres resolves it against the inner table.
-  Returns 0 with no error. Write `projects.id` longhand.
-- **`sql<Date>` is a claim, not a conversion.** Use `gt()` / `lte()`.
-- **`notFound()` mid-stream still returns HTTP 200.** Assert on the body.
-- **`work_log_costs` must never become columns on `work_logs`** —
-  `tests/db/rls.test.ts` asserts it.
+  renders it unqualified and it returns 0 with no error. Write it longhand.
 - **An RLS-forced table cannot be filtered from an ungated query** — `NOT EXISTS`
-  sees zero rows and matches EVERYTHING. Resolve ids in a gated query, and guard
-  the empty list: `inArray(id, [])` is `IN ()` and matches everything too.
-- **Every export of a `"use server"` module is a callable endpoint.**
+  sees zero rows and matches EVERYTHING; so does `inArray(id, [])`, which is
+  `IN ()`. Resolve ids in a gated query and guard the empty list. Never fold
+  `work_log_costs` into `work_logs` (`tests/db/rls.test.ts` asserts it), and
+  never reset the finance GUC in a `finally` — the reset masks the real error.
+- **Every export of a `"use server"` module is a callable endpoint** — hence
+  `invite-queries.ts`.
 - **A nullable `password_hash` changes timing.** `authorize()` keeps its dummy
   bcrypt compare for the null case deliberately — an early return would make a
   Google-only account answer faster than a real one, an enumeration oracle.
-- **`vi.importActual("@/lib/auth")` breaks fixture tests** — use a plain factory.
-- **`drizzle-kit generate` models neither RLS nor CHECK constraints.**
-- **An unchecked HTML checkbox sends nothing** — use `readTriStateCheckbox`.
-- **Do not reset the finance GUC in a `finally`**: the subtransaction is already
-  aborted, so the reset masks the real error.
-- **A session-level advisory lock belongs to a CONNECTION and `db` is a pool.**
-  `scheduler.ts` uses the xact variant; **`sync-worker.ts:490` still has it.**
-- **`pkill -f "next dev"` matches its own command chain.** Bracket the pattern.
-- **`setState` in an effect is a lint error**; a `RefObject` effect cannot see a
-  conditionally-mounted form — use a callback ref.
-- Grid, CDP, Drive API and shadcn notes: `.claude/handoff-history/`.
+- **`overflow-x-auto` forces `overflow-y: auto`**, so sticky headers inside one
+  silently do nothing — fixed everywhere but the work-log grid, whose roving
+  tabindex depends on the current geometry. And a layout cannot take props from
+  its children: the breadcrumb derives from `usePathname()`.
+- Shorter traps — `sql<Date>`, `notFound()` returning 200, unchecked checkboxes,
+  `vi.importActual`, callback refs, the grid, CDP, Drive and shadcn — are in
+  `.claude/handoff-history/`; read the most recent two before a related change.
 
 ## Open Questions / Blockers
 
-- **MIGRATION LEDGER DRIFT — audit before deploying.** The dev database has two
-  applied migrations, timestamps `1788796370256` and `1788796371256`, matching NO
-  file in the journal: a session generated, applied, then deleted them. Dev may
-  hold changes no migration reproduces. Diff dev against a clean migrate.
-- **The dev database still has the nine shared-password accounts.** The seed fix
-  applies to future seeds; those rows predate it and were never rotated.
+- **MIGRATION LEDGER DRIFT — audit before deploying.** Dev has two applied
+  migrations, `1788796370256` and `1788796371256`, matching NO file in the
+  journal: a session generated, applied, then deleted them. Dev may hold changes
+  no migration reproduces — diff it against a clean migrate.
+- **Dev still has the nine shared-password accounts.** The seed fix applies to
+  future seeds; those rows predate it and were never rotated.
 - **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` are unset**, so the Google button is
   hidden and invitees can only set a password. They need a Google OAuth *Web
   application* client — NOT the Sheets service account already in `.env.local`.
-- **Hosting** — Phase 6. Explicitly last, by the owner's instruction, and it no
-  longer blocks automation.
-- **Seeded logs carry no revisions or costs.**
-- **Discord/Slack webhook URL** for the digest is still unset.
+- **Hosting** — Phase 6, explicitly last by the owner's instruction.
+- **`sync-worker.ts:490` holds a SESSION-level advisory lock** while `db` is a
+  pool, so it can release on a different connection than took it. `scheduler.ts`
+  was moved to the xact variant; this one was not.
+- **Seeded logs carry no revisions or costs**; the digest webhook URL is unset.

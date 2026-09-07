@@ -4,6 +4,99 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 — The redesign, and a way in that is not a pasted password
+
+- **Shipped:** A full visual and navigational rebuild of the app against
+  `DESIGN-STANDARD.md`, then Phase 5.8 — invitations — on migration `0023`.
+  411 unit + 160 fixture tests, build clean.
+
+- **The complaint was "boring", and the fix was not decoration.** The audit
+  scored the build 35/92 against the standard's rubric; the redesign took it to
+  roughly 60. What moved it was mostly subtraction: 285 contrast failures of
+  1014 nodes to 0, 218 `ease-in-out` transitions to 13, ten font sizes to five,
+  six weights to four. Excitement in an operations tool is the screen answering
+  fast and reading clean, not motion — the standard's own frequency rule says a
+  surface touched 100+ times a day gets no animation at all.
+
+- **Contrast ramps were rewritten against the WORST surface each token can land
+  on**, not against white. A token that passes on the page background and fails
+  on a raised card is a token that fails, and the ratios are not rounded up:
+  `--color-warn` moved because 4.489:1 is not 4.5:1. `--color-brand` moved from
+  `#fb0044` to `#e8003f` because white 14px labels on it measured 4.05:1.
+
+- **"The whole side reloads" was a real structural bug, not a perception.** All
+  13 pages each rendered their own `<AppShell>`, so every navigation rebuilt the
+  frame and re-ran the auth check, the user lookup and the unresolved count
+  thirteen times over. They now live in `src/app/(app)/layout.tsx` — a route
+  group, so no URL changed — and run once per navigation. The breadcrumb had to
+  become a client component reading `usePathname()`, because a layout cannot
+  take props from its children.
+
+- **Sticky table headers had been silently doing nothing.** `overflow-x-auto`
+  forces `overflow-y: auto`, which makes that wrapper the sticky containing
+  block; measured, the header slid 1425px out of view. Fixed by making the
+  container the vertical scroller — and deliberately NOT fixed on the work-log
+  grid, where the change would move geometry the roving-tabindex model depends
+  on. A correct fix in the wrong place is a regression.
+
+- **The keyboard shortcuts came out.** Single letters (j/k/s) were built, then
+  removed at the owner's word: they are only worth their discovery cost on a
+  surface used all day by people who were told they exist. ⌘K stayed, because a
+  command palette is discoverable by convention.
+
+- **"Slipping" showed a task that was not slipping.** `streamOf()` fell back to
+  `"slipping"` for 8 of 15 notification kinds it did not list, including
+  `task_assigned`. The fix was not the missing cases but the fallback:
+  `Record<NotificationKind, StreamKey>` makes the compiler refuse an incomplete
+  map. The same session's badge counted informational rows nobody can act on —
+  4 against a queue of 1 — and now counts only actionable ones.
+
+- **Creating somebody no longer mints a password.** The row is created with
+  `password_hash NULL` and the admin gets a one-time link, seven days, shown
+  once, stored as SHA-256. A link rather than an email because the app has no
+  mail capability: adding one is a service and a monthly bill in exchange for
+  saving a paste into the chat the team is already in.
+
+- **Decisions + rationale:**
+  - **The token is hashed but not bcrypted.** Bcrypt's cost exists to slow
+    guessing a human-chosen secret; there is nothing to guess in 256 random
+    bits, and paying that cost on a public page is a denial-of-service lever.
+    Compared with `timingSafeEqual` behind a length check, since it throws on a
+    mismatch and a bad row would then 500 a page anyone can reach.
+  - **Reads live in `invite-queries.ts`, not the action module.** Every export
+    of a `"use server"` file is a callable endpoint, and both reads take an
+    argument deciding which row comes back — as actions they would be a way to
+    probe the users table from outside.
+  - **The invite is re-checked inside the UPDATE**, not trusted from the page
+    that rendered the form, so two submits of one link cannot both win. It also
+    bumps `session_version`: a link that reached the wrong inbox may already
+    have been spent.
+  - **Where Google is configured the link is optional.** `tavren.io` is a Zoho
+    workspace and most of the team signs in with personal Gmail, so no domain
+    rule can distinguish a colleague from anyone on earth. The admin choosing
+    an address IS the authorisation; Google only proves who is at the keyboard.
+  - **`authorize()` keeps a dummy bcrypt compare for the null-hash case.** An
+    early return would make a Google-only account answer measurably faster than
+    a real one — an account-enumeration oracle bought for one saved hash.
+  - **Reset password stays, and is a different control.** An invite is for
+    arriving; a reset is for being locked out. A row offers one or the other,
+    never both, so the admin never has to reason about which applies.
+  - **No billable/Stripe concept.** Stripe does not operate in Pakistan and
+    payment goes through Wise, which the owner does not want integrated. The
+    reconciliation strip therefore reconciles against
+    `projects.invoiced_through` and states its date basis on screen, rather than
+    inventing a billing model the business does not have.
+
+- **Found while working, worth remembering:** a hand-written migration is
+  invisible until it is registered in `_journal.json` — `db:migrate` reported
+  success and `0023` had never run. Migrations `0016`/`0017` had no drizzle
+  snapshots, so `db:generate` emitted a migration re-dropping already-dropped
+  columns, and `0017` had never actually run locally despite a handoff claiming
+  it "runs on deploy". The migration ledger still holds two applied rows
+  matching no file; that is on HANDOFF.md as a blocker to audit before deploy.
+
+---
+
 ### 2026-09-05 (later) — Hardening, four items of six
 
 - **Shipped:** Phase 5 items 1, 2, 3, 5 and 6 of `docs/ROADMAP.md`. One
