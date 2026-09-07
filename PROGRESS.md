@@ -4,6 +4,52 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 (bug pass) — Five alerts that could only fire once
+
+Asked what happens the SECOND time each condition occurs. The answer, five
+times over, was "nothing".
+
+- **The mechanism.** `notify()` upserts on (user_id, dedupe_key) and on
+  conflict clears a snooze and nothing else — not the title, not `resolved_at`.
+  So any row already on a key permanently shadows what a sweep tries to write
+  there. That much was already known: it is why `0023` deletes the rows the
+  `0011` feature left behind. What was missed is that RESOLVING a row creates
+  exactly the same obstruction — and `resolveNotification` is the inbox's
+  Dismiss button.
+- **Consequences.** The chase queue would have gone silent after the first
+  chase on every proposal. The connects alert would have warned the first time
+  the team ran out and never again. And three sweeps that have shipped for
+  months — stale tasks, project health, estimate overruns — stopped talking to
+  anyone who had dismissed them once: dismiss "project at risk", it recovers,
+  it slips again, silence.
+- **Two fixes, and the difference is the point.** A chase cycle is a NEW ask,
+  so its key carries the cycle number and the resolved rows stay as the history
+  `chase_count` already claims to keep. The other four are ONE condition
+  recurring, so `notify()` gained an opt-in `reopen` that clears `resolved_at`
+  and refreshes the wording — but only on a closed or snoozed row, because an
+  unconditional refresh would rewrite `created_at` on every hourly sweep and
+  reshuffle the inbox. Both halves are tested; the second one is the obvious
+  implementation and it is wrong.
+- **The sync drain leaked its own lock.** `pg_try_advisory_lock` is
+  session-level and `db` is a pool, so the unlock could land on a different
+  connection and release nothing — after which every drain returns "another
+  drain is running" and sheet syncing stops with nothing in the log. Recorded
+  as a known hazard three handoffs ago and never fixed. Now taken and released
+  on one reserved connection.
+- **And a lesson about proving a fix.** The first version of that test asserted
+  zero locks held, and passed and failed for reasons unrelated to the code:
+  `pg_locks` is cluster-wide, so another test file's closing connection tripped
+  it. The second version polled until zero — which passes against the BUGGY
+  implementation, because a leaked lock disappears when the pool recycles. The
+  honest version compares to a baseline and races eight drains, catches the old
+  bug about half the time, and says so in the test rather than pretending
+  otherwise. The previous commit message overclaimed and was corrected in the
+  next one.
+- 406 unit + 198 fixture tests, stable on repeat. Every route driven in a
+  browser for a sales user and a head. **Nothing merged to `main`.**
+
+---
+
 ### 2026-09-07 (later) — Connects, and what a shared database hides
 
 Finished Phase S. S2 and S3 landed on top of the morning's S0/S1.
