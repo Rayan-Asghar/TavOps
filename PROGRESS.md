@@ -4,6 +4,40 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 (second bug pass) — One rule, implemented twice
+
+The first pass asked what happens the second time a condition occurs. This
+one asked where a rule is written down more than once, and found four more.
+
+- **The chase cutoff was calendar days in SQL and business hours in
+  TypeScript.** Any window containing a weekend made them disagree, and three
+  readers then said three different things: the rail badge counted four, the
+  chase list showed four rows, and each row's own Cold-for column said it was
+  not due yet. Only the sweep, which re-derives per row, was right. The
+  cutoffs are now computed once with `addBusinessHours` and handed to SQL as
+  three fixed timestamps — one per status, so it stays a comparison the index
+  can serve, and the two sides cannot drift.
+- **The connects runway was per calendar day and labelled per working day.**
+  Ten calendar days hold about seven working days, so the burn came out a
+  third low and the runway a quarter long — on the one number somebody would
+  plan a week of bidding against. Measured: 132 days claimed where 106 was the
+  ceiling. The window is now a fortnight, which is what "two working weeks"
+  means, and the divisor is the working days inside it.
+- **A money sum went through a double**, which the roadmap forbids in as many
+  words. The other float casts in reports.ts are hours, which the rule allows.
+- **A tile labelled Connects reported meetings** when there was no burn rate,
+  and **a lost deal kept its won value**, so the pipeline showed the old figure
+  in the Value column of a row badged Lost.
+- **`proposal-actions.test.ts` is new.** The write path had no fixture coverage
+  at all, which is how the last of those survived review. It now covers losing
+  and reviving a deal, the field-level refusal, the audit row, and that a rep
+  cannot chase somebody else's proposal.
+- Every fix was checked against the old code first and fails there. Ten defects
+  across the two passes, six of them in code that had shipped weeks ago.
+- 406 unit + 208 fixture tests, green on repeat. **Nothing merged to `main`.**
+
+---
+
 ### 2026-09-07 (bug pass) — Five alerts that could only fire once
 
 Asked what happens the SECOND time each condition occurs. The answer, five
