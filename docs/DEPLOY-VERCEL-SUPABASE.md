@@ -124,6 +124,34 @@ down on the first deploy. `3` is the working figure: parallel enough for one
 request, small enough to be safe behind Supavisor's free-tier pool of 15. The
 reasoning is in the comment in `src/db/index.ts`; read it before changing this.
 
+### Put the functions in the database's region
+
+`vercel.json` pins `regions: ["sin1"]` — Singapore — because the Supabase
+project is in `ap-southeast-1`. **Change one and you must change the other.**
+
+Vercel defaults new projects to `iad1` (Virginia), and this one ran there
+first. Virginia to Singapore is roughly 230ms round trip, and a page render is
+not one query but a chain of them: the shell layout alone is about four
+sequential round trips before a single byte reaches the browser, and a list
+page adds three more. That is 1.5-2 seconds of pure network per page in which
+nothing is computed and no query has run yet. A cold start is worse again —
+opening a Postgres connection is a TCP handshake plus a TLS handshake plus
+auth, four or five more round trips, so about a second before the first query
+is even sent.
+
+Compute goes next to the data, not next to the user, whenever a request makes
+more round trips to the database than the browser makes to the server. Here
+that ratio is roughly seven to one. Moving the functions to Singapore turns
+~230ms per query into ~2ms; the browser pays a little more to reach Singapore
+and gets it back many times over.
+
+The corollary is worth writing down, because it is the reason not to spend
+effort elsewhere: with the functions beside the database, shaving a round trip
+off a page saves about two milliseconds. Streaming the shell, collapsing the
+layout's four queries into one, and similar work are all real optimisations
+that are simply not worth doing while this is true. If the database ever moves
+away from the functions, they become worth doing again — in that order.
+
 **Do not add `MIGRATION_DATABASE_URL`.** It is the owner credential, nothing at
 runtime reads it, and putting it there hands every function the ability to drop
 the RLS policies.
