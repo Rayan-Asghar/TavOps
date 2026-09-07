@@ -58,7 +58,10 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
       responsesToday: sql<number>`count(*) filter (where ${proposals.respondedAt} >= ${today}::timestamptz)::int`,
       meetingsBooked: sql<number>`count(*) filter (where ${proposals.meetingAt} is not null and ${proposals.meetingAt} >= ${month}::timestamptz)::int`,
       wonMonth: sql<number>`count(*) filter (where ${proposals.status} = 'won' and ${proposals.decidedAt} >= ${month}::timestamptz)::int`,
-      wonValueMonth: sql<number>`coalesce(sum(${proposals.wonValue}) filter (where ${proposals.status} = 'won' and ${proposals.decidedAt} >= ${month}::timestamptz), 0)::float`,
+      // ::text, not ::float. Numeric sums are exact in Postgres and a cast to
+      // double throws that away for no reason -- the house rule is that a money
+      // aggregate leaves the database as text or as cents, never as a float.
+      wonValueMonth: sql<string>`coalesce(sum(${proposals.wonValue}) filter (where ${proposals.status} = 'won' and ${proposals.decidedAt} >= ${month}::timestamptz), 0)::text`,
       monthTotal: sql<number>`count(*) filter (where ${proposals.sentAt} >= ${month}::timestamptz)::int`,
       monthResponded: sql<number>`count(*) filter (where ${proposals.sentAt} >= ${month}::timestamptz and ${proposals.respondedAt} is not null)::int`,
     })
@@ -73,7 +76,7 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
     responsesToday: row?.responsesToday ?? 0,
     meetingsBooked: row?.meetingsBooked ?? 0,
     wonMonth: row?.wonMonth ?? 0,
-    wonValueMonth: row?.wonValueMonth ?? 0,
+    wonValueMonth: Number(row?.wonValueMonth ?? 0),
     responseRate: monthTotal ? ((row?.monthResponded ?? 0) / monthTotal) * 100 : 0,
     winRate: monthTotal ? ((row?.wonMonth ?? 0) / monthTotal) * 100 : 0,
   };

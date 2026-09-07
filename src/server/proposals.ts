@@ -147,6 +147,10 @@ export async function advanceProposal(
     if (data.status === "lost") {
       patch.lostReason = data.lostReason;
       patch.lostNote = data.lostNote ?? null;
+      /* A lost deal has no won value. Leaving a stale one behind made the
+         pipeline list show the old figure in the Value column of a row badged
+         Lost, which is a small lie in the place a rep looks first. */
+      patch.wonValue = null;
     } else {
       patch.lostReason = null;
       patch.lostNote = null;

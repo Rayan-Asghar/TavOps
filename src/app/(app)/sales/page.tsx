@@ -188,9 +188,13 @@ export default async function SalesPage({
               label="Connects"
               value={String(connects.balance)}
               changeTone={connects.level === 0 ? "positive" : "negative"}
+              /* Omitted rather than filled with something unrelated. This
+                 tile displaced "meetings booked" and briefly kept showing that
+                 number when there was no burn rate, so a tile labelled
+                 Connects reported meetings. */
               change={
                 connects.runwayDays === null
-                  ? `${stats.meetingsBooked} meetings`
+                  ? undefined
                   : `~${connects.runwayDays}d left`
               }
               note={connects.reason}
