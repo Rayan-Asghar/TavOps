@@ -62,7 +62,11 @@
         stored view cannot become an open redirect
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
-- [ ] Phase 5 — Hardening
+- [ ] Phase 5 — Hardening ← in progress
+  - [ ] 5.7 per-person money permissions — `finance.view` / `rates.view` as
+        grants, `can()` overloaded so the compiler finds every call site
+  - [ ] 5.8 invite by link — nullable `password_hash`, hashed one-time token,
+        retires the temp-password handover
 - [ ] Phase 6 — Deployment (scheduler no longer blocks it — in-app heartbeat landed)
 
 ---
@@ -625,6 +629,121 @@ model becomes right, so nobody relitigates it.
    emitted by nothing. Postgres cannot `DROP VALUE`; the real guard is a narrower
    `EmittableNotificationKind` on `notify()`. **Write no migration** — there is nothing to
    migrate.
+
+7. **Per-person money permissions.** *Approved 2026-09-07, from a Toggl Track
+   comparison.* Toggl separates **what job you do** from **whether you may see
+   money**: role is a radio, and "View billable rates" / "View labor costs" are
+   checkboxes underneath it. Tavren has exactly those two permissions —
+   `finance.view` and `rates.view` — but welds them to the role, so "a head who
+   may also see pay rates" is inexpressible without making that person a full
+   admin. That is over-provisioning forced by the model, which is the failure
+   `rbac.ts` already warns about in its own header.
+
+   - **Storage.** `users.extra_capabilities`, a `jsonb` array defaulting `[]`,
+     with a CHECK constraining it to the grantable set. Not a join table: two
+     flags across twenty people buys nothing and costs a query on the auth path.
+   - **Only two are grantable**, whitelisted in one exported constant. Every
+     other capability stays role-derived. A checkbox per capability would be a
+     permission matrix nobody maintains — the same argument `saved_views` made
+     for `is_shared`.
+   - **Any role may receive them, including `collaborator`.** Decided
+     deliberately: the admin is accountable, and a rule that silently drops a
+     grant is worse than one that shows what it is about to do. The form says
+     what the grant exposes rather than preventing it.
+   - **Grants only ever ADD.** No grant removes a role's capability, so any call
+     site not yet migrated fails closed.
+   - **The compiler finds the call sites, not a grep.** Overload `can()`: the
+     `GlobalRole` form accepts only non-grantable capabilities, the `Principal`
+     (`{globalRole, extraCapabilities}`) form accepts all. Every one of the 24
+     `finance.view` / `rates.view` checks then fails to typecheck until it is
+     migrated, and a future one cannot be written the wrong way. This is the
+     whole reason to prefer an overload over a third argument.
+   - **Read from the database, never the JWT.** `loadPageActor` (item 2) already
+     re-reads the role per render pass; add `extra_capabilities` to that same
+     select and it costs no round trip. Putting grants in a twelve-hour token
+     would mean revoking someone's access to pay data took half a day — exactly
+     the argument item 3 makes for `session_version`.
+   - **RLS is untouched and still independent.** A grant changes who passes
+     `can()`, not who passes the policy. `withFinanceAccess` callers must still
+     hold the capability; the backstop stays a backstop.
+   - Audited as `user.grants` with before/after, and no amounts — the same rule
+     2B.6 applied to rate changes, since `head` has `audit.view` but may not
+     have `rates.view`.
+
+   **Changes to make** (migration number is whatever is free after the
+   session-version work — check `drizzle/` rather than assuming `0023`):
+
+   | Where | What |
+   | --- | --- |
+   | `drizzle/00NN_grantable_capabilities.sql` | `extra_capabilities jsonb NOT NULL DEFAULT '[]'` on `users`, plus a CHECK that every element is in the grantable set. Hand-written; `drizzle-kit` models neither CHECK nor RLS. |
+   | `src/db/schema.ts` | the column, typed `$type<Capability[]>()` |
+   | `src/lib/rbac.ts` | `GRANTABLE_CAPABILITIES` constant, `Principal` type, `can()` overloaded, `assertCan()` and `canInProject()` following it |
+   | `src/lib/authz.ts` | add `extraCapabilities` to the `loadPageActor` select and to `PageActor`; `requireCapability` consults it |
+   | 24 call sites | the ones listed by `grep -rn '"finance\.view"\|"rates\.view"' src`. Server: `margin-queries.ts` (11), `project-queries.ts`, `project-money-actions.ts` (2), `rate-actions.ts`, `costing.ts`. Pages: `projects`, `projects/[id]`, `clients`, `clients/[id]`, `reports`, `admin/users`. Each stops passing a bare role and passes the actor. The build fails until all of them are done — that is the design. |
+   | `src/server/user-schemas.ts` | grants in `createUserSchema`, validated against the whitelist; a `GRANT_DESCRIPTIONS` map beside `ROLE_DESCRIPTIONS` saying what each exposes |
+   | `src/server/user-actions.ts` | grants on create; new `setUserGrantsAction` writing the audit row |
+   | `src/components/create-user-form.tsx` | checkboxes under the role select, matching the Toggl layout |
+   | `src/components/user-row-actions.tsx` | edit grants on an existing person |
+   | `src/lib/rbac.test.ts` | a grant adds a capability; a grant never removes one; a non-grantable capability is refused by the schema |
+   | `tests/db/rls.test.ts` | a granted developer reads financials; the RLS policy still refuses an ungated query, grant or no grant |
+
+8. **Invite by link; retire the temp-password handover.** Creating a person
+   today mints a password, shows it once, and leaves an admin to carry it to
+   them by hand. That is the mechanism that produced nine accounts sharing
+   `tavren123`, and item 1 hardens the seed without touching the handover
+   itself.
+
+   - **`users.password_hash` becomes nullable.** Somebody who signs in with
+     Google has no password, and a mandatory column forces one to exist for no
+     reason. `authorize()` must then refuse a null hash **before** comparing,
+     while still burning the same dummy-compare so timing does not reveal which
+     accounts are Google-only.
+   - **New columns** `invite_token_hash`, `invite_expires_at`, `invited_by_id`.
+     The token is hashed at rest and shown exactly once, for the reason the temp
+     password already is: a credential that can be read back later is a
+     credential that leaks later. Seven-day expiry; re-issuing replaces the
+     token and invalidates the old one.
+   - **A link, not an email.** The app has no mail capability at all, and adding
+     one is a service, a bill and a deliverability problem in exchange for
+     saving a paste. The admin copies the link and sends it however the team
+     already talks. `CopyField` exists and already survives a clipboard failure
+     outside a secure context. Revisit if invites ever become frequent.
+   - **The link's real job is setting a password.** Where Google is configured,
+     an invited person can already sign in without it — `maySignIn` passes the
+     moment the row exists, which is correct: the admin choosing that address is
+     the authorisation. So `/invite/<token>` offers both paths and says as much,
+     rather than pretending Google needs it.
+   - Accepting clears the token and bumps `session_version`.
+   - `resetPasswordAction` stays: an invite is for arriving, a reset is for
+     being locked out, and collapsing them would leave no way to do the second.
+
+   **Changes to make:**
+
+   | Where | What |
+   | --- | --- |
+   | `drizzle/00NN_invitations.sql` | `password_hash` → nullable; `invite_token_hash text`, `invite_expires_at timestamptz`, `invited_by_id uuid REFERENCES users(id) ON DELETE SET NULL`; partial unique index on `invite_token_hash WHERE invite_token_hash IS NOT NULL` |
+   | `src/db/schema.ts` | the four column changes |
+   | `src/lib/invite-token.ts` (new, pure) | mint / hash / verify / expiry. `randomBytes` + SHA-256, reusing nothing from `password.ts` — that alphabet is built for human transcription, a URL token is not transcribed |
+   | `src/lib/auth.ts` | `authorize()` refuses a null `passwordHash` **after** the dummy compare, so Google-only accounts are not distinguishable by timing |
+   | `src/server/invite-actions.ts` (new) | `acceptInviteAction` — set a password, clear the token, bump `session_version`; `reissueInviteAction` — replace the token, invalidating the old |
+   | `src/server/user-actions.ts` | `createUserAction` returns an invite **link** instead of `tempPassword`; `UserFormState` follows |
+   | `src/app/invite/[token]/page.tsx` (new, public) | server component. Validates the token, then offers "Continue with Google" (when configured) or a set-a-password form. Expired or unknown token gets one plain message and no hint as to which |
+   | `src/proxy.ts` | `/invite` joins `/login` and `/api/cron` in the public-path list, or the invite redirects to a login the invitee cannot pass |
+   | `src/components/create-user-form.tsx` | success panel shows the link via `CopyField`, with the same "shown once" warning |
+   | `src/components/user-row-actions.tsx` | "Re-send invite" on anyone whose invite is unaccepted |
+   | `src/app/(app)/admin/users/page.tsx` | an "Invited" badge for a pending row — an account nobody has claimed should not read as an active one |
+   | `src/lib/invite-token.test.ts` (new) | round-trip, tamper, expiry boundary |
+   | `src/lib/sign-in-eligibility.test.ts` | a pending invite does not by itself block Google sign-in |
+   | `tests/db/` (new case) | accepting clears the token and bumps the version; a used or expired token is refused |
+
+   **Ordering:** 7 and 8 both build on item 2's `loadPageActor` and item 3's
+   `session_version`, and both touch `users`. They land after those, not beside
+   them.
+
+   **Before starting either:** re-read `src/lib/authz.ts`, `src/lib/auth.ts`,
+   `src/server/user-actions.ts` and `src/app/(app)/admin/users/page.tsx`. This
+   plan was written on 2026-09-07 while items 1–3 were still uncommitted in the
+   working tree, so those four files were moving as it was being written.
 
 ---
 
