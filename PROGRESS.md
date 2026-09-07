@@ -4,6 +4,64 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-05 (later) — Hardening, four items of six
+
+- **Shipped:** Phase 5 items 1, 2, 3, 5 and 6 of `docs/ROADMAP.md`. One
+  migration, `0022_session_version`. 399 unit + 160 fixture tests, build clean.
+
+- **Nine accounts stopped sharing one password.** `tavren123` was on every
+  seeded account, in the README, and on HANDOFF's blocker list since before the
+  money layer existed. Each account now gets its own generated password, printed
+  once and stored nowhere. The seed also refuses to run against a database that
+  already has users — a check on the DATA rather than on `NODE_ENV`, because the
+  case a `NODE_ENV` guard is least able to catch is exactly the dangerous one: a
+  mistyped `.env.local` pointing at something real.
+
+- **Deactivating somebody now takes effect on their next request**, not up to
+  twelve hours later. `users.session_version` is compared for EQUALITY rather
+  than ordering, so a replayed token claiming a higher version fails exactly as
+  a stale one does and there is no clock skew to reason about. It bumps on
+  reactivation too — the version is a revocation counter, not a state flag, and
+  skipping that would let a pre-deactivation token work again afterwards.
+
+- **The check had nowhere to live, and that was the same problem as the
+  duplication.** Thirteen pages each repeated `getActor()` → re-fetch the row for
+  the role → `can()` → `notFound()`. `src/lib/authz.ts` does it once, so the
+  three revocation conditions ride along in a query every one of those pages
+  already made. Wrapped in React's `cache()`, not `unstable_cache`: the former
+  deduplicates within one render pass, the latter persists across requests,
+  which for per-user authorisation data would mean one person's role answering
+  another person's request.
+
+- **Two failure modes were conflated and are now distinct.** Missing a
+  CAPABILITY is a 404 — a non-admin should not learn an admin area exists.
+  Having no valid SESSION is not a refusal at all, so it redirects to the login
+  page; a 404 there tells somebody nothing about a thing they can fix in ten
+  seconds. The proxy cannot catch that case: it sees a structurally valid JWT
+  and lets the request through.
+
+- **`/settings`** — there was no self-service anything, so a forgotten password
+  meant an admin putting a temporary one into a chat message. Changing it
+  requires the current password and ends every other session.
+
+- **Two hazards worth more than the features:**
+  - **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
+    than the newest applied row.** A concurrent session's migration silently
+    strands yours — `db:migrate` reports success and the DDL never runs. It cost
+    an hour of chasing 56 phantom test failures before the ledgers were compared.
+  - **The dev database has two applied migrations matching no file in the
+    journal.** A session generated, applied, then deleted them. The dev schema
+    may contain changes no migration can reproduce. **Audit before deploying.**
+
+- **Deliberately not done:** login rate limiting, the last Phase 5 item. It needs
+  a table, and another session was mid-flight on migrations — starting one would
+  have repeated the exact collision above. Agree a number first.
+
+- **Still true:** the dev database still holds the nine shared-password rows.
+  The fix applies to future seeds; those predate it and were not rotated.
+
+---
+
 ### 2026-09-05 — The money layer, end to end
 
 - **Shipped:** Phases 1 and 2A of `docs/ROADMAP.md`, plus 2B.1/2B.2, an in-app
