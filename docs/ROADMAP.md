@@ -57,14 +57,16 @@
         honesty cell, drill-downs shared by the screen and the CSV. **Closes
         DESIGN-STANDARD scorecard row C5.**
   - [ ] 2.5 saved views + cross-project tasks
-- [ ] **Phase S — Sales operations** (branch `sales-ops`) ← added 2026-09-07
+- [x] **Phase S — Sales operations** (branch `sales-ops`) — done 2026-09-07
   - [x] S0 workspace — `worklog.create` off the sales role, `/log` + `/timesheet`
         gated, `/reports` narrowed not withheld, `/start` landing resolver,
         Sales moved into TODAY with a chase badge
-  - [x] S1 the chase + the pipeline record — migration `0022`, `lib/chase.ts`,
+  - [x] S1 the chase + the pipeline record — migration `0023`, `lib/chase.ts`,
         `flagFollowUpsDue`, real pagination, `/sales/[id]`, lost reasons
-  - [ ] S2 connects ledger — designed, not started. See §S.2 below
-  - [ ] S3 post-win visibility + sales-shaped blockers. See §S.3 below
+  - [x] S2 connects ledger — migration `0024`, one append-only signed table,
+        `/sales/connects`, `flagLowConnects`, reconcile-with-a-note
+  - [x] S3 post-win visibility, the "Waiting on you" panel, the narrowed blocker
+        form, and `TEST_DB_NAME` so a branch can have its own fixture database
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
@@ -802,7 +804,7 @@ helped — the upsert would still find them. `0022` deletes them and
 Found by running it against real data. No test would have caught it, because no
 test starts from four weeks of production inbox.
 
-## S.2 Connects ledger — designed, NOT built
+## S.2 Connects ledger — built (migration `0024`)
 
 The owner's stated blocker was "we need more connects". That is a real
 constraint and the one cost this costing system has no idea about.
@@ -837,18 +839,46 @@ owner side, which answers "whose fault is the wait". Connects are nobody's
 fault. `usersWithCapability("connects.manage")` (already built, `recipients.ts`)
 says "whoever buys connects" precisely, with no new taxonomy.
 
-The full DDL, the CHECK constraints and the alert design are in the approved
-plan at `~/.claude/plans/sales-operations-in-tavren-virtual-nova.md`.
+Six CHECKs, and `drizzle-kit generate` models none of them — that is why `0024`
+is hand-written. The alert lives in `lib/connects.ts`: level 2 is
+`balance < CONNECTS_FLOOR` (16, the most one boosted bid can cost), phrased as
+*"you cannot place another boosted bid"* because that is a fact where "connects
+are low" is an opinion. Runway is derived from the team's own burn, and is
+`null` rather than `Infinity` when there is nothing to derive it from.
 
-## S.3 Post-win visibility — not started
+**The sweep raises only the level actually reached.** Firing L1 and L2 together
+puts "running out" and "out" in one inbox at one moment — two rows saying one
+thing, which is the noise the level-keyed dedupe exists to prevent. A fixture
+test found that; it read as correct in review.
 
-Mostly proving what S0–S2 built is correctly withheld. The "what became of it"
-card exists on `/sales/[id]` already; what remains is narrowing
-`blocker-form.tsx`'s category groups for a reporter whose only role on a project
-is `sales_owner`, surfacing the client-side blockers `resolveBlockerRouting`
-already routes to a deal owner (that side of the model has never had a screen),
-and a `tests/db/sales-visibility.test.ts` proving a rep gets hours and no money.
+## S.3 Post-win visibility — built
 
-`/clients` needs no work — it landed from another session scoped by
+Mostly proving what S0–S2 built is correctly withheld. `BlockerForm` takes an
+optional `groups`; the project page passes the two sales-shaped ones when the
+viewer's project role is `sales_owner` and they cannot see every project.
+Routing is untouched — this narrows the OFFER, not who owns what gets filed.
+The "Waiting on you" panel on `/sales` is `resolveBlockerRouting`'s client-side
+half finally arriving on a screen a rep opens anyway.
+
+`tests/db/sales-visibility.test.ts` asserts the boundary rather than the
+feature, so it fails if somebody later grants `finance.view` to sales for
+convenience.
+
+`/clients` needed no work — it landed from another session scoped by
 `accessibleProjectIds` with money behind `finance.view` and no CRUD, which is
 exactly "visibility, not ownership".
+
+## S.4 What this cost in coordination
+
+Three migration-number collisions and one silent skip. Another session took
+`0021`, then `0022`, while this branch was open, and applied the second to the
+shared dev database 80 seconds after this branch journalled its own — drizzle
+applies only what is newer than the last applied, so it reported success and
+wrote nothing. And `pnpm test:db` was returning a different set of 11–53
+failures every run because a second worktree was truncating the same
+`tavren_ops_test` mid-run.
+
+Both are now mitigated rather than merely survived: migration numbers are
+re-checked immediately before writing, and `TEST_DB_NAME` gives a branch its own
+fixture database. **If more than one session will touch migrations, serialise
+that work — the failure mode is silence, not a conflict.**

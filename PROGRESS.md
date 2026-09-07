@@ -4,6 +4,47 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 (later) — Connects, and what a shared database hides
+
+Finished Phase S. S2 and S3 landed on top of the morning's S0/S1.
+
+- **The connect ledger** (`0024`). One append-only signed table, not a
+  purchases table plus a `connects_spent` column: Upwork also grants, refunds,
+  expires and charges to boost, and under the two-table shape each of those
+  becomes another column — a ledger, assembled badly, one emergency at a time.
+  A spend column would also be a second copy of a fact, the same decision that
+  keeps `work_log_costs` off `work_logs`.
+- **What it refuses to answer.** Acquisition cost. Pricing a spend needs a
+  costing basis, and a basis chosen for a report is a number somebody prices a
+  hiring decision off. Money lives on `purchase` rows and that is a CHECK, not
+  a convention — six CHECKs in total, none of which `drizzle-kit` models.
+- **Drift is the design.** `reconcile` is a first-class kind with a required
+  note, so the difference between us and Upwork becomes a row rather than a
+  silent correction, and "last reconciled 12 days ago (was 8 short)" sits
+  beside the balance.
+- **Not a blocker**, and structurally so: `blockers.project_id` is NOT NULL and
+  running out of connects belongs to no project. `usersWithCapability` says
+  "whoever buys connects" without inventing a fourth OwnerKind.
+- **S3** surfaced the client-side blockers `resolveBlockerRouting` had always
+  been sending to the deal owner — that half of the model had never had a
+  screen — and narrowed the blocker form's category groups for a reporter whose
+  only standing on a project is that they sold it.
+- **The lesson of the day was infrastructure, not code.** `pnpm test:db` was
+  returning 11–53 failures across ten files, a different set every run, with
+  foreign-key violations against rows that should have existed. It read exactly
+  like a race in the code under test. It was another worktree running its own
+  fixtures against the same `tavren_ops_test`. Proved by sampling
+  `pg_stat_activity` mid-run and seeing two TRUNCATE statements from two
+  different table lists. `TEST_DB_NAME` now gives a branch its own database.
+- **And one silent failure worth remembering.** `drizzle-kit migrate` printed
+  "applied successfully" and applied nothing, because another session had
+  journalled a migration 80 seconds later than ours and drizzle only applies
+  what is newer than the last applied. Three number collisions in one day; the
+  fix is to serialise migration work, not to be quicker.
+- 406 unit + 188 fixture tests green. **Nothing merged to `main`.**
+
+---
+
 ### 2026-09-07 — Sales gets a job to do, on branch `sales-ops`
 
 The prompt was a former salesperson's own verdict: the sales role in Tavren
