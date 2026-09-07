@@ -1,8 +1,4 @@
-import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { requirePageActor } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
 import { can } from "@/lib/rbac";
 import { parseRange, toISODate } from "@/lib/report-range";
@@ -40,16 +36,10 @@ export default async function ReportsPage({
     costed?: string;
   }>;
 }) {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
+  const actor = await requirePageActor();
 
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
 
-  const role = me?.globalRole ?? "developer";
+  const role = actor.globalRole;
   const sp = await searchParams;
   const range = parseRange(sp.from, sp.to);
   const scope = await accessibleProjectIds(actor);

@@ -7,6 +7,8 @@ export type Actor = {
   id: string;
   globalRole: GlobalRole;
   accessExpiresAt?: Date | null;
+  /** From the token, compared against `users.session_version` in `authz.ts`. */
+  sessionVersion?: number;
 };
 
 export class NotAuthorizedError extends Error {

@@ -30,11 +30,15 @@ export function applyUserToToken(
     id?: string;
     globalRole?: string;
     accessExpiresAt?: string | null;
+    sessionVersion?: number;
   },
 ): void {
   token.uid = user.id;
   token.globalRole = user.globalRole;
   token.accessExpiresAt = user.accessExpiresAt ?? null;
+  // 0 for a token minted before this existed, which matches no row: every
+  // session predating the change is invalidated, which is the point.
+  token.sessionVersion = user.sessionVersion ?? 0;
 }
 
 export const authConfig = {
@@ -64,6 +68,7 @@ export const authConfig = {
         session.user.id = token.uid as string;
         session.user.globalRole = token.globalRole as never;
         session.user.accessExpiresAt = token.accessExpiresAt as string | null;
+        session.user.sessionVersion = (token.sessionVersion as number) ?? 0;
       }
       return session;
     },

@@ -1,9 +1,8 @@
-import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { asc, desc, isNull, sql } from "drizzle-orm";
 import { db, withFinanceAccess } from "@/db";
 import { userRates, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { requireCapability } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
 import { SectionIntro } from "@/components/app-shell";
@@ -18,19 +17,10 @@ import { GLOBAL_ROLE_TONE, humanizeRole } from "@/lib/tone";
 
 export const metadata = { title: "People" };
 export default async function AdminUsersPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  // 404 rather than 403, consistent with the rest of the app: a non-admin
-  // should not learn that an admin area exists.
-  if (!can(role, "user.manage")) notFound();
+  // One query for identity, role AND session validity — 404 rather than 403,
+  // because a non-admin should not learn that an admin area exists.
+  const actor = await requireCapability("user.manage");
+  const role = actor.globalRole;
 
   const [people] = await Promise.all([
     db

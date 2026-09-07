@@ -1,11 +1,7 @@
 import type { ReactNode } from "react";
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { users } from "@/db/schema";
 import { logoutAction } from "@/server/auth-actions";
-import { can, type GlobalRole } from "@/lib/rbac";
+import { can } from "@/lib/rbac";
 import { Sidebar, type NavEntry, type NavGroup } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TimerChip } from "@/components/timer-chip";
@@ -17,7 +13,7 @@ import {
   type PaletteDestination,
 } from "@/components/command-palette";
 import { Crumb } from "@/components/crumb";
-import { getActor } from "@/lib/auth";
+import { requirePageActor } from "@/lib/authz";
 import { unresolvedCount } from "@/server/notifications";
 import { activeSessionFor } from "@/server/timer";
 import { recentProjectsFor } from "@/server/recent";
@@ -45,17 +41,14 @@ import { fmtDayLabel } from "@/lib/format";
  * being repeated at the top of every page.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
+  // The layout and the page it wraps share ONE query for this, because
+  // `loadPageActor` is wrapped in React's `cache()` — deduplicated per render
+  // pass, not across requests, which for per-user authorisation data would mean
+  // one person's role answering another person's request.
+  const actor = await requirePageActor();
 
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const userName = me?.name ?? "Unknown";
-  const role = (me?.globalRole ?? "developer") as GlobalRole;
+  const userName = actor.name;
+  const role = actor.globalRole;
   const userRole = role;
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 

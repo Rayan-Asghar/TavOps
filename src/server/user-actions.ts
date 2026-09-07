@@ -146,7 +146,16 @@ export async function setUserActiveAction(
   await db.transaction(async (tx) => {
     await tx
       .update(users)
-      .set({ isActive: makeActive, updatedAt: new Date() })
+      // Bumped on deactivation so their session dies on the next request
+      // rather than whenever the twelve-hour token happens to expire. Bumped on
+      // reactivation too: the version is a revocation counter, not a state flag,
+      // and skipping it would let a token minted before the deactivation work
+      // again afterwards.
+      .set({
+        isActive: makeActive,
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId));
     await writeAudit(tx, {
       actorId: actor.id,
@@ -184,7 +193,13 @@ export async function resetPasswordAction(
   const [updated] = await db.transaction(async (tx) => {
     const rows = await tx
       .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
+      // A reset exists because somebody lost control of the old password.
+      // Leaving their existing sessions alive would defeat the reset.
+      .set({
+        passwordHash,
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
       .returning({ name: users.name });
     // No before/after: the only thing that changed is a hash, and recording

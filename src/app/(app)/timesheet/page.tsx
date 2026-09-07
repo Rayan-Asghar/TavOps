@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { projects } from "@/db/schema";
+import { requirePageActor } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
 import { can } from "@/lib/rbac";
 import { loadWorkGrid, monthOf } from "@/server/grid-queries";
@@ -35,18 +34,12 @@ export default async function TimesheetPage({
 }: {
   searchParams: Promise<RawParams>;
 }) {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
+  const actor = await requirePageActor();
 
   // Read from the database rather than trusting the session, as /reports does:
   // a role changed after sign-in should take effect on the next page load.
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
 
-  const role = me?.globalRole ?? "developer";
+  const role = actor.globalRole;
   const params = await searchParams;
   const one = (v: string | string[] | undefined) =>
     (Array.isArray(v) ? v[0] : v) ?? "";
@@ -180,7 +173,7 @@ export default async function TimesheetPage({
         showPerson={grid.personId === null}
         monthLocked={grid.monthLocked}
         canCreate={can(role, "worklog.create")}
-        viewerName={me?.name ?? "You"}
+        viewerName={actor.name ?? "You"}
         // Only when it is running on the project being shown; a timer on
         // another project belongs to that project's grid, not this one.
         timer={

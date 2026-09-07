@@ -1,11 +1,9 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { aliasedTable, and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, projects, reviews, tasks, users, workLogs } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { requireCapability } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
-import { can } from "@/lib/rbac";
 import { SectionIntro } from "@/components/app-shell";
 import { Badge, MetricCard, MetricGrid } from "@/components/badges";
 import { ReviewForm } from "@/components/review-form";
@@ -16,17 +14,7 @@ import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Review queue" };
 export default async function ReviewPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "review.approve")) notFound();
+  const actor = await requireCapability("review.approve");
 
   const [scope] = await Promise.all([
     accessibleProjectIds(actor),

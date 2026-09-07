@@ -94,6 +94,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: member.id,
           globalRole: member.globalRole,
           accessExpiresAt: member.accessExpiresAt?.toISOString() ?? null,
+          sessionVersion: member.sessionVersion,
         });
         return token;
       }
@@ -148,6 +149,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: found.email,
           globalRole: found.globalRole,
           accessExpiresAt: found.accessExpiresAt?.toISOString() ?? null,
+          sessionVersion: found.sessionVersion,
         };
       },
     }),
@@ -168,6 +170,7 @@ export async function getActor(): Promise<Actor | null> {
     accessExpiresAt: session.user.accessExpiresAt
       ? new Date(session.user.accessExpiresAt)
       : null,
+    sessionVersion: session.user.sessionVersion ?? 0,
   };
 }
 

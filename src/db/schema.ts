@@ -248,6 +248,9 @@ export const users = pgTable(
     email: varchar("email", { length: 255 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     globalRole: globalRole("global_role").notNull().default("developer"),
+    /** Bumped to invalidate every token issued before the bump. Compared for
+     *  equality in `isSessionStillValid`, so a replayed higher value fails too. */
+    sessionVersion: integer("session_version").default(1).notNull(),
     skills: jsonb("skills").$type<string[]>().default([]).notNull(),
     weeklyCapacityHours: integer("weekly_capacity_hours").default(40).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
