@@ -245,7 +245,12 @@ export function Sidebar({
 
         <div className="mt-auto border-t border-nav-border pt-4">
           <div className="mb-3 px-1.5">{themeToggle}</div>
-          <div className="grid grid-cols-[34px_1fr] items-center gap-2.5 p-1.5">
+          {/* The chip is where anybody looks for their own account, so it is
+              the link rather than a nav slot competing with the real work. */}
+          <Link
+            href="/settings"
+            className="grid grid-cols-[34px_1fr] items-center gap-2.5 rounded-lg p-1.5 transition-colors duration-150 ease-out-quad hover:bg-nav-hover"
+          >
             <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-brand text-xs font-bold">
               {initials}
             </span>
@@ -255,7 +260,7 @@ export function Sidebar({
                 {userRole.replace(/_/g, " ")}
               </span>
             </span>
-          </div>
+          </Link>
           <div className="mt-1 px-1.5">{signOut}</div>
         </div>
       </aside>

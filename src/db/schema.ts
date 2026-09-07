@@ -148,8 +148,13 @@ export const notificationKind = pgEnum("notification_kind", [
   // Dead with feasibility routing and follow-up chasing, both removed when BD
   // was cut back to "what was sent" and "what landed". Postgres cannot drop a
   // value from an enum type still in use, so these survive as labels the way
-  // 'sync_failed' does. Never emitted; existing rows still render, because the
-  // inbox reads title and body rather than kind.
+  // 'sync_failed' does. Existing rows still render, because the inbox reads
+  // title and body rather than kind.
+  //
+  // They are unreachable rather than merely unused: `EmittableKind` in
+  // server/notifications.ts excludes them, so `notify()` will not compile with
+  // one. Deliberately enforced in the type rather than by a migration —
+  // rewriting an enum to drop three labels is risk with no functional gain.
   "feasibility_requested",
   "feasibility_answered",
   "followup_due",

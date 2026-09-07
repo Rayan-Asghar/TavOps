@@ -4,9 +4,28 @@ import { notifications, type notificationKind } from "@/db/schema";
 
 type Kind = (typeof notificationKind.enumValues)[number];
 
+/**
+ * The kinds anything is still allowed to CREATE.
+ *
+ * Three labels survive in the Postgres type that nothing emits any more —
+ * feasibility routing and follow-up chasing were cut when BD narrowed to "what
+ * was sent" and "what landed". Postgres cannot drop a value from an enum still
+ * in use, and rewriting the type to remove three unused labels would be a
+ * migration with no functional gain and real risk.
+ *
+ * So the guard lives here instead, where it costs nothing: the type says what
+ * may be written, while the enum keeps every label that existing rows might
+ * hold. Reading is unaffected — `tone.ts` still maps all of them, because rows
+ * created before the cut still render.
+ */
+export type EmittableKind = Exclude<
+  Kind,
+  "feasibility_requested" | "feasibility_answered" | "followup_due"
+>;
+
 export type NotifyInput = {
   userId: string;
-  kind: Kind;
+  kind: EmittableKind;
   title: string;
   body?: string;
   projectId?: string | null;

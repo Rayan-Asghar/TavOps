@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { eq } from "drizzle-orm";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { getActor, UnauthenticatedError } from "./auth";
@@ -67,16 +67,20 @@ export const loadPageActor = cache(async () => {
 export type PageActor = NonNullable<Awaited<ReturnType<typeof loadPageActor>>>;
 
 /**
- * The actor, or a 404.
+ * The actor, or the login page.
  *
- * 404 and never 403, throughout: a non-admin should not learn that an admin
- * area exists. `redirect("/login")` is the proxy's job and has already happened
- * by the time a page runs — reaching here without an actor means the session
- * was revoked mid-visit.
+ * The two failures are deliberately different. Missing the CAPABILITY is a 404
+ * — a non-admin should not learn that an admin area exists. Having no valid
+ * SESSION is not a refusal at all: the person was signed out, usually because
+ * an admin deactivated them or they changed their password elsewhere, and a
+ * 404 would tell them nothing about a thing they can fix in ten seconds.
+ *
+ * The proxy cannot catch this case. It sees a structurally valid JWT and lets
+ * the request through; only this lookup knows the row behind it has moved on.
  */
 export async function requirePageActor(): Promise<PageActor> {
   const actor = await loadPageActor();
-  if (!actor) notFound();
+  if (!actor) redirect("/login");
   return actor;
 }
 
