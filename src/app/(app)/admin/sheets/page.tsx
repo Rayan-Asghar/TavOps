@@ -2,6 +2,7 @@ import Link from "next/link";
 import { asc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, sheetConnections } from "@/db/schema";
+import { requireCapability } from "@/lib/authz";
 import { SectionIntro } from "@/components/app-shell";
 import { Badge } from "@/components/badges";
 
@@ -15,6 +16,17 @@ import { Badge } from "@/components/badges";
  */
 
 export default async function SheetsAdminPage() {
+  /**
+   * Gated on seeing every project, because that is what this page is: the code
+   * and name of every project in the company, listed regardless of who is
+   * looking. Everywhere else, project visibility is earned by membership —
+   * `canAccessProject` exists precisely to stop someone reading a project they
+   * are not on. This page bypassed all of it by never asking who was asking.
+   *
+   * Not `sheet.configure`: a PM holds that on their own project, and nothing
+   * about running one project justifies a roster of all the others.
+   */
+  await requireCapability("project.viewAll");
 
   const [rows] = await Promise.all([
     db

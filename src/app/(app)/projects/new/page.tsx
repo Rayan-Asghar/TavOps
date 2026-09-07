@@ -1,12 +1,16 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, users } from "@/db/schema";
+import { requireCapability } from "@/lib/authz";
 import { SectionIntro } from "@/components/app-shell";
 import { ProjectForm } from "@/components/project-form";
 
 
 export const metadata = { title: "New project" };
 export default async function NewProjectPage() {
+  // `createProject` asserts this; the form that feeds it did not, so the client
+  // list and every active person's name and role rendered for anyone signed in.
+  await requireCapability("project.create");
 
   const [clientRows, staff] = await Promise.all([
     db.select({ id: clients.id, name: clients.name }).from(clients).orderBy(clients.name),
