@@ -1,6 +1,5 @@
 "use server";
 
-import { randomInt } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -8,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
+import { generatePassword } from "@/lib/password";
 import { assertCan } from "@/lib/rbac";
 import { createUserSchema } from "./user-schemas";
 import { writeAudit } from "./audit";
@@ -23,16 +23,6 @@ export type UserFormState = {
   tempPassword?: string;
   createdName?: string;
 };
-
-// No 0/O/1/l/I: these get transcribed by hand into a chat message, and an
-// ambiguous character turns into a support request.
-const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-
-function generatePassword(length = 16): string {
-  let out = "";
-  for (let i = 0; i < length; i++) out += ALPHABET[randomInt(ALPHABET.length)];
-  return out;
-}
 
 function zodFieldErrors(err: z.ZodError): Record<string, string> {
   const out: Record<string, string> = {};

@@ -57,7 +57,11 @@ pnpm db:seed                  # the Tavren team + two sample projects
 pnpm dev
 ```
 
-Seeded accounts all use the password `tavren123` (development only).
+`db:seed` gives every account its own generated password and prints them **once**;
+they are not recoverable afterwards, so copy them out or reseed. It refuses to run
+against a database that already has users — the check is on the data, not on
+`NODE_ENV`, which stays `development` while a mistyped `.env.local` points at
+something real.
 Sign in as `hammad@tavren.io` for the PM view or `ayan@tavren.io` for a
 developer's. Delete these before the app touches a real machine and create
 real accounts through **People** in the nav.

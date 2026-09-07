@@ -7,7 +7,9 @@
 // Env comes from --env-file=.env.local (see package.json); an inline dotenv
 // call would lose the race against import hoisting of ../src/db.
 import bcrypt from "bcryptjs";
+import { count } from "drizzle-orm";
 import { db, withFinanceAccess } from "../src/db";
+import { generatePassword } from "../src/lib/password";
 import {
   blockers,
   clients,
@@ -24,28 +26,55 @@ import {
 } from "../src/db/schema";
 import { addBusinessHours } from "../src/lib/business-time";
 
-const DEV_PASSWORD = "tavren123";
+/**
+ * Refuses to seed a database that already has people in it.
+ *
+ * A better guard than NODE_ENV, which stays "development" while a mistyped
+ * .env.local points at something real — the check is against the DATA, not
+ * against what the process believes about itself. `pnpm db:reset` drops the
+ * volume first, so the intended path is unaffected.
+ */
+async function assertEmptyDatabase() {
+  const [row] = await db.select({ n: count() }).from(users);
+  const existing = Number(row?.n ?? 0);
+  if (existing === 0) return;
+  throw new Error(
+    `Refusing to seed: ${existing} user${existing === 1 ? "" : "s"} already exist.\n` +
+      "Seeding is for an empty database. Use `pnpm db:reset` to start over,\n" +
+      "which drops the volume before migrating.",
+  );
+}
 
 async function main() {
   console.log("Seeding TavrenOPS...");
 
-  const hash = await bcrypt.hash(DEV_PASSWORD, 12);
+  await assertEmptyDatabase();
+
+  // One password per account, generated, printed once and never stored in
+  // plaintext anywhere. Nine people sharing one literal is a single leak that
+  // opens every account, and a seed password has a habit of outliving the seed.
+  const secrets = new Map<string, string>();
+  const hashFor = async (email: string) => {
+    const password = generatePassword();
+    secrets.set(email, password);
+    return bcrypt.hash(password, 12);
+  };
 
   const team = await db
     .insert(users)
     .values([
-      { name: "Rayan", email: "contact@tavren.io", passwordHash: hash, globalRole: "admin", skills: ["ops"] },
-      { name: "Hammad", email: "hammad@tavren.io", passwordHash: hash, globalRole: "head", skills: ["delivery", "client-comms"] },
-      { name: "Hozefa", email: "hozefa@tavren.io", passwordHash: hash, globalRole: "head", skills: ["shopify", "wordpress"] },
-      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: hash, globalRole: "head", skills: ["bd"] },
-      { name: "Saqlain", email: "saqlain@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
-      { name: "Shahab", email: "shahab@tavren.io", passwordHash: hash, globalRole: "sales", skills: ["upwork"] },
-      { name: "Ayan", email: "ayan@tavren.io", passwordHash: hash, globalRole: "developer", skills: ["shopify", "liquid", "react"] },
-      { name: "Abdur Rehman", email: "abdur@tavren.io", passwordHash: hash, globalRole: "developer", skills: ["wordpress", "php"] },
+      { name: "Rayan", email: "contact@tavren.io", passwordHash: await hashFor("contact@tavren.io"), globalRole: "admin", skills: ["ops"] },
+      { name: "Hammad", email: "hammad@tavren.io", passwordHash: await hashFor("hammad@tavren.io"), globalRole: "head", skills: ["delivery", "client-comms"] },
+      { name: "Hozefa", email: "hozefa@tavren.io", passwordHash: await hashFor("hozefa@tavren.io"), globalRole: "head", skills: ["shopify", "wordpress"] },
+      { name: "Muzammil", email: "muzammil@tavren.io", passwordHash: await hashFor("muzammil@tavren.io"), globalRole: "head", skills: ["bd"] },
+      { name: "Saqlain", email: "saqlain@tavren.io", passwordHash: await hashFor("saqlain@tavren.io"), globalRole: "sales", skills: ["upwork"] },
+      { name: "Shahab", email: "shahab@tavren.io", passwordHash: await hashFor("shahab@tavren.io"), globalRole: "sales", skills: ["upwork"] },
+      { name: "Ayan", email: "ayan@tavren.io", passwordHash: await hashFor("ayan@tavren.io"), globalRole: "developer", skills: ["shopify", "liquid", "react"] },
+      { name: "Abdur Rehman", email: "abdur@tavren.io", passwordHash: await hashFor("abdur@tavren.io"), globalRole: "developer", skills: ["wordpress", "php"] },
       {
         name: "Ahmed",
         email: "ahmed@tavren.io",
-        passwordHash: hash,
+        passwordHash: await hashFor("ahmed@tavren.io"),
         globalRole: "collaborator",
         skills: ["qa"],
         // Temp contractor: access lapses in a fortnight.
@@ -217,8 +246,17 @@ async function main() {
   console.log(`  projects: 2`);
   console.log(`  tasks:    ${taskRows.length}`);
   console.log(`  types:    ${typeRows.length}`);
-  console.log(`\nSign in with any address below, password: ${DEV_PASSWORD}`);
-  for (const u of team) console.log(`  ${u.email.padEnd(24)} ${u.globalRole}`);
+  // Printed once, here, and recoverable nowhere. Copy them out now or reset.
+  console.log("\nAccounts — each password is shown ONCE and is not stored:");
+  for (const u of team) {
+    console.log(
+      `  ${u.email.padEnd(24)} ${u.globalRole.padEnd(13)} ${secrets.get(u.email)}`,
+    );
+  }
+  console.log(
+    "\nThese are development credentials. Rotate them before this database\n" +
+      "is reachable by anybody outside the team.",
+  );
   process.exit(0);
 }
 
