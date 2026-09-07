@@ -471,7 +471,7 @@ export async function flagFollowUpsDue() {
       body: state.reason,
       isActionable: true,
       proposalId: p.id,
-      dedupeKey: chaseDedupeKey(p.id),
+      dedupeKey: chaseDedupeKey(p.id, p.chaseCount),
     });
     flagged++;
   }
@@ -518,6 +518,9 @@ export async function flagLowConnects() {
           body: status.reason,
           isActionable: true,
           dedupeKey: key,
+          // The same condition clearing and recurring, on a stable key. Without
+          // this the team is warned the first time they run out and never again.
+          reopen: true,
         });
         flagged++;
       } else {

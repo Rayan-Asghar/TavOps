@@ -158,7 +158,13 @@ export async function advanceProposal(
       /* Moving a proposal along IS answering the chase, whatever it moved to.
          Without this the inbox line outlives the thing it was about, which is
          the failure that makes people stop reading a queue. */
-      await resolveByDedupeKey(row.ownerId, chaseDedupeKey(row.id), tx);
+      /* The cycle being closed is the one currently outstanding, so it is
+         keyed on the count BEFORE any increment. */
+      await resolveByDedupeKey(
+        row.ownerId,
+        chaseDedupeKey(row.id, row.chaseCount),
+        tx,
+      );
 
       // A win that nobody converts is a deal with no delivery attached, so it
       // becomes an actionable item rather than waiting to be noticed.
@@ -230,7 +236,12 @@ export async function markChased(
     });
 
     const [row] = await db
-      .select({ id: proposals.id, ownerId: proposals.ownerId, status: proposals.status })
+      .select({
+        id: proposals.id,
+        ownerId: proposals.ownerId,
+        status: proposals.status,
+        chaseCount: proposals.chaseCount,
+      })
       .from(proposals)
       .where(eq(proposals.id, data.proposalId))
       .limit(1);
@@ -253,7 +264,12 @@ export async function markChased(
           updatedAt: new Date(),
         })
         .where(eq(proposals.id, row.id));
-      await resolveByDedupeKey(row.ownerId, chaseDedupeKey(row.id), tx);
+      // The cycle just answered, keyed on the count before the increment above.
+      await resolveByDedupeKey(
+        row.ownerId,
+        chaseDedupeKey(row.id, row.chaseCount),
+        tx,
+      );
     });
 
     revalidatePath("/sales");

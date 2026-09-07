@@ -223,6 +223,42 @@ describe("flagLowConnects", () => {
     expect(await inboxFor(rep)).toHaveLength(0);
   });
 
+  it("warns again after the balance recovers and drops a second time", async () => {
+    /* Same class of bug as the chase cycle. `notify` upserts on
+       (user_id, dedupe_key) and on conflict never clears `resolved_at`, so an
+       alert that resolves on recovery would sit on its key forever and the
+       SECOND time the team ran out they would be told nothing. */
+    await entry({ kind: "purchase", delta: 4, amountCents: 100 });
+    await flagLowConnects();
+    expect(await inboxFor(rep)).toHaveLength(1);
+
+    await entry({ kind: "purchase", delta: 300, amountCents: 4500 });
+    await flagLowConnects();
+    expect(await inboxFor(rep)).toHaveLength(0);
+
+    // Spent it all again.
+    const p = await makeProposal();
+    await entry({ kind: "bid", delta: -300, proposalId: p });
+    await flagLowConnects();
+    expect(await inboxFor(rep)).toHaveLength(1);
+  });
+
+  it("does not churn a row that is already open", async () => {
+    /* The other half of `reopen`. Refreshing unconditionally would rewrite
+       created_at on every hourly sweep, so the alert would keep jumping to the
+       top of the inbox and "raised 3 days ago" would always read "just now". */
+    await entry({ kind: "purchase", delta: 4, amountCents: 100 });
+    await flagLowConnects();
+    const [first] = await inboxFor(rep);
+
+    await new Promise((r) => setTimeout(r, 25));
+    await flagLowConnects();
+    const [second] = await inboxFor(rep);
+
+    expect(second.id).toBe(first.id);
+    expect(second.createdAt.getTime()).toBe(first.createdAt.getTime());
+  });
+
   it("keys the alert on the level, so a moving balance does not spam", async () => {
     await entry({ kind: "purchase", delta: 4, amountCents: 100 });
     await flagLowConnects();

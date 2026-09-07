@@ -147,12 +147,22 @@ export const VIEW_STATUSES: Record<
 export type CreateProposalInput = z.input<typeof createProposalSchema>;
 
 /**
- * One inbox key per proposal, so a chase clears exactly its own line.
+ * One inbox key per proposal PER CHASE CYCLE.
+ *
+ * The cycle number is load-bearing, not decoration. `notify()` upserts on
+ * (user_id, dedupe_key) and on conflict only clears a snooze — it does not
+ * clear `resolved_at`. So a key that were merely `followup:<id>` would work
+ * exactly once: the rep chases, the row resolves, the client stays silent, the
+ * clock runs out again, and the sweep's insert hits the resolved row and writes
+ * nothing. The queue would be a one-shot, which is worse than not having one.
+ *
+ * Each cycle is a genuinely different ask, so it gets its own key. Resolved
+ * rows from earlier cycles stay as history, which is what they are.
  *
  * Lives here rather than beside the action that writes it because a "use
  * server" module may only export async functions — the same reason every other
  * schema and label in this file is not in `proposals.ts`.
  */
-export function chaseDedupeKey(proposalId: string): string {
-  return `followup:${proposalId}`;
+export function chaseDedupeKey(proposalId: string, chaseCount: number): string {
+  return `followup:${proposalId}:${chaseCount}`;
 }

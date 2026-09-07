@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { flagFollowUpsDue } from "@/server/sweeps";
-import { inboxFor } from "@/server/notifications";
+import { inboxFor, resolveByDedupeKey } from "@/server/notifications";
 import { chaseDueCount } from "@/server/proposal-queries";
 import { chaseDedupeKey } from "@/server/proposal-schemas";
 import { CHASE_LIMIT } from "@/lib/chase";
@@ -184,30 +184,50 @@ describe("the notification link", () => {
     expect(await inboxFor(rep)).toHaveLength(0);
   });
 
-  it("is shadowed by a stale row on the same key, which is why 0021 deletes them", async () => {
-    /* The bug this documents cost an afternoon. The follow-up feature deleted
-       in 0011 used this same kind and this same `followup:<id>` key, and its
-       rows were never resolved. `notify` upserts on (user_id, dedupe_key) and
-       on conflict only clears a snooze -- it does not rewrite the title, the
-       body or the proposal_id. So a surviving old row permanently shadows the
-       new one: the sweep reports flagging it and writes nothing, and the inbox
-       shows an unclickable sentence from a feature that no longer exists.
+  it("cannot overwrite an existing row on the same key", async () => {
+    /* The property that shapes the whole design. `notify` upserts on
+       (user_id, dedupe_key) and on conflict clears only a snooze -- it never
+       rewrites the title, the body, the proposal_id, or resolved_at. So any row
+       already sitting on a key permanently SHADOWS what the sweep tries to
+       write there: it reports flagging and writes nothing.
 
-       Migration 0021 deletes those rows for exactly this reason. If that DELETE
-       is ever removed as tidying, this test is the explanation. */
+       Two consequences, both load-bearing elsewhere in this file. Rows left by
+       the feature 0011 deleted sat on the old `followup:<id>` key and had to be
+       deleted in 0023 rather than left to collide. And a chase key carries the
+       cycle number, because resolving one cycle must not block the next. */
     const id = await makeProposal({ ownerId: rep, sentAt: LONG_AGO() });
     await owner`
       INSERT INTO notifications (id, user_id, kind, title, dedupe_key, is_actionable)
-      VALUES (${randomUUID()}, ${rep}, 'followup_due', 'Ghost from 0011',
-              ${chaseDedupeKey(id)}, true)`;
+      VALUES (${randomUUID()}, ${rep}, 'followup_due', 'Already here',
+              ${chaseDedupeKey(id, 0)}, true)`;
 
     const { flagged } = await flagFollowUpsDue();
     expect(flagged).toBe(1);
 
     const inbox = await inboxFor(rep);
     expect(inbox).toHaveLength(1);
-    expect(inbox[0].title).toBe("Ghost from 0011");
+    expect(inbox[0].title).toBe("Already here");
     expect(inbox[0].proposalId).toBeNull();
+  });
+
+  it("chases again after a chase goes unanswered", async () => {
+    /* The cycle that matters: raise, the rep chases (which resolves the row),
+       the client stays silent, the clock runs out again. If the second ask
+       never appears, the queue is a one-shot and a rep learns to ignore it. */
+    const id = await makeProposal({ ownerId: rep, sentAt: LONG_AGO() });
+    await flagFollowUpsDue();
+    expect(await inboxFor(rep)).toHaveLength(1);
+
+    // The rep chases. Clock restarts, inbox line clears.
+    await owner`
+      UPDATE proposals SET last_chased_at = ${LONG_AGO()}, chase_count = 1
+       WHERE id = ${id}`;
+    await resolveByDedupeKey(rep, chaseDedupeKey(id, 0));
+    expect(await inboxFor(rep)).toHaveLength(0);
+
+    // Still nothing back, and the new window has run out too.
+    await flagFollowUpsDue();
+    expect(await inboxFor(rep)).toHaveLength(1);
   });
 
   it("uses one dedupe key per proposal", async () => {
@@ -215,6 +235,6 @@ describe("the notification link", () => {
     const b = await makeProposal({ ownerId: rep, sentAt: LONG_AGO() });
     await flagFollowUpsDue();
     const keys = (await inboxFor(rep)).map((n) => n.dedupeKey).sort();
-    expect(keys).toEqual([chaseDedupeKey(a), chaseDedupeKey(b)].sort());
+    expect(keys).toEqual([chaseDedupeKey(a, 0), chaseDedupeKey(b, 0)].sort());
   });
 });

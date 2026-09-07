@@ -105,14 +105,16 @@ ALTER TABLE "notifications"
 -- they have been sitting unread in three reps' inboxes since August. They also
 -- carry no proposal_id, because the column did not exist.
 --
--- That makes them worse than clutter. `notify()` upserts on
+-- That made them worse than clutter. `notify()` upserts on
 -- (user_id, dedupe_key) and, on conflict, only clears a snooze: it does not
--- rewrite the title, the body, or the new proposal_id. So every one of these
--- rows would permanently SHADOW the notification the new sweep tries to write,
--- and the sweep would report having flagged nine things while writing nothing.
--- The queue would look correct from the server and be dead on the screen.
+-- rewrite the title, the body, or the new proposal_id. On the key these rows
+-- hold, every one of them SHADOWED the notification the sweep tried to write --
+-- it reported flagging nine things and wrote nothing. Correct from the server,
+-- dead on the screen.
 --
--- Resolving them is not enough for the same reason -- the upsert would still
--- find them and still write nothing. They have to go. Nothing is lost: they
--- describe a state the new sweep re-derives from scratch within the hour.
+-- The chase key now carries a cycle number (`followup:<id>:<n>`), for a related
+-- reason: resolving one cycle must not block the next. That also means these
+-- rows no longer collide with it. They still go, because they are unclickable
+-- rows from a feature that no longer exists, and nothing is lost -- the sweep
+-- re-derives the real state within the hour.
 DELETE FROM "notifications" WHERE "kind" = 'followup_due' AND "proposal_id" IS NULL;

@@ -22,6 +22,22 @@ export type NotifyInput = {
    * the same task — that is how an inbox becomes noise people stop reading.
    */
   dedupeKey?: string | null;
+  /**
+   * For a condition that can CLEAR AND RECUR on a stable key.
+   *
+   * Without it a resolved row sits on its key forever and the recurrence writes
+   * nothing: the low-connects alert would warn the first time the team ran out
+   * and never again. With it, a resolved or snoozed row is reopened and its
+   * wording refreshed; a row that is already open and unsnoozed is left
+   * completely alone, so an hourly sweep does not churn `created_at` and shuffle
+   * the inbox every hour.
+   *
+   * Not the answer for every recurrence. Where each occurrence is a genuinely
+   * new ask and the history is worth keeping — a follow-up chase, which records
+   * "chased three times" — the key carries an episode number instead and each
+   * cycle gets its own row. See `chaseDedupeKey`.
+   */
+  reopen?: boolean;
 };
 
 export async function notify(input: NotifyInput, tx: Db | Parameters<Parameters<Db["transaction"]>[0]>[0] = db) {
@@ -55,8 +71,22 @@ export async function notify(input: NotifyInput, tx: Db | Parameters<Parameters<
      */
     .onConflictDoUpdate({
       target: [notifications.userId, notifications.dedupeKey],
-      set: { snoozedUntil: null, snoozedAt: null },
-      setWhere: sql`${notifications.snoozedUntil} is not null`,
+      set: input.reopen
+        ? {
+            resolvedAt: null,
+            snoozedUntil: null,
+            snoozedAt: null,
+            // Refreshed so a reopened alert does not describe the last time it
+            // fired. Only ever runs when the row was closed — see setWhere.
+            title: input.title,
+            body: input.body ?? null,
+            createdAt: new Date(),
+          }
+        : { snoozedUntil: null, snoozedAt: null },
+      setWhere: input.reopen
+        ? sql`${notifications.resolvedAt} is not null
+              or ${notifications.snoozedUntil} is not null`
+        : sql`${notifications.snoozedUntil} is not null`,
     });
 }
 
