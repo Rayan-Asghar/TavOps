@@ -57,6 +57,14 @@
         honesty cell, drill-downs shared by the screen and the CSV. **Closes
         DESIGN-STANDARD scorecard row C5.**
   - [ ] 2.5 saved views + cross-project tasks
+- [ ] **Phase S — Sales operations** (branch `sales-ops`) ← added 2026-09-07
+  - [x] S0 workspace — `worklog.create` off the sales role, `/log` + `/timesheet`
+        gated, `/reports` narrowed not withheld, `/start` landing resolver,
+        Sales moved into TODAY with a chase badge
+  - [x] S1 the chase + the pipeline record — migration `0022`, `lib/chase.ts`,
+        `flagFollowUpsDue`, real pagination, `/sales/[id]`, lost reasons
+  - [ ] S2 connects ledger — designed, not started. See §S.2 below
+  - [ ] S3 post-win visibility + sales-shaped blockers. See §S.3 below
 - [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
 - [ ] Phase 5 — Hardening
@@ -695,3 +703,152 @@ Key end-to-end checks, in a real browser:
 
 Commit with `git commit --only -F <msgfile> -- <explicit paths>` — never `git add -A`; a
 PreToolUse hook denies bulk staging because several sessions share this index.
+
+
+---
+
+# Phase S — Sales operations
+
+Added 2026-09-07, after the owner (a former salesperson) said the sales role gave
+them nothing day to day. Built on branch `sales-ops`, worktree
+`../TavrenOPS-sales`, branched from `5de72b5`.
+
+## S.0 The diagnosis
+
+Two separate problems, and it matters that they are separate.
+
+**The pipeline was a filing cabinet.** `/sales` recorded that a bid went out and
+how it ended, and nothing in between. A rep's actual job between "sent" and
+"won" is chasing, and the system did not participate: a bid sent an hour ago and
+one sent twelve days ago rendered identically, in a list capped at sixty rows
+with no filter, no search and no detail page. Losing taught nothing — there was
+no lost reason. `proposals.client_id` had existed since 0003 with nothing
+writing it, so a rep bidding for a client we had already delivered for could not
+know.
+
+**The workspace belonged to somebody else.** Sales held `worklog.create` from
+the first draft, on the assumption that everybody logs hours. They do not. The
+rail led with two delivery screens they never open, and neither `/log` nor
+`/timesheet` had a page-level capability gate — only an auth check — so both
+were reachable by URL, rendering forms whose every action asserts the capability
+and throws.
+
+Scope was settled with the owner before any code: build the chase, the connects
+ledger, the sales-shaped workspace and a real pipeline record. **Sales does not
+log hours.** Post-win the rep gets **visibility, not ownership**.
+
+## S.1 What shipped
+
+**Landing** is a `/start` route, not a branch inside `loginAction`, because
+`signIn("google", …)` is called before anybody knows who is signing in, so its
+`redirectTo` cannot depend on the identity. It resolves through `lib/home.ts` by
+capability, never by role name, and sits outside the `(app)` group so a redirect
+does not build a nav, a notification count and a timer chip to discard them.
+**`/` is deliberately not redirected** — the sweep writes into the inbox there
+and the rail badge counts it; hijacking `/` would orphan a rep's own follow-ups.
+
+**`/reports` is narrowed, not withheld.** For a rep it is not a timesheet:
+`projectReport`, `hoursByDay` and `reconciliation` are scoped by project and a
+rep owns every project they sold, so the page already answers "how many hours
+went into what I sold". Only the entries table is pinned to the reader and so
+empty by construction; it, the CSV that applies the same pin, and the
+reconciliation cells that drill into it are what go. `ReconCell` takes an
+optional `href` for this — a figure linking to an anchor that is not on the page
+is worse than one that does not invite the click.
+
+**The chase is derived, and that is the whole argument.** Migration `0011`
+dropped `follow_up_due_at` because it was a column a rep had to fill in: the
+system asked for a plan and then nagged about the plan. Nothing here asks for
+anything. `last_chased_at` records an event that already happened, and the
+moment a chase falls due comes from the status and the clock — so a rep who
+never touches the feature still gets a correct queue. That is the property
+`flagEstimateOverruns` has and the dropped column lacked. `lib/chase.test.ts`
+asserts the signature takes no caller-supplied date, because the easy way to
+undo this decision is an optional parameter "just for one case".
+
+Cutoffs are per status and measured in business hours: silence after a bid
+nobody opened is ordinary, a booked meeting gone quiet is worse, and a Friday
+evening bid is not cold on Sunday. Four unanswered chases ends the asking — the
+row becomes "close it out", because a queue that cannot be emptied is one people
+stop reading. The reason text is status-aware: telling a rep there has been "no
+word since it was sent" about a proposal the client replied to contradicts the
+badge beside it, and a queue that argues with itself is not trusted.
+
+**The chase queue is the default view of the one pipeline table**, not a second
+list above it. Once the table has search, filters and paging, a standing chase
+panel shows every chased row twice with two action sets. A default-filtered list
+reads as data loss, so the chip is visibly selected and the count line carries
+"show all" beside it.
+
+**`/sales/[id]`** holds what a paginated, filtered table structurally cannot: the
+timeline rebuilt from the four timestamps we were always keeping (gaps in
+working days), the chase record, the lost reason, the client link, and what
+became of a won deal — in hours, never money.
+
+## S.1a The bug worth remembering
+
+The sweep reported flagging nine follow-ups and wrote **nothing**.
+
+The follow-up feature deleted in `0011` used the same notification kind *and*
+the same `followup:<id>` dedupe key, and its rows were never resolved when the
+code went — nine had been sitting unread in three reps' inboxes since August.
+`notify()` upserts on `(user_id, dedupe_key)` and on conflict only clears a
+snooze: it does not rewrite the title, the body, or the new `proposal_id`. So
+every old row permanently **shadowed** the row the new sweep tried to write.
+Correct from the server, dead on the screen. Resolving them would not have
+helped — the upsert would still find them. `0022` deletes them and
+`tests/db/proposal-chase.test.ts` pins why, so the DELETE is not tidied away.
+
+Found by running it against real data. No test would have caught it, because no
+test starts from four weeks of production inbox.
+
+## S.2 Connects ledger — designed, NOT built
+
+The owner's stated blocker was "we need more connects". That is a real
+constraint and the one cost this costing system has no idea about.
+
+**One append-only signed `connect_ledger`. No `connects_spent` column on
+proposals, no separate purchases table.** The obvious shape — purchases plus a
+spend column — does not survive contact with Upwork, which also grants free
+connects monthly, refunds them when a client hires nobody, expires unused ones,
+and charges extra to boost a bid. Each of those becomes another column or table:
+a ledger, assembled badly, one emergency at a time. And a spend column is a
+second copy of a fact, which this codebase has refused twice in writing
+(`work_log_costs` off `work_logs`; invoices as "a second system of record").
+
+Kinds: `purchase, grant, bid, boost, refund, expiry, reconcile`. Signed `delta`,
+`amount_cents` on **purchases only** — that CHECK is what makes refusing
+acquisition-cost attribution structural rather than a matter of discipline.
+Pricing a spend needs a costing basis, and a basis chosen for a report is a
+number somebody will price a hiring decision off. Balance is `sum(delta)`,
+derived, never cached. Not RLS-gated (connects cost pennies and everyone who
+bids needs the balance) but every writer calls `writeAudit`.
+
+**Drift is guaranteed**, so `reconcile` is a first-class kind: the rep types the
+real number, the action writes one entry with `delta = actual − derived` and a
+**required** note. The drift is then not hidden — it *is* that row. "Last
+reconciled 12 days ago (was 8 short)" beside the balance is what keeps the
+figure from decaying into fiction; do not cut it as decoration.
+
+**"Out of connects" must not be a blocker category.** `blockers.project_id` is
+`NOT NULL`, `reportBlocker` calls `assertProjectAccess`, and `escalateBlockers`
+inner-joins `projects` — and `blocker-routing.ts`'s axis is internal-vs-client
+owner side, which answers "whose fault is the wait". Connects are nobody's
+fault. `usersWithCapability("connects.manage")` (already built, `recipients.ts`)
+says "whoever buys connects" precisely, with no new taxonomy.
+
+The full DDL, the CHECK constraints and the alert design are in the approved
+plan at `~/.claude/plans/sales-operations-in-tavren-virtual-nova.md`.
+
+## S.3 Post-win visibility — not started
+
+Mostly proving what S0–S2 built is correctly withheld. The "what became of it"
+card exists on `/sales/[id]` already; what remains is narrowing
+`blocker-form.tsx`'s category groups for a reporter whose only role on a project
+is `sales_owner`, surfacing the client-side blockers `resolveBlockerRouting`
+already routes to a deal owner (that side of the model has never had a screen),
+and a `tests/db/sales-visibility.test.ts` proving a rep gets hours and no money.
+
+`/clients` needs no work — it landed from another session scoped by
+`accessibleProjectIds` with money behind `finance.view` and no CRUD, which is
+exactly "visibility, not ownership".

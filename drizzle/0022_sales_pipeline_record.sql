@@ -1,10 +1,16 @@
 -- The pipeline becomes a record of a deal, not a log of an outcome.
 --
--- Hand-written, following 0020, and checked against the live database before
--- applying: proposals had no lost_reason, lost_note, last_chased_at or
--- chase_count, no proposal_lost_reason type existed, notifications had no
--- proposal_id, and neither proposals_chase_idx nor proposals_client_idx was
--- present. proposals.client_id already exists and is written by nothing.
+-- Hand-written, following 0021_saved_views, and checked against the live
+-- database before applying: proposals had no lost_reason, lost_note,
+-- last_chased_at or chase_count, no proposal_lost_reason type existed,
+-- notifications had no proposal_id, and neither proposals_chase_idx nor
+-- proposals_client_idx was present. proposals.client_id already exists and
+-- is written by nothing.
+--
+-- Numbered 0022 because another session took 0021 for saved_views while this
+-- was being written. Both are applied to the shared dev database, saved_views
+-- first, and the journal `when` here is later than its -- so the file order,
+-- the journal order and the database order all agree.
 --
 -- READ THIS BEFORE ASSUMING IT REVERTS 0011.
 --

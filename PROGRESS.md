@@ -4,6 +4,54 @@ Append-only log. **Newest entry at the top. Never edit or delete past entries.**
 
 ---
 
+### 2026-09-07 — Sales gets a job to do, on branch `sales-ops`
+
+The prompt was a former salesperson's own verdict: the sales role in Tavren
+"isn't doing much", the only useful thing is logging proposals, and half of what
+a rep is shown — timesheets, logging work — belongs to somebody else. Two
+different problems, and separating them was most of the work.
+
+- **The pipeline was a filing cabinet.** It recorded that a bid went out and how
+  it ended, and nothing about the job in between, which is chasing. A bid sent an
+  hour ago and one sent twelve days ago rendered identically, in a list capped at
+  sixty rows with no filter, no search and no detail page. Losing taught nothing.
+- **Shipped S0:** `worklog.create` off the sales role, which removes `/log` and
+  `/timesheet` from the rail *and* the command palette in one edit. That exposed
+  a pre-existing hole rather than creating one — neither page had a capability
+  gate, only an auth check, so both were reachable by URL rendering forms whose
+  every action throws. `/reports` was **narrowed, not withheld**: for a rep it is
+  not a timesheet, it is project-scoped and already answers "how many hours went
+  into what I sold". Landing became `/start`, a route rather than a branch,
+  because `signIn("google")` is called before anyone knows who is signing in.
+- **Shipped S1:** the chase. Migration `0022`, `lib/chase.ts`, a sixth sweep,
+  real pagination, `/sales/[id]`, lost reasons, client linking.
+- **The distinction that justifies the feature:** `0011` deleted a follow-up
+  chaser because it asked a rep to name a date and then nagged them about the
+  date they named. This asks for nothing — due-ness is derived from the status
+  and the clock, so a rep who never touches it still gets a correct queue. There
+  is a test asserting the signature takes no caller-supplied date, because the
+  easy way to undo that is an optional parameter "just for one case".
+- **The bug worth remembering.** The sweep reported flagging nine follow-ups and
+  wrote nothing. The deleted `0011` feature used the same notification kind *and*
+  the same dedupe key, and its rows were never resolved — nine had sat unread in
+  three inboxes since August. `notify()` upserts on `(user_id, dedupe_key)` and
+  on conflict only clears a snooze, so every old row permanently shadowed the new
+  one: correct from the server, dead on the screen. **No test would have caught
+  it, because no test starts from four weeks of production inbox.** Driving the
+  real app found it, which is now the fourth time that has been true here.
+- **Two collisions from six sessions sharing one repo.** Another session took
+  `0021` for `saved_views` while this branch was writing `0021` for the pipeline
+  — renumbered to `0022`. And `pkill -f "next dev"` killed that session's dev
+  server; it was restarted, but the lesson is to match on the directory.
+- **Not built:** S2, the connects ledger. Fully designed in `docs/ROADMAP.md`
+  §S.2 — one append-only signed ledger, money on purchase rows only so that
+  refusing acquisition-cost attribution is structural rather than a matter of
+  discipline, and `reconcile` as a first-class kind because drift from Upwork is
+  guaranteed and hiding it turns the balance into fiction.
+- 396 unit + 158 fixture tests green. **Nothing merged to `main`.**
+
+---
+
 ### 2026-09-03 — A spreadsheet inside the app
 
 - **Shipped, UNCOMMITTED:** `/timesheet`, an editable grid over `work_logs` —
