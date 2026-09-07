@@ -13,8 +13,19 @@
 --   3. Supabase's own `postgres` role is not a superuser but is far more
 --      privileged than this app should be. Do not reuse it as DATABASE_URL.
 --
--- RUN THIS AFTER MIGRATIONS. The final REVOKE names the `drizzle` schema, which
--- does not exist until drizzle-kit has run at least once.
+-- RUN THIS BEFORE MIGRATIONS, AND AGAIN AFTER. It is idempotent, and each pass
+-- does something the other cannot:
+--
+--   Before, because `0007_sheets_layer_additive.sql` ends with
+--   `REVOKE ... FROM tavren_app`, which errors with "role does not exist" if the
+--   role was not created first. drizzle-kit applies the whole journal in ONE
+--   transaction, so that single statement rolls back every migration and leaves
+--   an empty database with no error printed. (`pnpm db:reset` has the same
+--   ordering bug against a fresh Docker volume — it migrates, then bootstraps.)
+--
+--   After, because the final REVOKE below names the `drizzle` schema, which does
+--   not exist until drizzle-kit has run. The guard makes the first pass skip it
+--   rather than fail.
 --
 -- Paste into the Supabase SQL editor, or:
 --   psql "<session-pooler URL as postgres>" -f scripts/bootstrap-roles-supabase.sql
@@ -48,7 +59,15 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO tavren_app;
 
 -- The drizzle bookkeeping table is owner-only; the app never touches it.
-REVOKE ALL ON SCHEMA drizzle FROM tavren_app;
+-- Guarded so the pre-migration pass skips it instead of failing: the schema is
+-- created by drizzle-kit, which has not run yet the first time through.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'drizzle') THEN
+    REVOKE ALL ON SCHEMA drizzle FROM tavren_app;
+  END IF;
+END
+$$;
 
 -- Verify before trusting it. Both columns must be false, or the finance
 -- backstop is off and every test still passes.

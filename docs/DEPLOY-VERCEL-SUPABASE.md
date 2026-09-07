@@ -34,6 +34,24 @@ From **Connect** in the dashboard, copy two connection strings:
 Use the pooler for both, not the direct connection — new projects only reach
 that over IPv6, which most home connections and Vercel do not have.
 
+### Create the application role FIRST
+
+Open `scripts/bootstrap-roles-supabase.sql`, replace `REPLACE_ME` with a fresh
+password (`openssl rand -hex 20`), and run it in the Supabase SQL editor.
+
+**The order matters and the failure is silent.**
+`0007_sheets_layer_additive.sql` ends with `REVOKE ... FROM tavren_app`. Run the
+migrations first and that statement errors with "role does not exist" — and
+because drizzle-kit applies the entire journal in ONE transaction, that single
+line rolls back all twenty-six migrations. You are left with an empty database,
+`exit 1`, and **no error message at all**: the spinner overwrites it.
+
+(`pnpm db:reset` has the same bug against a fresh Docker volume — it migrates
+before it bootstraps. It only appears to work on a database where the role
+already survived from an earlier run.)
+
+Do not commit the file with the password in it.
+
 ### Run the migrations, as the owner
 
 ```bash
@@ -44,15 +62,12 @@ Migrations are hand-written and include the RLS policies in
 `0001_finance_rls_backstop.sql`, which `drizzle-kit` does not model. That is why
 they run as the owner and the app never does.
 
-### Create the application role
+### Run the role script a second time
 
-Open `scripts/bootstrap-roles-supabase.sql`, replace `REPLACE_ME` with a fresh
-password (`openssl rand -hex 20`), and run it in the Supabase SQL editor.
-
-**Run it after the migrations**, not before — the last statement names the
-`drizzle` schema, which does not exist until `db:migrate` has run.
-
-Do not commit the file with the password in it.
+Same file, unchanged. It is idempotent, and the second pass does the one thing
+the first could not: the `REVOKE` on the `drizzle` schema, which drizzle-kit
+only creates during the migration run. The script guards that statement so the
+first pass skips it rather than failing.
 
 ### Verify the role, before trusting anything
 
