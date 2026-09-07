@@ -24,7 +24,14 @@
         (proven on dev: 23 entries, 17 rated / 6 unrated, idempotent on rerun)
 - [x] **Google sign-in** (unplanned, requested mid-flight) — one `maySignIn` rule for
       both providers, no auto-provisioning, DB lookup kept out of the edge-safe config
-- [ ] **Phase 2B — the interface** ← in progress
+- [ ] **Phase 2B — the interface** — **DEFERRED to the end, after the functional
+      work.** 2B.1/2B.2/2B.6 already landed and stay. The UX audit apparatus
+      (`/uxaudit`, `ux-audit/` reports and screenshots, the 92-point scorecard) was
+      removed on 2026-09-07 because scoring an interface still being reshaped kept
+      generating work that competed with the features. `docs/DESIGN-STANDARD.md`
+      stays as the reference — eleven shipped code comments cite it by section, and
+      the browser harness in `ux-audit/_harness/` stays because it drives features
+      in a real browser, which is how several bugs were caught.
   - [x] 2B.1 `PageHeader` — the five bands; `SectionIntro` reimplemented on it so the
         eleven existing pages migrate as they are rebuilt, not in one sweep
   - [x] 2B.2 `DateRangeStepper` + `stepRange` (months step by months); `/reports` migrated
@@ -495,6 +502,125 @@ and any view switcher whose views aren't genuinely built.
 
 ---
 
+# Phase 2C — Sales capture: paste a posting, log a proposal
+
+*Approved 2026-09-07, from watching the actual workflow.*
+
+## The problem is a sixth act of typing
+
+A rep finds a job on Upwork, copies the whole posting, pastes it into ChatGPT to
+draft a proposal, refines it, sends it. Logging it in Tavren is then a separate
+act of retyping something already on their clipboard — and it is the step that
+gets skipped when the day is busy. Every figure on `/sales` is derived from that
+row existing, so a skipped log does not merely lose one record, it silently
+biases the win rate of everything that *was* logged.
+
+The posting already on the clipboard contains most of what the form asks for.
+**Ctrl+V on `/sales` fills the form; the rep confirms with one click.**
+
+Two decisions taken with the user:
+
+- **Tavren does not draft proposals.** Reps keep using ChatGPT. No LLM API, no
+  key, no per-proposal cost, no prompt to maintain.
+- **The rep confirms; it is not auto-logged.** Still about three seconds. A
+  mis-parsed title or category would otherwise become a permanent row feeding
+  `bdStats`, and there is no delete path today.
+
+## What a real paste actually contains
+
+Read off a live posting the user supplied. The text is **marker-delimited** —
+`Summary`, `Skills and Expertise`, `Mandatory skills`, `Activity on this job`,
+`Proposals:` — so this parses on markers, never on line offsets beyond the
+title. That makes it far less brittle than parsing prose would be, though it
+stays tied to Upwork's English layout.
+
+| Field | Source |
+| --- | --- |
+| `jobTitle` | first non-empty line |
+| `notes` | the block under `Summary` |
+| `category` | first entry under `Mandatory skills`, matched against the datalist already in `proposal-form.tsx`, else kept raw |
+| engagement | hrs/week, hourly-vs-fixed, duration, experience level, project type |
+| **competition** | `Proposals: 50+` |
+| client activity | `Last viewed by client: 40 minutes ago` |
+
+## Two hard rules, both proven by that sample
+
+1. **Only an `upwork.com/jobs/...` address may fill `jobUrl`.** The sample
+   contains `ventyfan.com` — the *client's own site*, inside the description. A
+   generic URL detector puts it in the job-link field, where it looks correct
+   and is wrong. In practice the posting copy carries no job link at all, so the
+   field stays empty and the rep pastes it second.
+2. **Never infer `budgetAmount`.** The sample says `Hourly` with no number. Only
+   an explicit `Est. Budget: $X` fills it; an hourly range is kept as text and
+   never coerced. A guessed budget corrupts the win-rate and won-value figures
+   `bdStats` computes from it — the same argument `margin.ts` makes for refusing
+   mixed currency rather than picking one.
+
+## Capture the competition signal in the first version
+
+`Proposals: 50+` is the most valuable thing in that paste and nothing records it
+today. Whether a rep was one of five or one of fifty is likely a stronger
+predictor of a reply than anything about their wording — and it is **the one
+field here that cannot be backfilled.** Capture it now even though the analysis
+is a later question.
+
+## Changes to make
+
+| Where | What |
+| --- | --- |
+| `src/lib/upwork-paste.ts` *(new, pure)* | `parsePosting(raw)`. Marker-driven. Returns `{ recognised: false }` rather than guessing when no markers are found. Every field independently optional — absent is a valid answer and must never become a default. |
+| `src/lib/upwork-paste.test.ts` *(new)* | the real sample as a fixture, a fixed-price posting, a partial selection, garbage. Assert specifically that `ventyfan.com` does **not** reach `jobUrl` and that `Hourly` leaves `budgetAmount` unset. |
+| `drizzle/00NN_proposal_posting_capture.sql` *(new)* | on `proposals`: `raw_posting text`, `posting_meta jsonb NOT NULL DEFAULT '{}'`, `proposal_count_min integer`, `budget_type varchar(10)`. Hand-written, diffed against the live DB first. |
+| `src/db/schema.ts` | the four columns; `posting_meta` typed |
+| `src/server/proposal-schemas.ts` | extend `createProposalSchema` with the new optional fields |
+| `src/server/proposals.ts` | persist them in the existing single insert; dedupe on same `jobUrl`, or same owner + title within 7 days, returning a warning rather than refusing |
+| `src/components/proposal-form.tsx` | accept initial values; mark which fields came from the paste so the rep knows what to check; surface the competition count prominently — "50+ already" is decision-relevant *before* bidding |
+| `src/components/proposal-paste.tsx` *(new)* | document-level `paste` listener, **ignored when the target is an input, textarea or contenteditable** or it hijacks typing into the form. Plus an explicit "Paste a job posting" textarea: a keyboard-only affordance nobody is told about is a feature nobody uses. On a recognised paste, focus the Job link field — the one thing the paste cannot supply, so the rep's second Ctrl+V lands where it belongs. |
+| `src/app/(app)/sales/page.tsx` | mount it. **`/sales` only, never app-wide** — a job posting pasted on `/timesheet` must not summon a proposal draft. |
+
+## Verification
+
+1. `pnpm verify` — the parser tests are the point; they carry the real sample.
+2. Paste the sample on `/sales`: title, summary, category `Shopify` and
+   competition `50+` fill; **budget and job link stay empty**.
+3. Paste an Upwork job URL second — fills the link field, nothing else.
+4. Paste the sample while focused inside the notes textarea — normal paste, no
+   panel.
+5. Paste unrelated text — nothing happens.
+6. Confirm the draft; check the row and that `bdStats` still reports sanely.
+
+## Deferred: measuring which proposals perform
+
+Raised by the user as something to research, not to build.
+
+**The blocker is that no proposal text is stored.** `proposals` records the job,
+the outcome and the dates; it has never held what the rep actually wrote. You
+cannot compare what you did not keep, and this is not backfillable — so if it is
+wanted at all, a `proposal_text` column the rep pastes their final proposal into
+is the cheap first move.
+
+The outcome side already exists: the funnel, with a timestamp at each step.
+This phase newly supplies the controls — competition count, budget type,
+category, required experience, and how stale the posting was when they bid.
+
+**Two limits worth stating before anyone builds a dashboard:**
+
+- **Volume.** At an agency's bid rate this is descriptive, not a valid A/B test.
+  "These twelve won" is a reading, not a finding. Comparing two approaches needs
+  roughly thirty apiece within one category before the difference means anything.
+- **The funnel is hand-maintained.** `viewed` and `responded` are set by a rep
+  clicking; Upwork sends no signal. Any conclusion inherits that discipline, and
+  a rep who forgets to mark replies looks like a rep whose proposals fail.
+
+**The likely first real insight is not textual.** Response rate bucketed by
+competition count, and by posting freshness at time of bid, both come free from
+the paste and need nothing extra from anybody. Look there before asking reps to
+tag their writing. If content comparison is wanted later, the cheapest thing
+that could work is a named approach tag per proposal compared on response rate
+within one category — not free-text analysis.
+
+---
+
 # Phase 3 — The planning layer
 
 The original Phase 1, unchanged in design. **The governing claim: exactly two facts exist
@@ -811,9 +937,7 @@ Key end-to-end checks, in a real browser:
    5 days, and resolves when pulled back.
 8. Phase 2B: every page renders the same five bands in the same order, with exactly one
    filled button per screen; the date stepper, filter chips and grouping all round-trip
-   through the URL, so a copied link reproduces the view exactly; and `/uxaudit` is re-run
-   at the end of 2B for a real score against the 92-point rubric (baseline was 35, last
-   estimate ~60 — and that estimate was scored by the session that did the work).
+   through the URL, so a copied link reproduces the view exactly.
 
 Commit with `git commit --only -F <msgfile> -- <explicit paths>` — never `git add -A`; a
 PreToolUse hook denies bulk staging because several sessions share this index.
