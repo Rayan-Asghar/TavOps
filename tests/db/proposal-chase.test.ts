@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { flagFollowUpsDue } from "@/server/sweeps";
 import { inboxFor, resolveByDedupeKey } from "@/server/notifications";
-import { chaseDueCount } from "@/server/proposal-queries";
+import { chaseDueCount, listProposals } from "@/server/proposal-queries";
+import { parseListParams } from "@/lib/list-params";
+import { chaseState } from "@/lib/chase";
 import { chaseDedupeKey } from "@/server/proposal-schemas";
 import { CHASE_LIMIT } from "@/lib/chase";
 import { makeUser, owner, resetDb } from "./harness";
@@ -128,6 +130,60 @@ describe("chaseDueCount", () => {
 
     expect(await chaseDueCount(rep)).toBe(2);
     expect(await chaseDueCount(other)).toBe(1);
+  });
+
+  it("counts exactly what the sweep flags", async () => {
+    /* The badge, the chase list and the sweep are three readers of one rule.
+       The SQL predicate measured CALENDAR days while `chaseState` measures
+       BUSINESS hours, so any window containing a weekend made them disagree:
+       the rail said "Sales 4", the list showed four rows, and each row's own
+       Cold-for column said "Due a chase after 3 working days".
+
+       Six days back always contains a weekend, whatever today is, so this is
+       deterministic on every day of the week. */
+    for (let d = 1; d <= 6; d++) {
+      await makeProposal({
+        ownerId: rep,
+        sentAt: new Date(Date.now() - d * DAY),
+        title: `Sent ${d} days ago`,
+      });
+    }
+
+    const counted = await chaseDueCount(rep);
+    const { flagged } = await flagFollowUpsDue();
+    expect(counted).toBe(flagged);
+  });
+
+  it("puts nothing in the chase list that the list itself calls not due", async () => {
+    // The third reader. A row whose own Cold-for column reads "due a chase
+    // after 3 working days" has no business being under a chip that says it
+    // needs one, and that is what the calendar/business split produced.
+    for (let d = 1; d <= 6; d++) {
+      await makeProposal({
+        ownerId: rep,
+        sentAt: new Date(Date.now() - d * DAY),
+        title: `Sent ${d} days ago`,
+      });
+    }
+
+    const rows = await listProposals(rep, false, {
+      view: "chase",
+      list: parseListParams({}, { pageSize: 50 }),
+    });
+    const now = new Date();
+    for (const r of rows) {
+      const state = chaseState(
+        {
+          status: r.status,
+          sentAt: r.sentAt,
+          lastChasedAt: r.lastChasedAt,
+          chaseCount: r.chaseCount,
+        },
+        now,
+      );
+      expect(state.due, `${r.jobTitle}: ${state.reason}`).toBe(true);
+    }
+    expect(rows.length).toBe(await chaseDueCount(rep));
   });
 
   it("agrees with the sweep about which rows are due", async () => {

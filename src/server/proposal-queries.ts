@@ -2,7 +2,7 @@ import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "d
 import { db } from "@/db";
 import { blockers, clients, projects, proposals, users } from "@/db/schema";
 import { CHASE_AFTER_DAYS, CHASE_LIMIT } from "@/lib/chase";
-import { HOURS_PER_DAY } from "@/lib/business-time";
+import { addBusinessHours, HOURS_PER_DAY } from "@/lib/business-time";
 import { offsetFor, type ListParams } from "@/lib/list-params";
 import { OPEN_STATUSES, VIEW_STATUSES, type ProposalView } from "./proposal-schemas";
 
@@ -91,19 +91,30 @@ export async function bdStats(actorId: string, seesAll: boolean): Promise<BdStat
  * "not quite due" is a far cheaper error than paginating on one clock and
  * rendering on another.
  */
-function chaseDuePredicate(): SQL {
+function chaseDuePredicate(now = new Date()): SQL {
+  /* The cutoffs are computed HERE, in TypeScript, with the same
+     `addBusinessHours` that `chaseState` uses -- then handed to SQL as three
+     fixed timestamps.
+
+     The first version subtracted `N * interval '1 day'` in SQL, which is
+     CALENDAR days, while chaseState measures BUSINESS hours. Any window
+     containing a weekend made them disagree, and three readers of one rule then
+     said three different things: the rail badge counted four, the chase list
+     showed four rows, and each row's own Cold-for column said it was not due
+     yet. Deriving both sides from one function is what stops that recurring.
+
+     One timestamp per status rather than a per-row calculation, so this stays a
+     plain comparison the index can serve. */
   const cases = Object.entries(CHASE_AFTER_DAYS)
     .filter(([, days]) => days !== null)
-    .map(([status, days]) => sql`when ${status} then ${days as number}`);
-  /* The ::int is load-bearing. Bound parameters arrive untyped, so the CASE
-     comes back as text and `text * interval` is not an operator Postgres has. */
+    .map(([status, days]) => {
+      const cutoff = addBusinessHours(now, -(days as number) * HOURS_PER_DAY);
+      return sql`when ${status} then ${cutoff.toISOString()}::timestamptz`;
+    });
   return sql`
     ${proposals.chaseCount} < ${CHASE_LIMIT}
     and coalesce(${proposals.lastChasedAt}, ${proposals.sentAt})
-        < now() - (
-          (case ${proposals.status}::text ${sql.join(cases, sql` `)} else null end)::int
-          * interval '1 day'
-        )`;
+        < (case ${proposals.status}::text ${sql.join(cases, sql` `)} else null end)`;
 }
 
 /** Statuses a chase can apply to at all. Won and lost are decided. */

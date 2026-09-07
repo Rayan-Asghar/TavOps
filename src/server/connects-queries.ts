@@ -2,7 +2,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
 import { connectLedger, proposals, users } from "@/db/schema";
 import { connectsHealth, type ConnectsHealth } from "@/lib/connects";
-import { HOURS_PER_DAY } from "@/lib/business-time";
+import { businessDaysBetween, HOURS_PER_DAY } from "@/lib/business-time";
 import { offsetFor, type ListParams } from "@/lib/list-params";
 
 /**
@@ -19,8 +19,8 @@ import { offsetFor, type ListParams } from "@/lib/list-params";
 
 type Tx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-/** Working days the burn rate is averaged over. Long enough to survive a quiet week. */
-const BURN_WINDOW_DAYS = 10;
+/** Calendar days the burn rate is averaged over. Long enough to ride a quiet week. */
+const BURN_WINDOW_CALENDAR_DAYS = 14;
 
 export async function connectsBalance(tx: Tx = db): Promise<number> {
   const [row] = await tx
@@ -30,8 +30,12 @@ export async function connectsBalance(tx: Tx = db): Promise<number> {
 }
 
 /** Connects spent (as a positive number) over the burn window. */
+function burnWindowStart(now = new Date()): Date {
+  return new Date(now.getTime() - BURN_WINDOW_CALENDAR_DAYS * 24 * 3600 * 1000);
+}
+
 async function spentRecently(tx: Tx = db): Promise<number> {
-  const since = new Date(Date.now() - BURN_WINDOW_DAYS * 24 * 3600 * 1000);
+  const since = burnWindowStart();
   const [row] = await tx
     .select({
       n: sql<number>`coalesce(-sum(${connectLedger.delta}) filter (
@@ -44,14 +48,20 @@ async function spentRecently(tx: Tx = db): Promise<number> {
 }
 
 export async function connectsStatus(tx: Tx = db): Promise<ConnectsHealth> {
+  const now = new Date();
   const [balance, spent] = await Promise.all([
     connectsBalance(tx),
     spentRecently(tx),
   ]);
+  /* Divide by the WORKING days in the window, not the calendar days in it.
+     Bids are placed on working days and the tile reads "working days of
+     bidding left", so dividing a fortnight's spend by fourteen understated the
+     burn by roughly a third and overstated the runway by roughly a quarter —
+     on the one number somebody would plan a week of bidding against. */
   return connectsHealth({
     balance,
     spentInWindow: spent,
-    windowDays: BURN_WINDOW_DAYS,
+    windowDays: businessDaysBetween(burnWindowStart(now), now),
   });
 }
 
@@ -141,4 +151,7 @@ export async function connectsForProposal(proposalId: string) {
 }
 
 /** Kept beside the burn window so both read from one definition of a day. */
-export const BURN_WINDOW = { days: BURN_WINDOW_DAYS, hoursPerDay: HOURS_PER_DAY };
+export const BURN_WINDOW = {
+  calendarDays: BURN_WINDOW_CALENDAR_DAYS,
+  hoursPerDay: HOURS_PER_DAY,
+};

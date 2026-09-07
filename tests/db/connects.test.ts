@@ -5,10 +5,12 @@ import {
   connectsSpendCents,
   connectsStatus,
   lastReconcile,
+  BURN_WINDOW,
 } from "@/server/connects-queries";
 import { flagLowConnects } from "@/server/sweeps";
 import { inboxFor } from "@/server/notifications";
 import { connectsAlertKey, CONNECTS_FLOOR } from "@/lib/connects";
+import { businessDaysBetween } from "@/lib/business-time";
 import { makeUser, owner, resetDb } from "./harness";
 
 /**
@@ -268,6 +270,38 @@ describe("flagLowConnects", () => {
     const inbox = await inboxFor(rep);
     expect(inbox).toHaveLength(1);
     expect(inbox[0].dedupeKey).toBe(connectsAlertKey(2));
+  });
+
+  it("measures burn per WORKING day, which is what the screen says", async () => {
+    /* The window was ten CALENDAR days but the divisor was ten, and the tile
+       reads "working days of bidding left". Over ten calendar days there are
+       about seven working days, so per-day burn came out roughly 30% low and
+       the runway roughly 40% long -- on the one number somebody would plan a
+       week of bidding against. */
+    await entry({ kind: "purchase", delta: 1000, amountCents: 15000 });
+    // 70 connects spent inside the window.
+    for (let i = 0; i < 7; i++) {
+      const p = await makeProposal();
+      await entry({
+        kind: "bid",
+        delta: -10,
+        proposalId: p,
+        occurredAt: new Date(Date.now() - (i + 1) * 24 * 3600 * 1000),
+      });
+    }
+
+    const status = await connectsStatus();
+    expect(status.balance).toBe(930);
+
+    // Derived from the window rather than hardcoded, so widening the window
+    // does not silently turn this into a test of nothing.
+    const now = new Date();
+    const workingDays = businessDaysBetween(
+      new Date(now.getTime() - BURN_WINDOW.calendarDays * 24 * 3600 * 1000),
+      now,
+    );
+    expect(workingDays).toBeLessThan(BURN_WINDOW.calendarDays);
+    expect(status.runwayDays).toBe(Math.floor(930 / (70 / workingDays)));
   });
 
   it("warns at level 1 before the floor is reached", async () => {
