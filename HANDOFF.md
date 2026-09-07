@@ -11,12 +11,15 @@ A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
 
 ## Branch topology — read this first
 
-`main`, **41 commits ahead of `origin/main`. Nothing is pushed.**
+`main`, well ahead of `origin/main` and **nothing is pushed**. Do not trust a
+commit count written here; run `git rev-list --count origin/main..main`.
 
-Tree clean EXCEPT `docs/ROADMAP.md`, which **another session is editing right
-now** — it is adding Phase 5.7 (per-person money permissions, overloading
-`can()`) and 5.8 (invite by link). Leave it alone. **5.7 overlaps `src/lib/authz.ts`
-directly; coordinate before both land.**
+**Another session is mid-build on invite-by-link (Phase 5.8) as of this
+writing** — uncommitted, and it touches `src/lib/auth.ts`, `auth.config.ts`,
+`src/server/user-actions.ts`, `admin/users/page.tsx` and
+`src/server/settings-actions.ts`. Its **migration `0023_invitations` already
+exists**. Phase 5.7 overloads `can()` and **overlaps `src/lib/authz.ts`
+directly** — read that file before touching either.
 
 `pnpm verify` (399 unit) and `pnpm test:db` (160 fixture) green, build green at
 `NODE_OPTIONS=--max-old-space-size=4096`. **Do not build while `next dev` runs**,
@@ -45,9 +48,9 @@ Done this session (migration `0022` only):
 ## Next Steps
 
 1. **Login rate limiting is the last Phase 5 item** and needs a table. It was
-   deliberately NOT started: another session is mid-flight on migrations and a
-   number collision is what broke the test database earlier today. Agree a
-   migration number first, or wait for theirs to land.
+   deliberately NOT started while another session held the next migration
+   number — **`0023` is now theirs, so take `0024`.** Re-read the timestamp-order
+   hazard below before generating it.
 2. **Audit the migration ledger before deploying** — see the blocker below.
 3. **Phase 2B.3 onward** — filter chips + grouping as one system (client
    grouping on `/projects` was deferred to land there), then view switchers,
