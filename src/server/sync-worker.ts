@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db, pool_ } from "@/db";
+import { db } from "@/db";
 import {
   projects,
   sheetConnections,
@@ -56,16 +56,38 @@ const STUCK_AFTER_MINUTES = 5;
 /** Stop claiming with time to spare inside a 60s route budget. */
 const TIME_BUDGET_MS = 45_000;
 
-/**
- * One drain at a time, process-wide.
+/*
+ * There is deliberately no drain lock any more. `DRAIN_LOCK_KEY = 8_531_207`
+ * was a session-level `pg_try_advisory_lock` taken on a connection reserved out
+ * of the pool, and it broke the deployed app two separate ways. Both are only
+ * visible on a serverless host in front of a transaction pooler, which is why
+ * every test and every local run passed while no page on Vercel would open.
  *
- * Every logged entry schedules a drain, so ten people logging at once means ten
- * concurrent calls. SKIP LOCKED keeps that correct — they would take disjoint
- * jobs — but it is pure waste: ten reaper sweeps and ten reads of the same id
- * column. A caller that loses the lock returns immediately and loses nothing,
- * because the holder is already draining the queue its jobs are in.
+ * 1. IT DEADLOCKED THE POOL. `pool_.reserve()` takes a connection out; `drain()`
+ *    then does all of its own work through `db`, the same pool. With
+ *    `DATABASE_POOL_MAX=1` — what a transaction pooler wants, see
+ *    `src/db/index.ts` — `reserve()` takes the ONLY connection and `drain()`
+ *    waits for one its own caller is holding. The process then sat until
+ *    Postgres' statement_timeout fired, and the rejection killed the Node
+ *    process, cutting every page response streaming from that instance.
+ *    Locally `max` is 10, nine connections remain, and nothing is noticed.
+ *
+ * 2. A SESSION LOCK CANNOT SURVIVE A TRANSACTION POOLER. Supavisor and PgBouncer
+ *    in transaction mode hand each statement to whichever backend is free, so
+ *    the `pg_advisory_unlock` lands on a different backend than the lock did,
+ *    releases nothing, and orphans the lock. After a few drains every later one
+ *    returns "another drain is running" and sheet syncing stops in silence.
+ *    This is the same trap HANDOFF.md already records one level up — a session
+ *    lock released through a POOL is not released — carried through to the case
+ *    where the pooler, not our pool, is the thing multiplexing.
+ *
+ * Nothing guards concurrency in its place because nothing needs to. `claimJobs`
+ * already claims with `FOR UPDATE SKIP LOCKED` and flips `status` to 'running'
+ * in the same statement, so two concurrent drains take disjoint jobs and a job
+ * can be claimed exactly once; `reclaimStuckJobs` covers the worker that dies
+ * mid-flight. The lock was only ever saving duplicate reaper sweeps — a cost
+ * worth paying to not have the two failures above.
  */
-const DRAIN_LOCK_KEY = 8_531_207;
 
 /** 1min, 2min, 4min. Enough to ride out a quota blip without stalling a day. */
 function backoffMs(attempts: number): number {
@@ -490,42 +512,8 @@ export class NonRetryableSheetError extends Error {
   }
 }
 
-/**
- * Runs `fn` while holding the drain lock, or returns null if somebody else has it.
- *
- * The lock is taken and released on ONE RESERVED CONNECTION, which is the whole
- * point. `pg_try_advisory_lock` is session-level — it belongs to the connection
- * that took it — and `db` is a pool of ten. Taking it through the pool and
- * releasing it through the pool means the unlock can land on a different
- * connection, release nothing, and leave the lock held until that connection
- * happens to recycle. Every later drain then returns "another drain is running"
- * and sheet syncing stops with nothing in the logs to say why.
- *
- * A transaction-scoped lock (what `scheduler.ts` uses) is not an option here:
- * a drain makes Sheets API calls, and holding a Postgres transaction open
- * across network I/O is its own problem. Reserving one connection costs a
- * tenth of the pool for the duration and releases on crash, which is the
- * behaviour we actually want.
- */
-async function withDrainLock<T>(fn: () => Promise<T>): Promise<T | null> {
-  const conn = await pool_.reserve();
-  try {
-    const [lock] = await conn<{ locked: boolean }[]>`
-      SELECT pg_try_advisory_lock(${DRAIN_LOCK_KEY}) AS locked`;
-    if (!lock?.locked) return null;
-    try {
-      return await fn();
-    } finally {
-      await conn`SELECT pg_advisory_unlock(${DRAIN_LOCK_KEY})`;
-    }
-  } finally {
-    conn.release();
-  }
-}
-
 export async function runSyncWorker(limit = BATCH_SIZE) {
-  const result = await withDrainLock(() => drain(limit));
-  return result ?? { skipped: "another drain is running" as const };
+  return drain(limit);
 }
 
 async function drain(limit: number) {

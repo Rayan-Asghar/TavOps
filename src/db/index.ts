@@ -26,15 +26,36 @@ const globalForDb = globalThis as unknown as {
  *
  * Those deployments put a transaction-mode pooler in front (Supabase's
  * Supavisor, PgBouncer), which is where pooling should happen — so each instance
- * wants the smallest pool that still lets one request run its queries. Set
- * `DATABASE_POOL_MAX=1` there. `prepare: false` below is the other half of that
- * contract: a transaction pooler hands each statement to whichever backend is
- * free, and a statement prepared on one is not there on the next.
+ * wants the smallest pool that still lets ONE REQUEST RUN ITS QUERIES.
+ * `prepare: false` below is the other half of that contract: a transaction
+ * pooler hands each statement to whichever backend is free, and a statement
+ * prepared on one is not there on the next.
+ *
+ * ## Why not 1
+ *
+ * `DATABASE_POOL_MAX=1` was the first answer and it is a trap, in two ways that
+ * cost a working deployment:
+ *
+ *   - A pool of one SERIALISES `Promise.all`. The app shell issues four
+ *     independent queries that way (`src/app/(app)/layout.tsx`), which at one
+ *     connection is four round trips end to end instead of one — multiplied by
+ *     however far the database is from the region the functions run in.
+ *   - Anything that takes a connection OUT of the pool and then queries through
+ *     the pool deadlocks against itself. `sync-worker.ts` did exactly that and
+ *     every page on the deployment hung until Postgres cancelled the statement;
+ *     the rejection then killed the process and truncated every response
+ *     streaming from that instance. That code is fixed, but a pool of one is
+ *     what turned a bug into an outage.
+ *
+ * Three is the working figure: enough that a request's parallel queries are
+ * actually parallel, small enough that Supavisor's free-tier pool of 15 is not
+ * at risk from concurrent instances. Raise it only alongside the pooler's own
+ * limit, never past it.
  *
  * Left explicit rather than sniffed from a host's env var, so the value is
  * visible in the deployment that chose it.
  */
-const poolMax = Number(process.env.DATABASE_POOL_MAX) || 10;
+export const poolMax = Number(process.env.DATABASE_POOL_MAX) || 10;
 
 const pool =
   globalForDb.tavrenPool ??
@@ -58,14 +79,25 @@ if (process.env.NODE_ENV !== "production") {
   globalForDb.tavrenPool = pool;
 }
 
-/**
- * The raw postgres.js pool.
+/*
+ * The raw postgres.js pool is deliberately NOT exported.
  *
- * Exported ONLY for `reserve()` — a session-level advisory lock belongs to a
- * connection, so taking it through the pool and releasing it through the pool
- * can release nothing at all. Everything else should use `db`.
+ * It used to be, for `reserve()` — the reasoning being that a session-level
+ * advisory lock belongs to a connection, so taking it through the pool and
+ * releasing it through the pool can release nothing at all. That reasoning is
+ * correct and the conclusion was still wrong twice over, which
+ * `src/server/sync-worker.ts` now records at length:
+ *
+ *   - `reserve()` against `DATABASE_POOL_MAX=1` takes the only connection, so
+ *     anything the holder does through `db` deadlocks against itself;
+ *   - and a session lock cannot survive a TRANSACTION POOLER anyway, which is
+ *     what sits in front of this pool in every deployment that needs max=1.
+ *
+ * If you need a session-scoped lock, you need a connection this pool is not
+ * multiplexing AND a pooler in session mode. Short of both, use
+ * `pg_try_advisory_xact_lock` (see `src/server/scheduler.ts`) or a row-level
+ * claim with `FOR UPDATE SKIP LOCKED`.
  */
-export const pool_ = pool;
 
 export const db = drizzle(pool, { schema });
 export { schema };

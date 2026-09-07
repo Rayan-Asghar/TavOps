@@ -37,7 +37,7 @@ import { deliver } from "./webhooks";
  * does the work once.
  */
 
-/** Distinct key per job, in the space `DRAIN_LOCK_KEY = 8_531_207` sits in. */
+/** Distinct key per job, in the space the old sync drain lock (8_531_207) sat in. */
 const LOCK_KEYS: Record<JobName, number> = {
   sweeps: 8_531_301,
   sync: 8_531_302,
@@ -80,7 +80,9 @@ function configured(job: JobName): boolean {
  * a different connection than the lock was, in which case it releases nothing
  * and the lock leaks until that connection is recycled. The transaction-scoped
  * variant is released by the COMMIT itself, so it cannot be orphaned. (The same
- * hazard exists in sync-worker's drain lock and is worth fixing there too.)
+ * hazard existed in sync-worker's drain lock; it turned out to be unfixable
+ * behind a transaction pooler and that lock has since been removed entirely —
+ * see the comment where DRAIN_LOCK_KEY used to be.)
  *
  * Due-ness is re-read INSIDE the lock. That is the step that makes concurrent
  * heartbeats safe: the loser waits, re-reads the row the winner just stamped,

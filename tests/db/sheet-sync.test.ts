@@ -111,7 +111,10 @@ function fakeSheets(opts: {
         },
         // Writes the banner into a new tab, and the id heading into an adopted one.
         update: async (args: unknown) => {
-          calls.push({ method: "update", args: args as Record<string, unknown> });
+          calls.push({
+            method: "update",
+            args: args as Record<string, unknown>,
+          });
           return { data: {} };
         },
         append: async (args: { requestBody: { values: string[][] } }) => {
@@ -129,7 +132,10 @@ function fakeSheets(opts: {
           };
         },
         batchUpdate: async (args: unknown) => {
-          calls.push({ method: "batchUpdate", args: args as Record<string, unknown> });
+          calls.push({
+            method: "batchUpdate",
+            args: args as Record<string, unknown>,
+          });
           maybeFail();
           return { data: {} };
         },
@@ -232,7 +238,11 @@ describe("appending", () => {
     const { userId, projectId, connectionId } = await scenario({
       visibility: "shareable",
     });
-    const log = await makeWorkLog({ projectId, userId, notes: "Client is slow" });
+    const log = await makeWorkLog({
+      projectId,
+      userId,
+      notes: "Client is slow",
+    });
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
     const { client, calls } = fakeSheets({});
@@ -321,10 +331,13 @@ describe("corrections", () => {
 
     // Nothing written, and the job is not left to retry forever.
     const writes = calls.filter((c) => c.method === "batchUpdate");
-    expect(writes.every((w) => {
-      const data = (w.args as { requestBody: { data: unknown[] } }).requestBody.data;
-      return data.length === 0;
-    })).toBe(true);
+    expect(
+      writes.every((w) => {
+        const data = (w.args as { requestBody: { data: unknown[] } })
+          .requestBody.data;
+        return data.length === 0;
+      }),
+    ).toBe(true);
     expect(result).toMatchObject({ done: 1 });
   });
 
@@ -479,7 +492,10 @@ describe("connection state", () => {
 
 describe("one sheet per project", () => {
   /** Queues an entry the way recordWorkInTx does. */
-  const enqueue = (projectId: string, log: { id: string; revisionId: string }) =>
+  const enqueue = (
+    projectId: string,
+    log: { id: string; revisionId: string },
+  ) =>
     db.transaction((tx) =>
       enqueueSheetWrite(tx, {
         projectId,
@@ -495,7 +511,11 @@ describe("one sheet per project", () => {
     const ahmed = await makeUser({ name: "Ahmed" });
     const ali = await makeUser({ name: "Ali" });
     const projectId = await makeProject({ code: "TS-001" });
-    await makeConnection({ projectId, spreadsheetId: "project-sheet", headerHash: validHash });
+    await makeConnection({
+      projectId,
+      spreadsheetId: "project-sheet",
+      headerHash: validHash,
+    });
 
     const a = await makeWorkLog({ projectId, userId: ahmed, hours: "3.00" });
     const b = await makeWorkLog({ projectId, userId: ali, hours: "5.00" });
@@ -509,9 +529,8 @@ describe("one sheet per project", () => {
     // One sheet, one call, both rows.
     const appends = calls.filter((c) => c.method === "append");
     expect(appends).toHaveLength(1);
-    const rows = (
-      appends[0].args as { requestBody: { values: string[][] } }
-    ).requestBody.values;
+    const rows = (appends[0].args as { requestBody: { values: string[][] } })
+      .requestBody.values;
     expect(rows).toHaveLength(2);
     expect(new Set(rows.map((r) => r[2]))).toEqual(new Set(["3.00", "5.00"]));
   });
@@ -520,11 +539,25 @@ describe("one sheet per project", () => {
     const ahmed = await makeUser({ name: "Ahmed" });
     const projectA = await makeProject({ code: "AAA-1" });
     const projectB = await makeProject({ code: "BBB-2" });
-    await makeConnection({ projectId: projectA, spreadsheetId: "a-sheet", headerHash: validHash });
-    await makeConnection({ projectId: projectB, spreadsheetId: "b-sheet", headerHash: validHash });
+    await makeConnection({
+      projectId: projectA,
+      spreadsheetId: "a-sheet",
+      headerHash: validHash,
+    });
+    await makeConnection({
+      projectId: projectB,
+      spreadsheetId: "b-sheet",
+      headerHash: validHash,
+    });
 
-    await enqueue(projectA, await makeWorkLog({ projectId: projectA, userId: ahmed, hours: "1.00" }));
-    await enqueue(projectB, await makeWorkLog({ projectId: projectB, userId: ahmed, hours: "7.00" }));
+    await enqueue(
+      projectA,
+      await makeWorkLog({ projectId: projectA, userId: ahmed, hours: "1.00" }),
+    );
+    await enqueue(
+      projectB,
+      await makeWorkLog({ projectId: projectB, userId: ahmed, hours: "7.00" }),
+    );
 
     const { client, calls } = fakeSheets({});
     __setSheetsClientForTests(client);
@@ -569,7 +602,11 @@ describe("monthly tabs", () => {
   it("creates the month's tab, with its banner, on the first entry", async () => {
     const { userId, projectId, connectionId } = await scenario();
     // The sheet only has August; this entry is September's.
-    const log = await makeWorkLog({ projectId, userId, workDate: "2026-09-15" });
+    const log = await makeWorkLog({
+      projectId,
+      userId,
+      workDate: "2026-09-15",
+    });
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
     const { client, calls } = fakeSheets({ tabs: ["August 2026"] });
@@ -593,10 +630,16 @@ describe("monthly tabs", () => {
   it("routes an entry to the tab for its own work date, not for today", async () => {
     // A correction filed in September to August's work belongs in August.
     const { userId, projectId, connectionId } = await scenario();
-    const log = await makeWorkLog({ projectId, userId, workDate: "2026-08-14" });
+    const log = await makeWorkLog({
+      projectId,
+      userId,
+      workDate: "2026-08-14",
+    });
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
-    const { client, calls } = fakeSheets({ tabs: ["August 2026", "September 2026"] });
+    const { client, calls } = fakeSheets({
+      tabs: ["August 2026", "September 2026"],
+    });
     __setSheetsClientForTests(client);
     await runSyncWorker();
 
@@ -611,7 +654,9 @@ describe("monthly tabs", () => {
       await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
     }
 
-    const { client, calls } = fakeSheets({ tabs: ["August 2026", "September 2026"] });
+    const { client, calls } = fakeSheets({
+      tabs: ["August 2026", "September 2026"],
+    });
     __setSheetsClientForTests(client);
     const result = await runSyncWorker();
 
@@ -625,95 +670,126 @@ describe("monthly tabs", () => {
   });
 });
 
-describe("the drain lock", () => {
+describe("concurrent drains", () => {
   /**
-   * `pg_try_advisory_lock` is SESSION-level: it belongs to the connection that
-   * took it, and `db` is a pool of ten. The worker used to take it through the
-   * pool and release it through the pool, so the unlock could land on a
-   * different connection, release nothing, and leave the lock held until that
-   * connection recycled — after which every drain returns "another drain is
-   * running" and sheet syncing stops with nothing in the log to say why.
+   * There is no drain lock any more, and that is what this block guards.
    *
-   * The invariant is what the test asserts, not the mechanism: after a drain,
-   * the lock is not held by anybody.
+   * It used to hold `pg_try_advisory_lock(8_531_207)` on a connection reserved
+   * out of the pool. Both halves of that were wrong once the app was deployed
+   * behind a transaction pooler, and neither could be caught here — the tests
+   * run against a direct connection with a pool of ten, which is precisely the
+   * shape in which both bugs are invisible:
+   *
+   *   - `pool_.reserve()` against `DATABASE_POOL_MAX=1` takes the ONLY
+   *     connection, and `drain()` then queries through the same pool, so it
+   *     waited for a connection its own caller was holding. Every page on the
+   *     deployment hung until Postgres cancelled the statement.
+   *   - a SESSION-level lock cannot be released through a transaction pooler at
+   *     all: Supavisor hands each statement to whichever backend is free, so
+   *     the unlock lands somewhere the lock is not.
+   *
+   * See `src/server/sync-worker.ts` where the key used to be defined.
+   *
+   * What replaces it is what was always underneath: `claimJobs` claims with
+   * `FOR UPDATE SKIP LOCKED` and flips `status` to 'running' in the same
+   * statement. So the tests below assert the PROPERTY the lock was standing in
+   * front of — concurrent drains take disjoint jobs, every job is sent exactly
+   * once, and a failure leaves the queue drainable — rather than the mechanism.
    */
-  const DRAIN_LOCK_KEY = 8_531_207;
+  const OLD_DRAIN_LOCK_KEY = 8_531_207;
 
   async function heldLocks() {
     const rows = await owner`
       SELECT count(*)::int AS n FROM pg_locks
-       WHERE locktype = 'advisory' AND objid = ${DRAIN_LOCK_KEY}`;
+       WHERE locktype = 'advisory' AND objid = ${OLD_DRAIN_LOCK_KEY}`;
     return rows[0].n as number;
   }
 
-  /**
-   * Runs a drain and asserts it left no lock of its own behind.
-   *
-   * Compared against a BASELINE rather than against zero. `pg_locks` is
-   * cluster-wide and vitest runs each test file in its own process against one
-   * shared database, so `scheduler.test.ts` — which drains too — can still be
-   * closing a connection that holds this lock when this file starts. A foreign
-   * lock shows up in both readings and cancels out; a leak of our own does not.
-   *
-   * Polling for zero instead would be wrong, and was tried: it passes against
-   * the buggy implementation, because a leaked lock is released as soon as the
-   * pool recycles that connection. The point is that the drain must not leak it
-   * in the first place.
-   */
-  async function expectNoLeak(run: () => Promise<unknown>) {
-    const before = await heldLocks();
-    await run();
-    expect(await heldLocks()).toBeLessThanOrEqual(before);
-  }
+  it("takes no advisory lock at all", async () => {
+    /* A weak guard, deliberately labelled as one. `pg_locks` read after a drain
+       reads zero whether the lock was never taken or was taken and correctly
+       released — so this catches a reintroduced lock only if it also LEAKS,
+       which is the case that broke sheet syncing before. The real proof that
+       the mechanism is gone is that the key is gone from the source; this is
+       here so a reintroduction that leaks fails loudly rather than silently
+       stopping sync a week later.
 
-  it("releases the lock when the drain finds nothing to do", async () => {
-    await expectNoLeak(() => runSyncWorker());
-  });
-
-  it("releases the lock after a real drain, so the next one runs", async () => {
+       Asserted against zero rather than a baseline, unlike the version this
+       replaces: nothing in the codebase takes that key any more, so a foreign
+       lock from another test file draining concurrently is no longer possible.
+    */
     const { userId, projectId, connectionId } = await scenario();
     const log = await makeWorkLog({ projectId, userId, hours: "2.00" });
     await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
 
-    await expectNoLeak(() => runSyncWorker());
+    const { client } = fakeSheets({});
+    __setSheetsClientForTests(client);
 
-    // The real symptom of the old bug: the SECOND call refusing to run.
-    const second = await runSyncWorker();
-    expect(second).not.toHaveProperty("skipped", "another drain is running");
+    await runSyncWorker();
+    expect(await heldLocks()).toBe(0);
   });
 
-  it("leaks nothing when several drains race, which is the real case", async () => {
-    /* Read this before trusting it. The old bug is INTERMITTENT by nature:
-       `db.execute` takes whatever pooled connection is free, so on a quiet run
-       the lock and the unlock often land on the same one and nothing leaks.
-       Concurrency separates them — and concurrency is the normal case here,
-       because every logged entry schedules a drain, so ten people logging at
-       once means ten of these at once (see the DRAIN_LOCK_KEY docstring).
-
-       Measured against the old implementation this catches the leak roughly
-       half the time, so it is a probabilistic guard, not a proof. The proof is
-       the reasoning: a session-level advisory lock belongs to the connection
-       that took it, so releasing it through a pool is not release at all. The
-       test is here to notice a regression eventually, and to say why. */
+  it("never refuses to run because another drain is in flight", async () => {
     const { userId, projectId, connectionId } = await scenario();
-    for (let i = 0; i < 3; i++) {
+    const log = await makeWorkLog({ projectId, userId, hours: "2.00" });
+    await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+
+    const { client } = fakeSheets({});
+    __setSheetsClientForTests(client);
+
+    await runSyncWorker();
+
+    // The old failure mode, now impossible by construction: a second call that
+    // declines the work and reports "another drain is running". A drain with an
+    // empty queue must return a real result.
+    const second = await runSyncWorker();
+    expect(second).not.toHaveProperty("skipped", "another drain is running");
+    expect(second).toMatchObject({ claimed: 0 });
+  });
+
+  it("sends each job exactly once when several drains race", async () => {
+    /* This is the property the lock was insurance for, and it was never the
+       lock providing it. Every logged entry schedules a drain, so ten people
+       logging at once means ten concurrent workers against one queue; SKIP
+       LOCKED is what makes them take disjoint jobs. If that ever stopped
+       holding, the visible damage is a row written to the sheet twice — so
+       that, not the lock, is what is counted. */
+    const { userId, projectId, connectionId } = await scenario();
+    const queued = 3;
+    for (let i = 0; i < queued; i++) {
       const log = await makeWorkLog({ projectId, userId, hours: "1.00" });
       await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
     }
 
-    await expectNoLeak(async () => {
-      await Promise.all(
-        Array.from({ length: 8 }, () => runSyncWorker().catch(() => undefined)),
-      );
-    });
+    const { client, calls } = fakeSheets({});
+    __setSheetsClientForTests(client);
 
-    // And the queue is still drainable afterwards, which is the thing a leak
-    // actually costs: sync stops until somebody restarts the process.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => runSyncWorker().catch(() => undefined)),
+    );
+
+    // Every queued job claimed once across all eight workers, no more.
+    const claimed = results.reduce(
+      (n, r) => n + Number((r as { claimed?: number })?.claimed ?? 0),
+      0,
+    );
+    expect(claimed).toBe(queued);
+
+    const appended = calls
+      .filter((c) => c.method === "append")
+      .flatMap(
+        (c) =>
+          (c.args as { requestBody?: { values?: unknown[] } }).requestBody
+            ?.values ?? [],
+      );
+    expect(appended).toHaveLength(queued);
+
+    // And the queue is empty afterwards rather than stalled.
     const after = await runSyncWorker();
-    expect(after).not.toHaveProperty("skipped", "another drain is running");
+    expect(after).toMatchObject({ claimed: 0 });
   });
 
-  it("releases the lock even when the drain throws", async () => {
+  it("leaves the queue drainable when the drain throws", async () => {
     __setSheetsClientForTests({
       spreadsheets: {
         values: {
@@ -724,8 +800,11 @@ describe("the drain lock", () => {
       } as unknown as sheets_v4.Sheets["spreadsheets"],
     } as unknown as sheets_v4.Sheets);
 
-    // A leaked lock after a failure is the worst version of this bug: the
-    // thing that broke also stops anything from retrying.
-    await expectNoLeak(() => runSyncWorker().catch(() => undefined));
+    // The worst version of the old bug was a leaked lock after a failure: the
+    // thing that broke also stopped anything from retrying. Nothing is held
+    // now, so the only thing to assert is that a second call still runs.
+    await runSyncWorker().catch(() => undefined);
+    const second = await runSyncWorker().catch(() => undefined);
+    expect(second).not.toHaveProperty("skipped", "another drain is running");
   });
 });

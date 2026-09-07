@@ -106,15 +106,23 @@ build needs ~4GB and Vercel's builders have 8, so the local
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | transaction pooler URL, `tavren_app` role |
-| `DATABASE_POOL_MAX` | `1` |
+| `DATABASE_POOL_MAX` | `3` |
 | `AUTH_SECRET` | `openssl rand -base64 32` |
 | `CRON_SECRET` | `openssl rand -hex 24` |
 | `LOG_LEVEL` | `info` |
 
-`DATABASE_POOL_MAX=1` matters. Each serverless invocation is its own process
-with its own pool; the default of 10 becomes ten connections per concurrent
-instance against a database that allows far fewer. The pooler in front is doing
-the pooling — see the comment in `src/db/index.ts`.
+`DATABASE_POOL_MAX` matters, and so does not setting it to `1`. Each serverless
+invocation is its own process with its own pool; the default of 10 becomes ten
+connections per concurrent instance against a database that allows far fewer,
+and the pooler in front is what should be doing the pooling.
+
+But `1` was the first answer here and it broke the deployment outright. A pool
+of one serialises every `Promise.all` in the app — the shell layout issues four
+independent queries that way — and it turns any code that reserves a connection
+and then queries through the pool into a deadlock, which is what took every page
+down on the first deploy. `3` is the working figure: parallel enough for one
+request, small enough to be safe behind Supavisor's free-tier pool of 15. The
+reasoning is in the comment in `src/db/index.ts`; read it before changing this.
 
 **Do not add `MIGRATION_DATABASE_URL`.** It is the owner credential, nothing at
 runtime reads it, and putting it there hands every function the ability to drop
@@ -152,9 +160,24 @@ rather than turned into a user. Seed or invite the account first.
 
 ## Known hazards in this environment
 
-**A transaction pooler needs `DATABASE_POOL_MAX=1` and `prepare: false`.** Both
-are handled in `src/db/index.ts`; set the variable and check the comment there
-before changing either.
+**A transaction pooler needs a small `DATABASE_POOL_MAX` and `prepare: false`.**
+Both are handled in `src/db/index.ts`; set the variable and check the comment
+there before changing either. Small is not `1` — see above.
+
+**A transaction pooler cannot hold a session-level advisory lock.**
+`pg_try_advisory_lock` / `pg_advisory_unlock` need the same backend for both
+halves, and Supavisor hands each statement to whichever backend is free, so the
+unlock releases nothing and the lock is orphaned. The sync worker used one and
+it has been removed; if you add another, use `pg_try_advisory_xact_lock` (which
+the COMMIT releases, see `src/server/scheduler.ts`) or a row claim with
+`FOR UPDATE SKIP LOCKED`. Nothing about this fails locally — the test database
+is a direct connection, where both forms work.
+
+**An unhandled rejection kills every in-flight response, not just its own.**
+One instance serves many concurrent requests and Next streams them, so a process
+exit between the shell and the page body leaves every browser holding a skeleton
+that never resolves, with no error and no status code. `src/instrumentation.ts`
+now downgrades a stray rejection to a log line. Read it before removing it.
 
 **Supabase's free tier has no backups.** Fine for testing, disqualifying for
 anything holding real billable hours.

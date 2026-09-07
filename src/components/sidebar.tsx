@@ -60,6 +60,20 @@ function NavLink({
     <Link
       href={entry.href}
       onClick={onNavigate}
+      /* No prefetch. Every entry in this rail is visible on every page, so the
+         default fires one RSC request per destination the moment the sidebar
+         paints — and each of those RENDERS THE SHELL LAYOUT, which is a session
+         lookup plus the inbox, timer, recents and chase-badge queries. Ten
+         links is ~50 database round trips to pre-warm navigation that mostly
+         does not happen. The deployed logs showed seven page requests inside
+         0.43s, none of them a click.
+
+         The cost of turning it off is a slower first click, and `LinkPending`
+         below is already the answer to that: the entry says it is working the
+         instant it is pressed, and `loading.tsx` paints the page skeleton. A
+         nav that is honest about waiting beats one that pays for ten pages to
+         make one of them fast. */
+      prefetch={false}
       aria-current={active ? "page" : undefined}
       className={`grid min-h-[44px] grid-cols-[24px_1fr_auto] items-center gap-2.5 rounded-lg px-2.5
                   text-sm font-medium transition-[color,background-color,border-color] duration-150 ease-out-quad
@@ -249,6 +263,7 @@ export function Sidebar({
               the link rather than a nav slot competing with the real work. */}
           <Link
             href="/settings"
+            prefetch={false}
             className="grid grid-cols-[34px_1fr] items-center gap-2.5 rounded-lg p-1.5 transition-colors duration-150 ease-out-quad hover:bg-nav-hover"
           >
             <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-brand text-xs font-bold">
