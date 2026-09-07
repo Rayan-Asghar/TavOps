@@ -52,4 +52,17 @@ describe("maySignIn", () => {
       ),
     ).toBe(false);
   });
+
+  it("lets an invited account sign in with Google before the invite is accepted", () => {
+    /* The invite link's job is setting a PASSWORD. Where Google is configured
+       an invited person can sign in without ever opening it, because the admin
+       choosing their address is the authorisation — `maySignIn` passing the
+       moment the row exists is the intended behaviour, not an oversight.
+
+       Structurally guaranteed rather than merely true today: `SignInCandidate`
+       carries no invite field, so a check could not be added here without
+       widening the type. This asserts the behaviour anyway, because the next
+       person to read `invite_token_hash` on the users table may reach for it. */
+    expect(maySignIn({ isActive: true, accessExpiresAt: null }, now)).toBe(true);
+  });
 });

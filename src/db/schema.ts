@@ -15,6 +15,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ *
  * Enums
@@ -146,9 +147,17 @@ export const notificationKind = pgEnum("notification_kind", [
   "project_at_risk",
   "review_approved",
   "revision_requested",
-  // Dead with feasibility routing, removed when BD was cut back to "what was
-  // sent" and "what landed". Postgres cannot drop a value from an enum type
-  // still in use, so these survive as labels the way 'sync_failed' does.
+  // Dead with feasibility routing, cut when BD narrowed to "what was sent" and
+  // "what landed". Postgres cannot drop a value from an enum type still in use,
+  // so these survive as labels the way 'sync_failed' does, and they are
+  // unreachable rather than merely unused: `EmittableKind` in
+  // server/notifications.ts excludes them, so `notify()` will not compile with
+  // one. Enforced in the type rather than by a migration — rewriting an enum to
+  // drop labels is risk with no functional gain.
+  //
+  // `followup_due` was in that list and is NOT any more: 0024 brought the chase
+  // back in a form that derives due-ness from the status and the clock instead
+  // of asking a rep to name a date, which is why 0011 removed the old one.
   "feasibility_requested",
   "feasibility_answered",
   // NOT dead any more. 0011 removed the follow-up chaser and left this label
@@ -287,13 +296,27 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 160 }).notNull(),
     email: varchar("email", { length: 255 }).notNull(),
-    passwordHash: text("password_hash").notNull(),
+    /** Nullable: somebody who signs in with Google has no password, and a
+     *  mandatory column would force one to exist for no reason. `authorize()`
+     *  refuses a null hash only AFTER its dummy compare, so a Google-only
+     *  account cannot be told apart from a wrong password by timing. */
+    passwordHash: text("password_hash"),
     globalRole: globalRole("global_role").notNull().default("developer"),
+    /** Bumped to invalidate every token issued before the bump. Compared for
+     *  equality in `isSessionStillValid`, so a replayed higher value fails too. */
+    sessionVersion: integer("session_version").default(1).notNull(),
     skills: jsonb("skills").$type<string[]>().default([]).notNull(),
     weeklyCapacityHours: integer("weekly_capacity_hours").default(40).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     /** Set for temp collaborators; access checks refuse them past this. */
     accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }),
+    /** SHA-256 of the invite token. The plaintext exists only in the response
+     *  that mints it — a credential readable later is one that leaks later. */
+    inviteTokenHash: text("invite_token_hash"),
+    inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+    invitedById: uuid("invited_by_id").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1492,4 +1515,39 @@ export const connectLedger = pgTable(
       .notNull(),
   },
   (t) => [index("cl_occurred_idx").on(t.occurredAt)],
+);
+
+/**
+ * A saved view is a saved link.
+ *
+ * Every list in this app keeps its filters in the query string, so a view needs
+ * to be nothing more than a name, a path and a query. There is no filter DSL to
+ * design and no way for a saved view to drift from the URL it was saved from,
+ * because it IS that URL.
+ */
+export const savedViews = pgTable(
+  "saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 80 }).notNull(),
+    /** The screen it belongs to, e.g. `/tasks`. */
+    path: varchar("path", { length: 120 }).notNull(),
+    /** The query string without its leading `?`. May be empty. */
+    query: text("query").notNull(),
+    isShared: boolean("is_shared").default(false).notNull(),
+    orderIndex: integer("order_index").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("saved_views_user_path_idx").on(t.userId, t.path, t.orderIndex),
+    uniqueIndex("saved_views_user_path_name_unique").on(t.userId, t.path, t.name),
+    index("saved_views_shared_idx")
+      .on(t.path, t.orderIndex)
+      .where(sql`${t.isShared}`),
+  ],
 );

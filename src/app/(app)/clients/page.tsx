@@ -1,9 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { requirePageActor } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
 import { can } from "@/lib/rbac";
 import { PageHeader, SummaryStrip } from "@/components/app-shell";
@@ -22,15 +18,9 @@ export const metadata = { title: "Clients" };
  * "how much have we done for them" without reading every project.
  */
 export default async function ClientsPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
+  const actor = await requirePageActor();
 
-  const [me] = await db
-    .select({ globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-  const role = me?.globalRole ?? "developer";
+  const role = actor.globalRole;
 
   const scope = await accessibleProjectIds(actor);
   const rows = await clientDirectory(scope);

@@ -1,9 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { requireCapability } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { chaseState } from "@/lib/chase";
 import { CATEGORY_LABELS } from "@/lib/blocker-routing";
@@ -55,17 +51,8 @@ export default async function SalesPage({
 }: {
   searchParams: Promise<RawParams>;
 }) {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "proposal.create")) notFound();
+  const actor = await requireCapability("proposal.create");
+  const role = actor.globalRole;
 
   const seesAll = can(role, "proposal.viewAll");
   const canConvert = can(role, "project.create");

@@ -18,6 +18,7 @@ export const owner = postgres(OWNER_URL, { max: 2 });
 
 /** Everything the fixtures touch, children first. */
 const TABLES = [
+  "saved_views",
   "job_runs",
   "connect_ledger",
   "work_log_costs",

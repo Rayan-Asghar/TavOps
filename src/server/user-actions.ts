@@ -1,6 +1,5 @@
 "use server";
 
-import { randomInt } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -8,6 +7,12 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
+import { generatePassword } from "@/lib/password";
+import {
+  hashInviteToken,
+  inviteExpiryFrom,
+  mintInviteToken,
+} from "@/lib/invite-token";
 import { assertCan } from "@/lib/rbac";
 import { createUserSchema } from "./user-schemas";
 import { writeAudit } from "./audit";
@@ -21,18 +26,12 @@ export type UserFormState = {
   fieldErrors?: Record<string, string>;
   /** Shown exactly once, immediately after creation. Never recoverable. */
   tempPassword?: string;
+  /** The invite link, shown once for the same reason. A path, not an absolute
+   *  URL: the server does not reliably know its own public origin behind a
+   *  proxy, and the client that renders it does. */
+  invitePath?: string;
   createdName?: string;
 };
-
-// No 0/O/1/l/I: these get transcribed by hand into a chat message, and an
-// ambiguous character turns into a support request.
-const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-
-function generatePassword(length = 16): string {
-  let out = "";
-  for (let i = 0; i < length; i++) out += ALPHABET[randomInt(ALPHABET.length)];
-  return out;
-}
 
 function zodFieldErrors(err: z.ZodError): Record<string, string> {
   const out: Record<string, string> = {};
@@ -77,8 +76,15 @@ export async function createUserAction(
     };
   }
 
-  const tempPassword = generatePassword();
-  const passwordHash = await bcrypt.hash(tempPassword, 12);
+  /* No password is minted here any more. The account is created WITHOUT one and
+     the admin sends a link instead — that handover is what produced nine
+     accounts sharing a single password, and it is the thing being retired.
+
+     Where Google is configured the invitee does not even need the link:
+     `maySignIn` passes the moment this row exists, because the admin choosing
+     the address is the authorisation. The link's job is setting a password for
+     everyone else. */
+  const inviteToken = mintInviteToken();
 
   const created = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -86,7 +92,10 @@ export async function createUserAction(
       .values({
         name: data.name,
         email: data.email,
-        passwordHash,
+        passwordHash: null,
+        inviteTokenHash: hashInviteToken(inviteToken),
+        inviteExpiresAt: inviteExpiryFrom(),
+        invitedById: actor.id,
         globalRole: data.globalRole,
         weeklyCapacityHours: data.weeklyCapacityHours,
         accessExpiresAt: data.accessExpiresAt,
@@ -106,9 +115,13 @@ export async function createUserAction(
 
   revalidatePath("/admin/users");
 
-  // Returned once so the admin can hand it over. It is not stored anywhere in
-  // recoverable form, so there is no second chance to read it.
-  return { ok: true, tempPassword, createdName: created.name };
+  // Returned once so the admin can hand it over. Only the hash was stored, so
+  // there is no second chance to read it — re-issuing mints a new one.
+  return {
+    ok: true,
+    invitePath: `/invite/${inviteToken}`,
+    createdName: created.name,
+  };
 }
 
 export async function setUserActiveAction(
@@ -156,7 +169,16 @@ export async function setUserActiveAction(
   await db.transaction(async (tx) => {
     await tx
       .update(users)
-      .set({ isActive: makeActive, updatedAt: new Date() })
+      // Bumped on deactivation so their session dies on the next request
+      // rather than whenever the twelve-hour token happens to expire. Bumped on
+      // reactivation too: the version is a revocation counter, not a state flag,
+      // and skipping it would let a token minted before the deactivation work
+      // again afterwards.
+      .set({
+        isActive: makeActive,
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId));
     await writeAudit(tx, {
       actorId: actor.id,
@@ -194,7 +216,13 @@ export async function resetPasswordAction(
   const [updated] = await db.transaction(async (tx) => {
     const rows = await tx
       .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
+      // A reset exists because somebody lost control of the old password.
+      // Leaving their existing sessions alive would defeat the reset.
+      .set({
+        passwordHash,
+        sessionVersion: sql`${users.sessionVersion} + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
       .returning({ name: users.name });
     // No before/after: the only thing that changed is a hash, and recording

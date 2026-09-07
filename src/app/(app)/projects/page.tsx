@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { and, asc, count as countRows, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { blockers, clients, projects, tasks, users, workLogs } from "@/db/schema";
-import { getActor } from "@/lib/auth";
+import { blockers, clients, projects, tasks, workLogs } from "@/db/schema";
+import { requirePageActor } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
 import { SectionIntro } from "@/components/app-shell";
 import { HealthBadge, Badge } from "@/components/badges";
@@ -35,14 +34,8 @@ export default async function ProjectsPage({
   searchParams: Promise<RawParams>;
 }) {
   const density = parseDensity((await cookies()).get(DENSITY_COOKIE)?.value);
-  const actor = await getActor();
-  if (!actor) redirect("/login");
+  const actor = await requirePageActor();
 
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
 
   const [scope] = await Promise.all([
     accessibleProjectIds(actor),
@@ -122,7 +115,7 @@ export default async function ProjectsPage({
         .then((r) => Number(r[0]?.n ?? 0)),
     ]);
 
-  const role = me?.globalRole ?? "developer";
+  const role = actor.globalRole;
 
   // Money is fetched separately, never joined: project_financials and
   // work_log_costs are RLS-forced, and a join from this ungated query would
@@ -146,7 +139,7 @@ export default async function ProjectsPage({
             : "Projects you own or are assigned to."
         }
         actions={
-          can(me?.globalRole ?? "developer", "project.create") ? (
+          can(actor.globalRole, "project.create") ? (
             <Link href="/projects/new" className="btn-primary">
               + New project
             </Link>
@@ -212,7 +205,7 @@ export default async function ProjectsPage({
             variant="blank-slate"
             title="No Projects Yet"
             action={
-              can(me?.globalRole ?? "developer", "project.create") ? (
+              can(actor.globalRole, "project.create") ? (
                 <Link href="/projects/new" className="btn-primary btn-sm">
                   Create project
                 </Link>

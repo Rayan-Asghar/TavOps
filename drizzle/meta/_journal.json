@@ -150,17 +150,38 @@
       "breakpoints": true
     },
     {
+      "idx": 21,
+      "version": "7",
+      "when": 1788556672380,
+      "tag": "0021_saved_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788796369256,
+      "tag": "0022_session_version",
+      "breakpoints": true
+    },
+    {
       "idx": 23,
       "version": "7",
-      "when": 1788796370256,
-      "tag": "0023_sales_pipeline_record",
+      "when": 1788799953949,
+      "tag": "0023_invitations",
       "breakpoints": true
     },
     {
       "idx": 24,
       "version": "7",
-      "when": 1788796371256,
-      "tag": "0024_connect_ledger",
+      "when": 1788799954949,
+      "tag": "0024_sales_pipeline_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788799955949,
+      "tag": "0025_connect_ledger",
       "breakpoints": true
     }
   ]

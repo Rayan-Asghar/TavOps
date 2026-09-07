@@ -1,10 +1,7 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { asc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, sheetConnections, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
-import { can } from "@/lib/rbac";
+import { projects, sheetConnections } from "@/db/schema";
 import { SectionIntro } from "@/components/app-shell";
 import { Badge } from "@/components/badges";
 
@@ -18,17 +15,6 @@ import { Badge } from "@/components/badges";
  */
 
 export default async function SheetsAdminPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "sheet.configure")) notFound();
 
   const [rows] = await Promise.all([
     db

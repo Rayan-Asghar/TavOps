@@ -24,7 +24,14 @@
         (proven on dev: 23 entries, 17 rated / 6 unrated, idempotent on rerun)
 - [x] **Google sign-in** (unplanned, requested mid-flight) — one `maySignIn` rule for
       both providers, no auto-provisioning, DB lookup kept out of the edge-safe config
-- [ ] **Phase 2B — the interface** ← in progress
+- [ ] **Phase 2B — the interface** — **DEFERRED to the end, after the functional
+      work.** 2B.1/2B.2/2B.6 already landed and stay. The UX audit apparatus
+      (`/uxaudit`, `ux-audit/` reports and screenshots, the 92-point scorecard) was
+      removed on 2026-09-07 because scoring an interface still being reshaped kept
+      generating work that competed with the features. `docs/DESIGN-STANDARD.md`
+      stays as the reference — eleven shipped code comments cite it by section, and
+      the browser harness in `ux-audit/_harness/` stays because it drives features
+      in a real browser, which is how several bugs were caught.
   - [x] 2B.1 `PageHeader` — the five bands; `SectionIntro` reimplemented on it so the
         eleven existing pages migrate as they are rebuilt, not in one sweep
   - [x] 2B.2 `DateRangeStepper` + `stepRange` (months step by months); `/reports` migrated
@@ -40,7 +47,7 @@
         Still to do: the full Members *table* layout, and a time-off column once
         Phase 3 lands
   - [ ] 2B.9 global search over content, not just destinations
-- [ ] **Phase 2A — the visible layer** ← in progress
+- [x] **Phase 2A — the visible layer** — done
   - [x] 2.4 project **money tab** — billing model + financials + retainer periods
         (all three had no writer at all), plus the margin strip with the
         "Not costed" honesty cell and the single-contributor suppression rule
@@ -67,9 +74,16 @@
         `/sales/connects`, `flagLowConnects`, reconcile-with-a-note
   - [x] S3 post-win visibility, the "Waiting on you" panel, the narrowed blocker
         form, and `TEST_DB_NAME` so a branch can have its own fixture database
-- [ ] Phase 3 — Planning layer
+  - [x] 2.5 saved views + cross-project tasks — `/tasks` (open-only by default,
+        nulls-last on due date, filter options built from the reader's own scope)
+        and saved views as named URLs (migration `0021`), path allow-listed so a
+        stored view cannot become an open redirect- [ ] Phase 3 — Planning layer
 - [ ] Phase 4 — Approvals + expenses
-- [ ] Phase 5 — Hardening
+- [ ] Phase 5 — Hardening ← in progress
+  - [ ] 5.7 per-person money permissions — `finance.view` / `rates.view` as
+        grants, `can()` overloaded so the compiler finds every call site
+  - [x] 5.8 invite by link — nullable `password_hash`, hashed one-time token,
+        retires the temp-password handover *(migration `0023`)*
 - [ ] Phase 6 — Deployment (scheduler no longer blocks it — in-app heartbeat landed)
 
 ---
@@ -498,6 +512,125 @@ and any view switcher whose views aren't genuinely built.
 
 ---
 
+# Phase 2C — Sales capture: paste a posting, log a proposal
+
+*Approved 2026-09-07, from watching the actual workflow.*
+
+## The problem is a sixth act of typing
+
+A rep finds a job on Upwork, copies the whole posting, pastes it into ChatGPT to
+draft a proposal, refines it, sends it. Logging it in Tavren is then a separate
+act of retyping something already on their clipboard — and it is the step that
+gets skipped when the day is busy. Every figure on `/sales` is derived from that
+row existing, so a skipped log does not merely lose one record, it silently
+biases the win rate of everything that *was* logged.
+
+The posting already on the clipboard contains most of what the form asks for.
+**Ctrl+V on `/sales` fills the form; the rep confirms with one click.**
+
+Two decisions taken with the user:
+
+- **Tavren does not draft proposals.** Reps keep using ChatGPT. No LLM API, no
+  key, no per-proposal cost, no prompt to maintain.
+- **The rep confirms; it is not auto-logged.** Still about three seconds. A
+  mis-parsed title or category would otherwise become a permanent row feeding
+  `bdStats`, and there is no delete path today.
+
+## What a real paste actually contains
+
+Read off a live posting the user supplied. The text is **marker-delimited** —
+`Summary`, `Skills and Expertise`, `Mandatory skills`, `Activity on this job`,
+`Proposals:` — so this parses on markers, never on line offsets beyond the
+title. That makes it far less brittle than parsing prose would be, though it
+stays tied to Upwork's English layout.
+
+| Field | Source |
+| --- | --- |
+| `jobTitle` | first non-empty line |
+| `notes` | the block under `Summary` |
+| `category` | first entry under `Mandatory skills`, matched against the datalist already in `proposal-form.tsx`, else kept raw |
+| engagement | hrs/week, hourly-vs-fixed, duration, experience level, project type |
+| **competition** | `Proposals: 50+` |
+| client activity | `Last viewed by client: 40 minutes ago` |
+
+## Two hard rules, both proven by that sample
+
+1. **Only an `upwork.com/jobs/...` address may fill `jobUrl`.** The sample
+   contains `ventyfan.com` — the *client's own site*, inside the description. A
+   generic URL detector puts it in the job-link field, where it looks correct
+   and is wrong. In practice the posting copy carries no job link at all, so the
+   field stays empty and the rep pastes it second.
+2. **Never infer `budgetAmount`.** The sample says `Hourly` with no number. Only
+   an explicit `Est. Budget: $X` fills it; an hourly range is kept as text and
+   never coerced. A guessed budget corrupts the win-rate and won-value figures
+   `bdStats` computes from it — the same argument `margin.ts` makes for refusing
+   mixed currency rather than picking one.
+
+## Capture the competition signal in the first version
+
+`Proposals: 50+` is the most valuable thing in that paste and nothing records it
+today. Whether a rep was one of five or one of fifty is likely a stronger
+predictor of a reply than anything about their wording — and it is **the one
+field here that cannot be backfilled.** Capture it now even though the analysis
+is a later question.
+
+## Changes to make
+
+| Where | What |
+| --- | --- |
+| `src/lib/upwork-paste.ts` *(new, pure)* | `parsePosting(raw)`. Marker-driven. Returns `{ recognised: false }` rather than guessing when no markers are found. Every field independently optional — absent is a valid answer and must never become a default. |
+| `src/lib/upwork-paste.test.ts` *(new)* | the real sample as a fixture, a fixed-price posting, a partial selection, garbage. Assert specifically that `ventyfan.com` does **not** reach `jobUrl` and that `Hourly` leaves `budgetAmount` unset. |
+| `drizzle/00NN_proposal_posting_capture.sql` *(new)* | on `proposals`: `raw_posting text`, `posting_meta jsonb NOT NULL DEFAULT '{}'`, `proposal_count_min integer`, `budget_type varchar(10)`. Hand-written, diffed against the live DB first. |
+| `src/db/schema.ts` | the four columns; `posting_meta` typed |
+| `src/server/proposal-schemas.ts` | extend `createProposalSchema` with the new optional fields |
+| `src/server/proposals.ts` | persist them in the existing single insert; dedupe on same `jobUrl`, or same owner + title within 7 days, returning a warning rather than refusing |
+| `src/components/proposal-form.tsx` | accept initial values; mark which fields came from the paste so the rep knows what to check; surface the competition count prominently — "50+ already" is decision-relevant *before* bidding |
+| `src/components/proposal-paste.tsx` *(new)* | document-level `paste` listener, **ignored when the target is an input, textarea or contenteditable** or it hijacks typing into the form. Plus an explicit "Paste a job posting" textarea: a keyboard-only affordance nobody is told about is a feature nobody uses. On a recognised paste, focus the Job link field — the one thing the paste cannot supply, so the rep's second Ctrl+V lands where it belongs. |
+| `src/app/(app)/sales/page.tsx` | mount it. **`/sales` only, never app-wide** — a job posting pasted on `/timesheet` must not summon a proposal draft. |
+
+## Verification
+
+1. `pnpm verify` — the parser tests are the point; they carry the real sample.
+2. Paste the sample on `/sales`: title, summary, category `Shopify` and
+   competition `50+` fill; **budget and job link stay empty**.
+3. Paste an Upwork job URL second — fills the link field, nothing else.
+4. Paste the sample while focused inside the notes textarea — normal paste, no
+   panel.
+5. Paste unrelated text — nothing happens.
+6. Confirm the draft; check the row and that `bdStats` still reports sanely.
+
+## Deferred: measuring which proposals perform
+
+Raised by the user as something to research, not to build.
+
+**The blocker is that no proposal text is stored.** `proposals` records the job,
+the outcome and the dates; it has never held what the rep actually wrote. You
+cannot compare what you did not keep, and this is not backfillable — so if it is
+wanted at all, a `proposal_text` column the rep pastes their final proposal into
+is the cheap first move.
+
+The outcome side already exists: the funnel, with a timestamp at each step.
+This phase newly supplies the controls — competition count, budget type,
+category, required experience, and how stale the posting was when they bid.
+
+**Two limits worth stating before anyone builds a dashboard:**
+
+- **Volume.** At an agency's bid rate this is descriptive, not a valid A/B test.
+  "These twelve won" is a reading, not a finding. Comparing two approaches needs
+  roughly thirty apiece within one category before the difference means anything.
+- **The funnel is hand-maintained.** `viewed` and `responded` are set by a rep
+  clicking; Upwork sends no signal. Any conclusion inherits that discipline, and
+  a rep who forgets to mark replies looks like a rep whose proposals fail.
+
+**The likely first real insight is not textual.** Response rate bucketed by
+competition count, and by posting freshness at time of bid, both come free from
+the paste and need nothing extra from anybody. Look there before asking reps to
+tag their writing. If content comparison is wanted later, the cheapest thing
+that could work is a named approach tag per proposal compared on response rate
+within one category — not free-text analysis.
+
+---
+
 # Phase 3 — The planning layer
 
 The original Phase 1, unchanged in design. **The governing claim: exactly two facts exist
@@ -633,6 +766,121 @@ model becomes right, so nobody relitigates it.
    `EmittableNotificationKind` on `notify()`. **Write no migration** — there is nothing to
    migrate.
 
+7. **Per-person money permissions.** *Approved 2026-09-07, from a Toggl Track
+   comparison.* Toggl separates **what job you do** from **whether you may see
+   money**: role is a radio, and "View billable rates" / "View labor costs" are
+   checkboxes underneath it. Tavren has exactly those two permissions —
+   `finance.view` and `rates.view` — but welds them to the role, so "a head who
+   may also see pay rates" is inexpressible without making that person a full
+   admin. That is over-provisioning forced by the model, which is the failure
+   `rbac.ts` already warns about in its own header.
+
+   - **Storage.** `users.extra_capabilities`, a `jsonb` array defaulting `[]`,
+     with a CHECK constraining it to the grantable set. Not a join table: two
+     flags across twenty people buys nothing and costs a query on the auth path.
+   - **Only two are grantable**, whitelisted in one exported constant. Every
+     other capability stays role-derived. A checkbox per capability would be a
+     permission matrix nobody maintains — the same argument `saved_views` made
+     for `is_shared`.
+   - **Any role may receive them, including `collaborator`.** Decided
+     deliberately: the admin is accountable, and a rule that silently drops a
+     grant is worse than one that shows what it is about to do. The form says
+     what the grant exposes rather than preventing it.
+   - **Grants only ever ADD.** No grant removes a role's capability, so any call
+     site not yet migrated fails closed.
+   - **The compiler finds the call sites, not a grep.** Overload `can()`: the
+     `GlobalRole` form accepts only non-grantable capabilities, the `Principal`
+     (`{globalRole, extraCapabilities}`) form accepts all. Every one of the 24
+     `finance.view` / `rates.view` checks then fails to typecheck until it is
+     migrated, and a future one cannot be written the wrong way. This is the
+     whole reason to prefer an overload over a third argument.
+   - **Read from the database, never the JWT.** `loadPageActor` (item 2) already
+     re-reads the role per render pass; add `extra_capabilities` to that same
+     select and it costs no round trip. Putting grants in a twelve-hour token
+     would mean revoking someone's access to pay data took half a day — exactly
+     the argument item 3 makes for `session_version`.
+   - **RLS is untouched and still independent.** A grant changes who passes
+     `can()`, not who passes the policy. `withFinanceAccess` callers must still
+     hold the capability; the backstop stays a backstop.
+   - Audited as `user.grants` with before/after, and no amounts — the same rule
+     2B.6 applied to rate changes, since `head` has `audit.view` but may not
+     have `rates.view`.
+
+   **Changes to make** (migration number is whatever is free after the
+   session-version work — check `drizzle/` rather than assuming `0023`):
+
+   | Where | What |
+   | --- | --- |
+   | `drizzle/00NN_grantable_capabilities.sql` | `extra_capabilities jsonb NOT NULL DEFAULT '[]'` on `users`, plus a CHECK that every element is in the grantable set. Hand-written; `drizzle-kit` models neither CHECK nor RLS. |
+   | `src/db/schema.ts` | the column, typed `$type<Capability[]>()` |
+   | `src/lib/rbac.ts` | `GRANTABLE_CAPABILITIES` constant, `Principal` type, `can()` overloaded, `assertCan()` and `canInProject()` following it |
+   | `src/lib/authz.ts` | add `extraCapabilities` to the `loadPageActor` select and to `PageActor`; `requireCapability` consults it |
+   | 24 call sites | the ones listed by `grep -rn '"finance\.view"\|"rates\.view"' src`. Server: `margin-queries.ts` (11), `project-queries.ts`, `project-money-actions.ts` (2), `rate-actions.ts`, `costing.ts`. Pages: `projects`, `projects/[id]`, `clients`, `clients/[id]`, `reports`, `admin/users`. Each stops passing a bare role and passes the actor. The build fails until all of them are done — that is the design. |
+   | `src/server/user-schemas.ts` | grants in `createUserSchema`, validated against the whitelist; a `GRANT_DESCRIPTIONS` map beside `ROLE_DESCRIPTIONS` saying what each exposes |
+   | `src/server/user-actions.ts` | grants on create; new `setUserGrantsAction` writing the audit row |
+   | `src/components/create-user-form.tsx` | checkboxes under the role select, matching the Toggl layout |
+   | `src/components/user-row-actions.tsx` | edit grants on an existing person |
+   | `src/lib/rbac.test.ts` | a grant adds a capability; a grant never removes one; a non-grantable capability is refused by the schema |
+   | `tests/db/rls.test.ts` | a granted developer reads financials; the RLS policy still refuses an ungated query, grant or no grant |
+
+8. **Invite by link; retire the temp-password handover.** Creating a person
+   today mints a password, shows it once, and leaves an admin to carry it to
+   them by hand. That is the mechanism that produced nine accounts sharing
+   `tavren123`, and item 1 hardens the seed without touching the handover
+   itself.
+
+   - **`users.password_hash` becomes nullable.** Somebody who signs in with
+     Google has no password, and a mandatory column forces one to exist for no
+     reason. `authorize()` must then refuse a null hash **before** comparing,
+     while still burning the same dummy-compare so timing does not reveal which
+     accounts are Google-only.
+   - **New columns** `invite_token_hash`, `invite_expires_at`, `invited_by_id`.
+     The token is hashed at rest and shown exactly once, for the reason the temp
+     password already is: a credential that can be read back later is a
+     credential that leaks later. Seven-day expiry; re-issuing replaces the
+     token and invalidates the old one.
+   - **A link, not an email.** The app has no mail capability at all, and adding
+     one is a service, a bill and a deliverability problem in exchange for
+     saving a paste. The admin copies the link and sends it however the team
+     already talks. `CopyField` exists and already survives a clipboard failure
+     outside a secure context. Revisit if invites ever become frequent.
+   - **The link's real job is setting a password.** Where Google is configured,
+     an invited person can already sign in without it — `maySignIn` passes the
+     moment the row exists, which is correct: the admin choosing that address is
+     the authorisation. So `/invite/<token>` offers both paths and says as much,
+     rather than pretending Google needs it.
+   - Accepting clears the token and bumps `session_version`.
+   - `resetPasswordAction` stays: an invite is for arriving, a reset is for
+     being locked out, and collapsing them would leave no way to do the second.
+
+   **Changes to make:**
+
+   | Where | What |
+   | --- | --- |
+   | `drizzle/00NN_invitations.sql` | `password_hash` → nullable; `invite_token_hash text`, `invite_expires_at timestamptz`, `invited_by_id uuid REFERENCES users(id) ON DELETE SET NULL`; partial unique index on `invite_token_hash WHERE invite_token_hash IS NOT NULL` |
+   | `src/db/schema.ts` | the four column changes |
+   | `src/lib/invite-token.ts` (new, pure) | mint / hash / verify / expiry. `randomBytes` + SHA-256, reusing nothing from `password.ts` — that alphabet is built for human transcription, a URL token is not transcribed |
+   | `src/lib/auth.ts` | `authorize()` refuses a null `passwordHash` **after** the dummy compare, so Google-only accounts are not distinguishable by timing |
+   | `src/server/invite-actions.ts` (new) | `acceptInviteAction` — set a password, clear the token, bump `session_version`; `reissueInviteAction` — replace the token, invalidating the old |
+   | `src/server/user-actions.ts` | `createUserAction` returns an invite **link** instead of `tempPassword`; `UserFormState` follows |
+   | `src/app/invite/[token]/page.tsx` (new, public) | server component. Validates the token, then offers "Continue with Google" (when configured) or a set-a-password form. Expired or unknown token gets one plain message and no hint as to which |
+   | `src/proxy.ts` | `/invite` joins `/login` and `/api/cron` in the public-path list, or the invite redirects to a login the invitee cannot pass |
+   | `src/components/create-user-form.tsx` | success panel shows the link via `CopyField`, with the same "shown once" warning |
+   | `src/components/user-row-actions.tsx` | "Re-send invite" on anyone whose invite is unaccepted |
+   | `src/app/(app)/admin/users/page.tsx` | an "Invited" badge for a pending row — an account nobody has claimed should not read as an active one |
+   | `src/lib/invite-token.test.ts` (new) | round-trip, tamper, expiry boundary |
+   | `src/lib/sign-in-eligibility.test.ts` | a pending invite does not by itself block Google sign-in |
+   | `tests/db/` (new case) | accepting clears the token and bumps the version; a used or expired token is refused |
+
+   **Ordering:** 7 and 8 both build on item 2's `loadPageActor` and item 3's
+   `session_version`, and both touch `users`. They land after those, not beside
+   them.
+
+   **Before starting either:** re-read `src/lib/authz.ts`, `src/lib/auth.ts`,
+   `src/server/user-actions.ts` and `src/app/(app)/admin/users/page.tsx`. This
+   plan was written on 2026-09-07 while items 1–3 were still uncommitted in the
+   working tree, so those four files were moving as it was being written.
+
 ---
 
 # Phase 6 — Deployment (deferred, but scoped)
@@ -699,9 +947,7 @@ Key end-to-end checks, in a real browser:
    5 days, and resolves when pulled back.
 8. Phase 2B: every page renders the same five bands in the same order, with exactly one
    filled button per screen; the date stepper, filter chips and grouping all round-trip
-   through the URL, so a copied link reproduces the view exactly; and `/uxaudit` is re-run
-   at the end of 2B for a real score against the 92-point rubric (baseline was 35, last
-   estimate ~60 — and that estimate was scored by the session that did the work).
+   through the URL, so a copied link reproduces the view exactly.
 
 Commit with `git commit --only -F <msgfile> -- <explicit paths>` — never `git add -A`; a
 PreToolUse hook denies bulk staging because several sessions share this index.

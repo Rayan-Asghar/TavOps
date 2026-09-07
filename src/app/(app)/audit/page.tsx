@@ -1,9 +1,7 @@
-import { notFound, redirect } from "next/navigation";
 import { and, count as countRows, desc, eq, ilike, isNull, or, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, projects, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
-import { can } from "@/lib/rbac";
+import { requireCapability } from "@/lib/authz";
 import { accessibleProjectIds } from "@/lib/access";
 import { SectionIntro } from "@/components/app-shell";
 
@@ -70,17 +68,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<RawParams>;
 }) {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "audit.view")) notFound();
+  const actor = await requireCapability("audit.view");
 
   // audit.view is admin/head today, and both see every project — so this is
   // normally unrestricted. Scoping anyway means widening the capability later

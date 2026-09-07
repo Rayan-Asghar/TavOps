@@ -170,7 +170,234 @@ different problems, and separating them was most of the work.
   discipline, and `reconcile` as a first-class kind because drift from Upwork is
   guaranteed and hiding it turns the balance into fiction.
 - 396 unit + 158 fixture tests green. **Nothing merged to `main`.**
+### 2026-09-07 — The redesign, and a way in that is not a pasted password
 
+- **Shipped:** A full visual and navigational rebuild of the app against
+  `DESIGN-STANDARD.md`, then Phase 5.8 — invitations — on migration `0023`.
+  411 unit + 160 fixture tests, build clean.
+
+- **The complaint was "boring", and the fix was not decoration.** The audit
+  scored the build 35/92 against the standard's rubric; the redesign took it to
+  roughly 60. What moved it was mostly subtraction: 285 contrast failures of
+  1014 nodes to 0, 218 `ease-in-out` transitions to 13, ten font sizes to five,
+  six weights to four. Excitement in an operations tool is the screen answering
+  fast and reading clean, not motion — the standard's own frequency rule says a
+  surface touched 100+ times a day gets no animation at all.
+
+- **Contrast ramps were rewritten against the WORST surface each token can land
+  on**, not against white. A token that passes on the page background and fails
+  on a raised card is a token that fails, and the ratios are not rounded up:
+  `--color-warn` moved because 4.489:1 is not 4.5:1. `--color-brand` moved from
+  `#fb0044` to `#e8003f` because white 14px labels on it measured 4.05:1.
+
+- **"The whole side reloads" was a real structural bug, not a perception.** All
+  13 pages each rendered their own `<AppShell>`, so every navigation rebuilt the
+  frame and re-ran the auth check, the user lookup and the unresolved count
+  thirteen times over. They now live in `src/app/(app)/layout.tsx` — a route
+  group, so no URL changed — and run once per navigation. The breadcrumb had to
+  become a client component reading `usePathname()`, because a layout cannot
+  take props from its children.
+
+- **Sticky table headers had been silently doing nothing.** `overflow-x-auto`
+  forces `overflow-y: auto`, which makes that wrapper the sticky containing
+  block; measured, the header slid 1425px out of view. Fixed by making the
+  container the vertical scroller — and deliberately NOT fixed on the work-log
+  grid, where the change would move geometry the roving-tabindex model depends
+  on. A correct fix in the wrong place is a regression.
+
+- **The keyboard shortcuts came out.** Single letters (j/k/s) were built, then
+  removed at the owner's word: they are only worth their discovery cost on a
+  surface used all day by people who were told they exist. ⌘K stayed, because a
+  command palette is discoverable by convention.
+
+- **"Slipping" showed a task that was not slipping.** `streamOf()` fell back to
+  `"slipping"` for 8 of 15 notification kinds it did not list, including
+  `task_assigned`. The fix was not the missing cases but the fallback:
+  `Record<NotificationKind, StreamKey>` makes the compiler refuse an incomplete
+  map. The same session's badge counted informational rows nobody can act on —
+  4 against a queue of 1 — and now counts only actionable ones.
+
+- **Creating somebody no longer mints a password.** The row is created with
+  `password_hash NULL` and the admin gets a one-time link, seven days, shown
+  once, stored as SHA-256. A link rather than an email because the app has no
+  mail capability: adding one is a service and a monthly bill in exchange for
+  saving a paste into the chat the team is already in.
+
+- **Decisions + rationale:**
+  - **The token is hashed but not bcrypted.** Bcrypt's cost exists to slow
+    guessing a human-chosen secret; there is nothing to guess in 256 random
+    bits, and paying that cost on a public page is a denial-of-service lever.
+    Compared with `timingSafeEqual` behind a length check, since it throws on a
+    mismatch and a bad row would then 500 a page anyone can reach.
+  - **Reads live in `invite-queries.ts`, not the action module.** Every export
+    of a `"use server"` file is a callable endpoint, and both reads take an
+    argument deciding which row comes back — as actions they would be a way to
+    probe the users table from outside.
+  - **The invite is re-checked inside the UPDATE**, not trusted from the page
+    that rendered the form, so two submits of one link cannot both win. It also
+    bumps `session_version`: a link that reached the wrong inbox may already
+    have been spent.
+  - **Where Google is configured the link is optional.** `tavren.io` is a Zoho
+    workspace and most of the team signs in with personal Gmail, so no domain
+    rule can distinguish a colleague from anyone on earth. The admin choosing
+    an address IS the authorisation; Google only proves who is at the keyboard.
+  - **`authorize()` keeps a dummy bcrypt compare for the null-hash case.** An
+    early return would make a Google-only account answer measurably faster than
+    a real one — an account-enumeration oracle bought for one saved hash.
+  - **Reset password stays, and is a different control.** An invite is for
+    arriving; a reset is for being locked out. A row offers one or the other,
+    never both, so the admin never has to reason about which applies.
+  - **No billable/Stripe concept.** Stripe does not operate in Pakistan and
+    payment goes through Wise, which the owner does not want integrated. The
+    reconciliation strip therefore reconciles against
+    `projects.invoiced_through` and states its date basis on screen, rather than
+    inventing a billing model the business does not have.
+
+- **Found while working, worth remembering:** a hand-written migration is
+  invisible until it is registered in `_journal.json` — `db:migrate` reported
+  success and `0023` had never run. Migrations `0016`/`0017` had no drizzle
+  snapshots, so `db:generate` emitted a migration re-dropping already-dropped
+  columns, and `0017` had never actually run locally despite a handoff claiming
+  it "runs on deploy". The migration ledger still holds two applied rows
+  matching no file; that is on HANDOFF.md as a blocker to audit before deploy.
+
+---
+
+### 2026-09-05 (later) — Hardening, four items of six
+
+- **Shipped:** Phase 5 items 1, 2, 3, 5 and 6 of `docs/ROADMAP.md`. One
+  migration, `0022_session_version`. 399 unit + 160 fixture tests, build clean.
+
+- **Nine accounts stopped sharing one password.** `tavren123` was on every
+  seeded account, in the README, and on HANDOFF's blocker list since before the
+  money layer existed. Each account now gets its own generated password, printed
+  once and stored nowhere. The seed also refuses to run against a database that
+  already has users — a check on the DATA rather than on `NODE_ENV`, because the
+  case a `NODE_ENV` guard is least able to catch is exactly the dangerous one: a
+  mistyped `.env.local` pointing at something real.
+
+- **Deactivating somebody now takes effect on their next request**, not up to
+  twelve hours later. `users.session_version` is compared for EQUALITY rather
+  than ordering, so a replayed token claiming a higher version fails exactly as
+  a stale one does and there is no clock skew to reason about. It bumps on
+  reactivation too — the version is a revocation counter, not a state flag, and
+  skipping that would let a pre-deactivation token work again afterwards.
+
+- **The check had nowhere to live, and that was the same problem as the
+  duplication.** Thirteen pages each repeated `getActor()` → re-fetch the row for
+  the role → `can()` → `notFound()`. `src/lib/authz.ts` does it once, so the
+  three revocation conditions ride along in a query every one of those pages
+  already made. Wrapped in React's `cache()`, not `unstable_cache`: the former
+  deduplicates within one render pass, the latter persists across requests,
+  which for per-user authorisation data would mean one person's role answering
+  another person's request.
+
+- **Two failure modes were conflated and are now distinct.** Missing a
+  CAPABILITY is a 404 — a non-admin should not learn an admin area exists.
+  Having no valid SESSION is not a refusal at all, so it redirects to the login
+  page; a 404 there tells somebody nothing about a thing they can fix in ten
+  seconds. The proxy cannot catch that case: it sees a structurally valid JWT
+  and lets the request through.
+
+- **`/settings`** — there was no self-service anything, so a forgotten password
+  meant an admin putting a temporary one into a chat message. Changing it
+  requires the current password and ends every other session.
+
+- **Two hazards worth more than the features:**
+  - **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
+    than the newest applied row.** A concurrent session's migration silently
+    strands yours — `db:migrate` reports success and the DDL never runs. It cost
+    an hour of chasing 56 phantom test failures before the ledgers were compared.
+  - **The dev database has two applied migrations matching no file in the
+    journal.** A session generated, applied, then deleted them. The dev schema
+    may contain changes no migration can reproduce. **Audit before deploying.**
+
+- **Deliberately not done:** login rate limiting, the last Phase 5 item. It needs
+  a table, and another session was mid-flight on migrations — starting one would
+  have repeated the exact collision above. Agree a number first.
+
+- **Still true:** the dev database still holds the nine shared-password rows.
+  The fix applies to future seeds; those predate it and were not rotated.
+
+---
+
+### 2026-09-05 — The money layer, end to end
+
+- **Shipped:** Phases 1 and 2A of `docs/ROADMAP.md`, plus 2B.1/2B.2, an in-app
+  scheduler and Google sign-in. Migrations `0019` commercial foundation, `0020`
+  job_runs, `0021` saved_views — all hand-written, all diffed against the live
+  database before applying. 387 unit + 153 fixture tests, build clean.
+
+- **Why the roadmap says what it says.** It was written after studying Toggl,
+  Toggl Track, Plane and Harvest against their pricing tiers. The finding that
+  shaped everything: **Tavren had premium-tier engineering under a free-tier
+  feature set.** Append-only audit logs are Harvest Enterprise; retroactive
+  rates are Toggl Premium; nobody offers revision chains at all. Meanwhile a
+  clients directory, expenses, a billable split and budget-vs-spent on the
+  project list are free everywhere and were missing here. Nobody can see an RLS
+  policy; everyone can see that the project list has no money on it.
+
+- **What the system can do that it could not.** Every logged hour knows whether
+  it bills and what it cost. Billability is INHERITED from the kind of work
+  (`task_types`), never asked per entry — `quick-log.tsx` states the constraint
+  itself: it is used on a phone at 1am, and an unlogged hour is unrecoverable
+  where a wrongly-flagged one is one click. Retainers are expressible for the
+  first time. Rates, billing models and retainer periods all have writers; none
+  of them did.
+
+- **Decisions worth keeping:**
+  - **`work_log_costs` is its own RLS-forced table.** Columns on `work_logs`
+    would have retired the finance backstop overnight, silently, with every
+    test still passing — that table is read by the grid, both CSV exports and
+    `reports.ts::timesheet`, none of which open the gate. `rls.test.ts` now
+    asserts `work_logs` has no `%cost%`/`%rate%` column.
+  - **Rate changes are new rows, never updates**, closing the old row on the
+    same date the new one opens. A day's gap makes hours `unrated`; a day's
+    overlap makes them `ambiguous`. Both fail quietly, so it is a tested pure
+    function rather than three lines in an action.
+  - **No amounts in audit rows.** `head` holds `audit.view` but not
+    `rates.view`, so an amount written there is readable by exactly the role
+    `rbac.ts` withholds pay data from.
+  - **The single-contributor rule**, enforced in SQL on all three money screens:
+    a cost over one person's hours IS that person's rate.
+  - **"Not costed" as an honesty cell** everywhere money appears. Without it the
+    figures beside it read as complete when they omit everyone unrated.
+  - **The browser is a clock source and nothing else.** The heartbeat names no
+    job and sends no timestamp; the server decides from `job_runs`, so five open
+    laptops produce one run an hour. This removed the "hosting blocks
+    automation" chain that had headed HANDOFF's blockers for weeks.
+  - **A saved view is a saved link** — cheap only because every list keeps its
+    filters in the query string. Path allow-listed, so it cannot become an open
+    redirect.
+
+- **Bugs found by running things rather than trusting them.** Every one of these
+  failed silently, which is the reason they are worth recording:
+  - A correlated subquery interpolating `${projects.id}` renders the column
+    UNQUALIFIED, so Postgres resolved it against the inner aliased table:
+    `w.project_id = "id"` compared a work log to its own id, matched nothing and
+    returned 0. The client detail reported 0.00h against a project with 113.61h.
+  - `costEntry` was off by 100 — hundredths-of-an-hour times cents-per-hour is
+    cents times 100, not 10000. Caught by its own tests before anything used it.
+  - The rate lookup bounded `effective_from <= work_date` in SQL, comparing
+    instants, while `resolveRate` compares UTC days. A rate created at 14:32
+    excluded work logged at 12:00 the same day. Two implementations of one rule,
+    and the stricter one won quietly.
+  - `backfill-costs` never re-costed `unrated` rows, so its own closing advice
+    — "enter the missing rates, then run this again" — did nothing.
+  - A `NOT EXISTS` against an RLS-forced table from an ungated query sees zero
+    rows and matches EVERYTHING; the "not costed" drill-down would have shown
+    the whole timesheet.
+  - `viewsFor(path, userId)` in a `"use server"` module would have let any
+    caller read another user's saved views. Every export of one is an endpoint.
+  - A `finally` resetting the finance GUC masks the real error on a SQL failure.
+
+- **Found by Rayan driving the real form:** `platformFeePct` accepted 123, which
+  passed the regex and made net contract negative. Capped at 100.
+
+- **Still true and still blocking real use:** nine seed accounts share
+  `tavren123`, there is no login rate limiting, and deactivating somebody leaves
+  them signed in for up to 12 hours. That is Phase 5, and it is the gate before
+  the agency touches this — not more features.
 ---
 
 ### 2026-09-03 — A spreadsheet inside the app

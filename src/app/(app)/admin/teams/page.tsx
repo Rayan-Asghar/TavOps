@@ -1,9 +1,6 @@
-import { notFound, redirect } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { teamMembers, teams, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
-import { can } from "@/lib/rbac";
 import { SectionIntro } from "@/components/app-shell";
 import {
   CreateTeamForm,
@@ -16,17 +13,6 @@ import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Teams" };
 export default async function TeamsPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "team.manage")) notFound();
 
   const [teamRows, memberRows, staff] = await Promise.all([
     db.select().from(teams).orderBy(asc(teams.name)),

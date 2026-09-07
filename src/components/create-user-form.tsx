@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createUserAction, type UserFormState } from "@/server/user-actions";
 import { ROLE_DESCRIPTIONS } from "@/server/user-schemas";
 import { CopyField } from "./copy-field";
@@ -25,17 +31,27 @@ function labelFor(role: string) {
 
 export function CreateUserForm() {
   const [state, action, pending] = useActionState(createUserAction, initial);
+
+  /* The public origin, read on the client. The server does not reliably know
+     its own behind a proxy, and `setState` in an effect is a lint error here —
+     `useSyncExternalStore` is the pattern this codebase already uses for a
+     client-only value, with a server snapshot that renders nothing. */
+  const origin = useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => "",
+  );
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Move focus to the credential panel on success: it is the only place the
     // password is ever shown, so it must not be missed.
     if (state.ok) resultRef.current?.focus();
-  }, [state.ok, state.tempPassword]);
+  }, [state.ok, state.invitePath]);
 
   return (
     <div className="space-y-4">
-      {state.ok && state.tempPassword && (
+      {state.ok && state.invitePath && (
         <div
           ref={resultRef}
           tabIndex={-1}
@@ -43,20 +59,26 @@ export function CreateUserForm() {
           className="panel border-ok bg-ok-soft p-4 outline-none"
         >
           <h3 className="text-sm font-semibold text-fg">
-            {state.createdName} can now sign in
+            {state.createdName} is ready — send them this link
           </h3>
           <p className="mt-1 mb-3 text-xs text-warn">
-            This password is shown once and is not stored anywhere readable.
-            Send it to them now — if you lose it, reset it instead.
+            Shown once, and not stored anywhere readable. It expires in seven
+            days; if you lose it, re-send the invite from their row.
           </p>
-          <CopyField value={state.tempPassword} label="Temporary password" />
+          {/* An absolute URL built on the client, because the server does not
+              reliably know its own public origin behind a proxy — and a link
+              somebody has to prefix by hand is a link that arrives broken. */}
+          <CopyField
+            value={`${origin}${state.invitePath}`}
+            label="Invitation link"
+          />
         </div>
       )}
 
       {/* Remounting on each success clears every field and the role state in
           one step, which is why nothing here resets state from an effect. */}
       <UserFields
-        key={state.tempPassword ?? "new"}
+        key={state.invitePath ?? "new"}
         action={action}
         pending={pending}
         state={state}
@@ -190,7 +212,8 @@ function UserFields({
           {pending ? "Creating…" : "Create account"}
         </button>
         <p className="text-xs text-fg-subtle">
-          A temporary password is generated and shown once.
+          An invitation link is generated and shown once. Send it to them; it
+          expires in seven days.
         </p>
       </div>
     </form>

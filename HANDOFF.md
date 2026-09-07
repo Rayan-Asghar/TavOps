@@ -6,98 +6,94 @@
 
 ## Goal
 
-A strictly internal, Postgres-centred operations system: Web App → PostgreSQL
-(single source of truth) → reporting and one-way mirrors. History in PROGRESS.md.
+A strictly internal, Postgres-centred operations system: the web app writes to
+PostgreSQL; reporting and the one-way mirrors read from it.
 
-## ⚠️ You are on `sales-ops`, in a worktree — read this first
+## Branch topology — read this first
 
-Working directory is **`/home/rayan/Desktop/TavrenOPS-sales`**, a worktree on
-`sales-ops`, branched from `main` at `5de72b5`. The primary (`../TavrenOPS`) is
-a **different session's** checkout of `main`. A worktree was used because a
-working directory has one HEAD: `git checkout -b` there would have switched
-branches under that session mid-work.
+`main`, well ahead of `origin/main` and **nothing is pushed**. Do not trust a
+commit count written here; run `git rev-list --count origin/main..main`.
 
-- `node_modules` is not shared; `.env.local` has **`AUTH_URL` on :3001**, so
-  run `PORT=3001 pnpm dev`. **`next typegen`** before the first `typecheck`.
-- **Run fixtures isolated**: `TEST_DB_NAME=tavren_ops_sales_test pnpm test:db`.
-- **Never `pkill -f "next dev"`** — it matches its own command chain and killed
-  the other session's server twice. Match on the directory.
+`ux-audit/` and `/uxaudit` were retired in `6f4023e` — snapshots of an interface
+still moving; `ux-audit/_harness/` survives for driving a browser. `pnpm verify`
+(411 unit) and `pnpm test:db` (160 fixture) green, build green at
+`NODE_OPTIONS=--max-old-space-size=4096`. **Do not build while `next dev` runs**,
+and **do not run `pnpm test:db` while another session is** — both collide.
 
-## Current State
+⚠️ **Up to six Claude sessions run against this repo at once.** Commit with
+`git commit --only -F <msgfile> -- <explicit paths>`, never `git add -A`; a new
+file needs an explicit `git add` first, as `--only` cannot name an untracked one.
 
-Ten commits, tree clean, **nothing merged to `main`**. `pnpm verify` (406 unit)
-and isolated fixtures (208) green on repeat; every route driven in a browser
-for a sales user and a head, no page errors.
+**Migration `0023` is taken (invitations, applied). Take `0024`.**
 
-**All of `docs/ROADMAP.md` § Phase S is done (S0–S3)** — the sales role has a
-chase queue, a pipeline record with a detail route, a connects ledger, and the
-blockers already routed to it. Migrations `0023`, `0024`.
+## Current State — phases 1, 2A, 2B.1/2B.2 done; Phase 5 is five of six
 
-Then two bug passes, which found more in the existing code than in the new:
-**the sync drain leaked its own advisory lock** (sheet sync could stop silently
-until a restart), **five alerts could only ever fire once**, and **two rules
-were implemented twice in units that only matched some of the time**. Ten
-defects; the pattern is below and it is worth reading before writing more.
+Phase 5.8 — invitations — landed this session on migration `0023`. Creating
+somebody now mints no password: the row is `password_hash NULL` and the admin
+hands over a one-time link (`src/lib/invite-token.ts`, seven days, stored
+SHA-256). Where Google is configured that link is optional, because the admin
+choosing an address IS the authorisation — `sign-in-eligibility.test.ts` pins
+that an invite never gates Google. Reset password is a separate control for
+being locked out; a row offers one or the other, never both.
+
+Before that the interface was rebuilt against `DESIGN-STANDARD.md`, and the app
+shell moved into `src/app/(app)/layout.tsx` — a route group, so no URL changed —
+where the auth check runs once per navigation instead of thirteen times.
+Reasoning for both is in PROGRESS.md, 2026-09-07; earlier Phase 5 work is in
+`.claude/handoff-history/2026-09-07_pre-invitations.md`.
 
 ## Next Steps
 
-1. **Merge to `main`, then regenerate the snapshots.** `drizzle/meta/` has none
-   for `0023`/`0024`, deliberately: the `0023` one was built against `0020` and
-   did not know `saved_views` existed, so keeping it would make the next
-   `db:generate` emit a spurious `CREATE TABLE`. After merging run
-   `pnpm db:generate`, keep the JSON, **delete the `.sql` beside it**.
-2. **Phase 5 hardening**, per `main`'s handoff — seed passwords, rate limiting,
-   session revocation. `/uxaudit` still has not been re-run.
+1. **Phase 5.7 — per-person money permissions**, specified in `docs/ROADMAP.md`.
+   `can()` gets *overloaded* rather than taking a third argument, so all 24
+   `finance.view` / `rates.view` call sites stop typechecking until each passes
+   an actor — the compiler finds them, not a grep. Read `src/lib/authz.ts` first.
+2. **Login rate limiting** — the last Phase 5 item. Needs a table; take `0024`.
+3. **Audit the migration ledger before deploying** — see the blocker below.
+4. **Phase 2B.3 onward** — filter chips and grouping as one system (client
+   grouping on `/projects` was deferred to land there), then view switchers.
 
 ## What Failed / Dead Ends
 
-- **THE PATTERN: one rule, two implementations, drifting units.** The chase
-  cutoff was calendar days in SQL and business hours in TS, so the rail badge,
-  the chase list and each row's own Cold-for column disagreed across a weekend.
-  The connects burn divided a calendar window by calendar days while the tile
-  said "working days", overstating runway by a quarter. Both now derive from
-  ONE function — SQL takes timestamps from `addBusinessHours`. Look for this
-  shape first; it produced four of the ten defects found.
-- **`notify()` cannot overwrite a row already holding its dedupe key.** The
-  upsert clears a snooze and nothing else — not the title, not `resolved_at`.
-  So any resolved row blocks the next occurrence, and `resolveNotification` is
-  the inbox's Dismiss button. Two fixes, and the difference matters: a chase
-  cycle is a NEW ask, so its key carries `:<chaseCount>`; low connects, stale
-  tasks, project health and estimate overruns are ONE condition recurring, so
-  they pass the opt-in `reopen` — which refreshes a closed or snoozed row only,
-  or an hourly sweep would rewrite `created_at` and reshuffle the inbox.
-- **A session-level advisory lock released through a pool is not released.**
-  INTERMITTENT: `db.execute` takes whatever connection is free, so lock and
-  unlock often land on the same one; when they do not, every later drain
-  returns "another drain is running". Use `pool_.reserve()` — a
-  transaction-scoped lock is out here, a drain makes Sheets calls.
-- **Migration numbers collided three times, once silently.** Another session
-  took `0021` then `0022` and applied the latter to the shared dev DB 80s after
-  this branch journalled its own; drizzle applies only what is newer than the
-  last applied, so it printed "applied successfully" and wrote nothing. Also
-  why `followup_due`'s surviving rows had to be deleted in `0023`. **Re-check
-  `drizzle/` and `_journal.json` before writing, and serialise migration work.**
-- **A shared test database lies to you.** 11–53 failures, a different set each
-  run, FK violations against rows that should exist — the other worktree
-  truncating the same `tavren_ops_test`. Use `TEST_DB_NAME` (must end `_test`);
-  `test.env` does NOT reach `globalSetup`, so the config also publishes the
-  owner URL into `process.env`.
-- Smaller traps: **`afterAll(owner.end)` inside a describe** kills the
-  connection for later blocks; **a bare zero against `pg_locks`** is
-  cluster-wide, so compare to a baseline; **a `"use server"` module may only
-  export async functions**; **bound parameters arrive untyped**, so a `CASE`
-  over them is `text`; **`ON DELETE SET NULL` fights a CHECK**.
-- **`drizzle-kit generate` models neither RLS nor CHECKs** (it omitted all six
-  in `0024`), and **`work_log_costs` must never become columns on `work_logs`**.
-- **Never `::float` on a money aggregate** — `::text` or `::bigint` cents;
-  hours as float is fine. Grid, CDP, Drive API, `loading.tsx` and the
-  finance-GUC `finally` are in `.claude/handoff-history/`.
+- **A hand-written migration is invisible until it is in `_journal.json`** — the
+  migrator reads that file, not the directory, so `db:migrate` reports success
+  and the DDL never runs. Add `idx`/`version`/`when`/`tag` by hand.
+- **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
+  than the newest applied row**, so a concurrent session's migration strands
+  yours. `generate` models neither RLS nor CHECK constraints.
+- **A correlated subquery must not interpolate `${table.column}`** — drizzle
+  renders it unqualified and it returns 0 with no error. Write it longhand.
+- **An RLS-forced table cannot be filtered from an ungated query** — `NOT EXISTS`
+  sees zero rows and matches EVERYTHING; so does `inArray(id, [])`, which is
+  `IN ()`. Resolve ids in a gated query and guard the empty list. Never fold
+  `work_log_costs` into `work_logs` (`tests/db/rls.test.ts` asserts it), and
+  never reset the finance GUC in a `finally` — the reset masks the real error.
+- **Every export of a `"use server"` module is a callable endpoint** — hence
+  `invite-queries.ts`.
+- **A nullable `password_hash` changes timing.** `authorize()` keeps its dummy
+  bcrypt compare for the null case deliberately — an early return would make a
+  Google-only account answer faster than a real one, an enumeration oracle.
+- **`overflow-x-auto` forces `overflow-y: auto`**, so sticky headers inside one
+  silently do nothing — fixed everywhere but the work-log grid, whose roving
+  tabindex depends on the current geometry. And a layout cannot take props from
+  its children: the breadcrumb derives from `usePathname()`.
+- Shorter traps — `sql<Date>`, `notFound()` returning 200, unchecked checkboxes,
+  `vi.importActual`, callback refs, the grid, CDP, Drive and shadcn — are in
+  `.claude/handoff-history/`; read the most recent two before a related change.
 
 ## Open Questions / Blockers
 
-- **`0023`/`0024` are applied to the shared dev DB.** Additive except one
-  CHECK: `main`'s `advanceProposal` sets `status='lost'` with no reason and
-  fails that transition until this merges.
-- **Two concurrent reconciles** could each record a drift (READ COMMITTED); a
-  human action, and both rows survive. **`CONNECTS_FLOOR` is a constant** —
-  `/settings` in Phase 5. Seed accounts share `tavren123`; digest webhook unset.
+- **MIGRATION LEDGER DRIFT — audit before deploying.** Dev has two applied
+  migrations, `1788796370256` and `1788796371256`, matching NO file in the
+  journal: a session generated, applied, then deleted them. Dev may hold changes
+  no migration reproduces — diff it against a clean migrate.
+- **Dev still has the nine shared-password accounts.** The seed fix applies to
+  future seeds; those rows predate it and were never rotated.
+- **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` are unset**, so the Google button is
+  hidden and invitees can only set a password. They need a Google OAuth *Web
+  application* client — NOT the Sheets service account already in `.env.local`.
+- **Hosting** — Phase 6, explicitly last by the owner's instruction.
+- **`sync-worker.ts:490` holds a SESSION-level advisory lock** while `db` is a
+  pool, so it can release on a different connection than took it. `scheduler.ts`
+  was moved to the xact variant; this one was not.
+- **Seeded logs carry no revisions or costs**; the digest webhook URL is unset.

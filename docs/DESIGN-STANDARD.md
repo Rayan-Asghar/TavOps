@@ -585,3 +585,47 @@ Score each area 0–4. Anything below 3 goes in the fix plan.
 - Refactoring UI has no citable public rule pages — its principles above come from a secondary summary.
 - No authoritative source exists for "inbox zero" motivational psychology. Rule 22 rests on the completion-state category, not on research about clearable lists.
 - NN/g's menu-design article contains **no** numeric limit on menu item count or depth, despite frequent secondhand claims. The only defensible number is Material 3's 3–7.
+
+---
+
+## Appendix — what this codebase already got right, and what it did not
+
+Salvaged from the UX audit before it was retired on 2026-09-07. The audit's
+scorecard, screenshots and `/uxaudit` command are gone (UI/UX work is deferred to
+the end of `docs/ROADMAP.md`); these two lists are kept because they are the only
+part that was about *this* codebase rather than about the rules above.
+
+The full audit is still recoverable — `git show 6f4023e~1:ux-audit/AUDIT.md` —
+but nobody finds a file they do not know exists, which is why the substance is
+here instead.
+
+### Already correct — do not "fix" these
+
+Each of these is a deliberate decision that reads like an omission. Changing one
+without reading this is the most likely way to make the app worse.
+
+- **Elevation (§3.4).** Borders carry structure; the only shadows are on floating
+  layers. Do not add depth.
+- **Dark mode architecture (§3.3).** Token-swap only — **no `dark:` variants in
+  any component** — and cookie-driven, so it is SSR-correct with no flash. This
+  is why shadcn's Button and Sonner were rejected.
+- **Motion (§5.1, §5.4, §5.7).** Durations in band, colour-only transitions, and
+  `prefers-reduced-motion` handled comprehensively.
+- **Form errors (§4.4 r30, D4).** Adjacent to the field, `role="alert"`,
+  `aria-describedby`, and the copy says what to do.
+- **Accent discipline (§3.3).** Exactly one accent element per screen.
+- **Inbox count semantics (§2.5).** Counts total unresolved, not "unread" — the
+  queue is meant to be emptiable, and an unread count is not that.
+- **The timesheet's contract (C3).** No Save button, Tab advances across the row,
+  autosave on blur, keyboard model documented inline beneath the grid.
+
+### Known gaps, still open
+
+- **In-row action hit targets are 15–17px** where §3.6 wants 44. Only the toast
+  dismiss was fixed. Affects `admin/teams` (`×` remove member),
+  `sales/page.tsx` (`Open job ↗`), `team-manager.tsx` (`+ Add member`) and
+  `work-log-actions.tsx` (`Correct` / `Remove`). This is the largest remaining
+  accessibility gap.
+- **Five surfaces where §3.3 allows three.**
+- **The work-log grid header is not sticky**, and deliberately so — see
+  `HANDOFF.md`, where the reason is recorded as a dead end rather than a to-do.

@@ -1,26 +1,12 @@
-import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, users } from "@/db/schema";
-import { getActor } from "@/lib/auth";
-import { can } from "@/lib/rbac";
 import { SectionIntro } from "@/components/app-shell";
 import { ProjectForm } from "@/components/project-form";
 
 
 export const metadata = { title: "New project" };
 export default async function NewProjectPage() {
-  const actor = await getActor();
-  if (!actor) redirect("/login");
-
-  const [me] = await db
-    .select({ name: users.name, globalRole: users.globalRole })
-    .from(users)
-    .where(eq(users.id, actor.id))
-    .limit(1);
-
-  const role = me?.globalRole ?? "developer";
-  if (!can(role, "project.create")) notFound();
 
   const [clientRows, staff] = await Promise.all([
     db.select({ id: clients.id, name: clients.name }).from(clients).orderBy(clients.name),
