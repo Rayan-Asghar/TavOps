@@ -58,9 +58,14 @@ Reasoning for both is in PROGRESS.md, 2026-09-07; earlier Phase 5 work is in
 - **A hand-written migration is invisible until it is in `_journal.json`** — the
   migrator reads that file, not the directory, so `db:migrate` reports success
   and the DDL never runs. Add `idx`/`version`/`when`/`tag` by hand.
-- **`drizzle-kit migrate` applies in TIMESTAMP order and skips anything older
-  than the newest applied row**, so a concurrent session's migration strands
-  yours. `generate` models neither RLS nor CHECK constraints.
+- **Migrations are ordered by `when`, and `idx` and the `NNNN_` prefix are only
+  labels.** `pg-core/dialect.js:57-62` reads the single newest applied row and
+  applies only entries whose `when` exceeds its `created_at`; the hash is sha256
+  of the file's contents, so renaming a migration does not change it. A branch
+  whose migration carries an older `when` than one already applied is therefore
+  skipped in silence — which is what an applied row matching no file in THIS
+  branch's journal means. Check the other branches before calling it an orphan.
+  `generate` models neither RLS nor CHECK constraints.
 - **A correlated subquery must not interpolate `${table.column}`** — drizzle
   renders it unqualified and it returns 0 with no error. Write it longhand.
 - **An RLS-forced table cannot be filtered from an ungated query** — `NOT EXISTS`
@@ -83,10 +88,6 @@ Reasoning for both is in PROGRESS.md, 2026-09-07; earlier Phase 5 work is in
 
 ## Open Questions / Blockers
 
-- **MIGRATION LEDGER DRIFT — audit before deploying.** Dev has two applied
-  migrations, `1788796370256` and `1788796371256`, matching NO file in the
-  journal: a session generated, applied, then deleted them. Dev may hold changes
-  no migration reproduces — diff it against a clean migrate.
 - **Dev still has the nine shared-password accounts.** The seed fix applies to
   future seeds; those rows predate it and were never rotated.
 - **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` are unset**, so the Google button is
