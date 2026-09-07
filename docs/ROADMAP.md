@@ -65,8 +65,8 @@
 - [ ] Phase 5 — Hardening ← in progress
   - [ ] 5.7 per-person money permissions — `finance.view` / `rates.view` as
         grants, `can()` overloaded so the compiler finds every call site
-  - [ ] 5.8 invite by link — nullable `password_hash`, hashed one-time token,
-        retires the temp-password handover
+  - [x] 5.8 invite by link — nullable `password_hash`, hashed one-time token,
+        retires the temp-password handover *(migration `0023`)*
 - [ ] Phase 6 — Deployment (scheduler no longer blocks it — in-app heartbeat landed)
 
 ---
