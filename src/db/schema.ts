@@ -14,6 +14,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ *
  * Enums
@@ -251,7 +252,11 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 160 }).notNull(),
     email: varchar("email", { length: 255 }).notNull(),
-    passwordHash: text("password_hash").notNull(),
+    /** Nullable: somebody who signs in with Google has no password, and a
+     *  mandatory column would force one to exist for no reason. `authorize()`
+     *  refuses a null hash only AFTER its dummy compare, so a Google-only
+     *  account cannot be told apart from a wrong password by timing. */
+    passwordHash: text("password_hash"),
     globalRole: globalRole("global_role").notNull().default("developer"),
     /** Bumped to invalidate every token issued before the bump. Compared for
      *  equality in `isSessionStillValid`, so a replayed higher value fails too. */
@@ -261,6 +266,13 @@ export const users = pgTable(
     isActive: boolean("is_active").default(true).notNull(),
     /** Set for temp collaborators; access checks refuse them past this. */
     accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }),
+    /** SHA-256 of the invite token. The plaintext exists only in the response
+     *  that mints it — a credential readable later is one that leaks later. */
+    inviteTokenHash: text("invite_token_hash"),
+    inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }),
+    invitedById: uuid("invited_by_id").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

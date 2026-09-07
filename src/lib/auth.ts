@@ -132,14 +132,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           .where(eq(users.email, email.toLowerCase().trim()))
           .limit(1);
 
-        // Compare against a dummy hash when the user is missing so that a
-        // wrong email and a wrong password take the same time to fail.
+        /* Compare against a dummy hash when the user is missing so that a
+           wrong email and a wrong password take the same time to fail.
+
+           `passwordHash` is nullable now — somebody invited who only ever signs
+           in with Google has none. That case lands here too, deliberately: the
+           `??` substitutes the dummy, the compare runs and fails, and the answer
+           takes exactly as long as a wrong password. Do not "simplify" this into
+           an early return on a null hash; that would make a Google-only account
+           answer faster than a real one, which is an account enumeration oracle. */
         const hash =
           found?.passwordHash ??
           "$2b$12$0000000000000000000000000000000000000000000000000000";
         const ok = await bcrypt.compare(password, hash);
 
-        if (!found || !ok) return null;
+        // `found.passwordHash` restated so the null case is refused explicitly
+        // rather than relying on the dummy never matching.
+        if (!found || !found.passwordHash || !ok) return null;
         // Same rule as the Google path, from the same function.
         if (!(await activeMemberByEmail(found.email))) return null;
 

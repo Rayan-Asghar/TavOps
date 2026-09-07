@@ -33,6 +33,12 @@ export default async function AdminUsersPage() {
         accessExpiresAt: users.accessExpiresAt,
         weeklyCapacityHours: users.weeklyCapacityHours,
         createdAt: users.createdAt,
+        /* Whether they have ever signed in with a password of their own. An
+           account nobody has claimed should not read as an active one. Only the
+           presence of the hash is selected, never the hash itself — this row is
+           rendered into HTML. */
+        hasPassword: sql<boolean>`${users.passwordHash} is not null`,
+        invitePending: sql<boolean>`${users.inviteTokenHash} is not null`,
       })
       .from(users)
       .orderBy(desc(users.isActive), asc(users.name)),
@@ -125,6 +131,12 @@ export default async function AdminUsersPage() {
                           {humanizeRole(p.globalRole)}
                         </Badge>
                         {!p.isActive && <Badge>Deactivated</Badge>}
+                        {/* An account nobody has claimed reads differently from
+                            one somebody uses. Amber rather than red: waiting is
+                            not a fault, it is a state. */}
+                        {p.isActive && p.invitePending && (
+                          <Badge tone="amber">Invited</Badge>
+                        )}
                         {expired && <Badge tone="red">Access expired</Badge>}
                         {expiringSoon && (
                           <Badge tone="amber">
@@ -146,6 +158,7 @@ export default async function AdminUsersPage() {
                       userName={p.name}
                       isActive={p.isActive}
                       isSelf={p.id === actor.id}
+                      hasPassword={p.hasPassword}
                       isLastAdmin={
                         p.globalRole === "admin" && activeAdmins <= 1
                       }

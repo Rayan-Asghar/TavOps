@@ -54,6 +54,11 @@ export const authConfig = {
       const signedIn = !!auth?.user;
       const isPublic =
         nextUrl.pathname === "/login" ||
+        /* An invitee has no session by definition — that is what the link is
+           for. Without this the invite redirects to a login they cannot pass,
+           which is a closed loop. The page itself is gated on the token, and
+           the token is 256 bits. */
+        nextUrl.pathname.startsWith("/invite/") ||
         nextUrl.pathname.startsWith("/api/cron");
 
       if (isPublic) return true;

@@ -71,6 +71,17 @@ export async function changePasswordAction(
       .limit(1);
     if (!row) throw new UserFacingError("That account no longer exists.");
 
+    /* Somebody who has only ever signed in with Google has no password to
+       confirm, so this form is not the way in for them — they set one from the
+       invite link, or an admin resets it. Checked before the compare rather
+       than after: there is no hash to compare against, and inventing one would
+       report "wrong password" for an account that has none. */
+    if (!row.passwordHash) {
+      throw new UserFacingError(
+        "This account signs in with Google and has no password to change.",
+      );
+    }
+
     // The current password is required so that a borrowed unlocked laptop
     // cannot be turned into a permanent account takeover in two clicks.
     const ok = await bcrypt.compare(data.currentPassword, row.passwordHash);

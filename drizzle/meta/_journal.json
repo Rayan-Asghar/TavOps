@@ -162,6 +162,13 @@
       "when": 1788796369256,
       "tag": "0022_session_version",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788799953949,
+      "tag": "0023_invitations",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,11 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireActor } from "@/lib/auth";
 import { generatePassword } from "@/lib/password";
+import {
+  hashInviteToken,
+  inviteExpiryFrom,
+  mintInviteToken,
+} from "@/lib/invite-token";
 import { assertCan } from "@/lib/rbac";
 import { createUserSchema } from "./user-schemas";
 import { writeAudit } from "./audit";
@@ -21,6 +26,10 @@ export type UserFormState = {
   fieldErrors?: Record<string, string>;
   /** Shown exactly once, immediately after creation. Never recoverable. */
   tempPassword?: string;
+  /** The invite link, shown once for the same reason. A path, not an absolute
+   *  URL: the server does not reliably know its own public origin behind a
+   *  proxy, and the client that renders it does. */
+  invitePath?: string;
   createdName?: string;
 };
 
@@ -67,8 +76,15 @@ export async function createUserAction(
     };
   }
 
-  const tempPassword = generatePassword();
-  const passwordHash = await bcrypt.hash(tempPassword, 12);
+  /* No password is minted here any more. The account is created WITHOUT one and
+     the admin sends a link instead — that handover is what produced nine
+     accounts sharing a single password, and it is the thing being retired.
+
+     Where Google is configured the invitee does not even need the link:
+     `maySignIn` passes the moment this row exists, because the admin choosing
+     the address is the authorisation. The link's job is setting a password for
+     everyone else. */
+  const inviteToken = mintInviteToken();
 
   const created = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -76,7 +92,10 @@ export async function createUserAction(
       .values({
         name: data.name,
         email: data.email,
-        passwordHash,
+        passwordHash: null,
+        inviteTokenHash: hashInviteToken(inviteToken),
+        inviteExpiresAt: inviteExpiryFrom(),
+        invitedById: actor.id,
         globalRole: data.globalRole,
         weeklyCapacityHours: data.weeklyCapacityHours,
         accessExpiresAt: data.accessExpiresAt,
@@ -96,9 +115,13 @@ export async function createUserAction(
 
   revalidatePath("/admin/users");
 
-  // Returned once so the admin can hand it over. It is not stored anywhere in
-  // recoverable form, so there is no second chance to read it.
-  return { ok: true, tempPassword, createdName: created.name };
+  // Returned once so the admin can hand it over. Only the hash was stored, so
+  // there is no second chance to read it — re-issuing mints a new one.
+  return {
+    ok: true,
+    invitePath: `/invite/${inviteToken}`,
+    createdName: created.name,
+  };
 }
 
 export async function setUserActiveAction(
