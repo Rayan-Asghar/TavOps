@@ -624,3 +624,62 @@ describe("monthly tabs", () => {
     expect(ranges.some((r) => r.includes("September 2026"))).toBe(true);
   });
 });
+
+describe("the drain lock", () => {
+  /**
+   * `pg_try_advisory_lock` is SESSION-level: it belongs to the connection that
+   * took it, and `db` is a pool of ten. The worker used to take it through the
+   * pool and release it through the pool, so the unlock could land on a
+   * different connection, release nothing, and leave the lock held until that
+   * connection recycled — after which every drain returns "another drain is
+   * running" and sheet syncing stops with nothing in the log to say why.
+   *
+   * The invariant is what the test asserts, not the mechanism: after a drain,
+   * the lock is not held by anybody.
+   */
+  const DRAIN_LOCK_KEY = 8_531_207;
+
+  async function heldLocks() {
+    const rows = await owner`
+      SELECT count(*)::int AS n FROM pg_locks
+       WHERE locktype = 'advisory' AND objid = ${DRAIN_LOCK_KEY}`;
+    return rows[0].n as number;
+  }
+
+  it("releases the lock when the drain finds nothing to do", async () => {
+    expect(await heldLocks()).toBe(0);
+    await runSyncWorker();
+    expect(await heldLocks()).toBe(0);
+  });
+
+  it("releases the lock after a real drain, so the next one runs", async () => {
+    const { userId, projectId, connectionId } = await scenario();
+    const log = await makeWorkLog({ projectId, userId, hours: "2.00" });
+    await queueJob({ connectionId, workLogId: log.id, jobType: "append" });
+
+    await runSyncWorker();
+    expect(await heldLocks()).toBe(0);
+
+    // The real symptom of the old bug: the SECOND call refusing to run.
+    const second = await runSyncWorker();
+    expect(second).not.toHaveProperty("skipped", "another drain is running");
+    expect(await heldLocks()).toBe(0);
+  });
+
+  it("releases the lock even when the drain throws", async () => {
+    __setSheetsClientForTests({
+      spreadsheets: {
+        values: {
+          get: async () => {
+            throw new Error("boom");
+          },
+        },
+      } as unknown as sheets_v4.Sheets["spreadsheets"],
+    } as unknown as sheets_v4.Sheets);
+
+    await runSyncWorker().catch(() => undefined);
+    // A leaked lock after a failure is the worst version of this bug: the
+    // thing that broke also stops anything from retrying.
+    expect(await heldLocks()).toBe(0);
+  });
+});

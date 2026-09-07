@@ -27,6 +27,15 @@ if (process.env.NODE_ENV !== "production") {
   globalForDb.tavrenPool = pool;
 }
 
+/**
+ * The raw postgres.js pool.
+ *
+ * Exported ONLY for `reserve()` — a session-level advisory lock belongs to a
+ * connection, so taking it through the pool and releasing it through the pool
+ * can release nothing at all. Everything else should use `db`.
+ */
+export const pool_ = pool;
+
 export const db = drizzle(pool, { schema });
 export { schema };
 export type Db = typeof db;

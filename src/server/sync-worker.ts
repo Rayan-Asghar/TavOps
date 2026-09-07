@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { db, pool_ } from "@/db";
 import {
   projects,
   sheetConnections,
@@ -243,7 +243,12 @@ async function failJobs(
     await tx
       .update(syncJobs)
       .set({ status: "failed", lastError: message, finishedAt: new Date() })
-      .where(inArray(syncJobs.id, exhausted.map((j) => j.id)));
+      .where(
+        inArray(
+          syncJobs.id,
+          exhausted.map((j) => j.id),
+        ),
+      );
     // The connection is marked broken so the project page says why, rather than
     // looking healthy while nothing reaches the sheet.
     await tx
@@ -485,116 +490,175 @@ export class NonRetryableSheetError extends Error {
   }
 }
 
-export async function runSyncWorker(limit = BATCH_SIZE) {
-  const [lock] = await db.execute<{ locked: boolean }>(
-    sql`SELECT pg_try_advisory_lock(${DRAIN_LOCK_KEY}) AS locked`,
-  );
-  if (!(lock as unknown as { locked: boolean })?.locked) {
-    return { skipped: "another drain is running" as const };
-  }
-
-  const startedAt = Date.now();
+/**
+ * Runs `fn` while holding the drain lock, or returns null if somebody else has it.
+ *
+ * The lock is taken and released on ONE RESERVED CONNECTION, which is the whole
+ * point. `pg_try_advisory_lock` is session-level — it belongs to the connection
+ * that took it — and `db` is a pool of ten. Taking it through the pool and
+ * releasing it through the pool means the unlock can land on a different
+ * connection, release nothing, and leave the lock held until that connection
+ * happens to recycle. Every later drain then returns "another drain is running"
+ * and sheet syncing stops with nothing in the logs to say why.
+ *
+ * A transaction-scoped lock (what `scheduler.ts` uses) is not an option here:
+ * a drain makes Sheets API calls, and holding a Postgres transaction open
+ * across network I/O is its own problem. Reserving one connection costs a
+ * tenth of the pool for the duration and releases on crash, which is the
+ * behaviour we actually want.
+ */
+async function withDrainLock<T>(fn: () => Promise<T>): Promise<T | null> {
+  const conn = await pool_.reserve();
   try {
-    const reclaimed = await reclaimStuckJobs();
-    const jobs = await claimJobs(limit);
-    if (jobs.length === 0)
-      return { reclaimed, claimed: 0, done: 0, failed: 0, retried: 0, skipped: 0 };
-
-    const entries = await loadEntries(
-      [...new Set(jobs.map((j) => j.workLogId).filter(Boolean) as string[])],
-    );
-
-    // The label heads column B and titles a new month's tab: what the sheet is
-    // about, which is the project.
-    const connectionRows = await db
-      .select({ connection: sheetConnections, projectName: projects.name })
-      .from(sheetConnections)
-      .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
-      .where(
-        inArray(sheetConnections.id, [
-          ...new Set(jobs.map((j) => j.connectionId)),
-        ]),
-      );
-
-    const connections = new Map(
-      connectionRows.map((r) => [r.connection.id, r.connection]),
-    );
-    const labels = new Map(
-      connectionRows.map((r) => [r.connection.id, r.projectName]),
-    );
-
-    const byConnection = new Map<string, ClaimedJob[]>();
-    for (const job of jobs) {
-      const list = byConnection.get(job.connectionId) ?? [];
-      list.push(job);
-      byConnection.set(job.connectionId, list);
+    const [lock] = await conn<{ locked: boolean }[]>`
+      SELECT pg_try_advisory_lock(${DRAIN_LOCK_KEY}) AS locked`;
+    if (!lock?.locked) return null;
+    try {
+      return await fn();
+    } finally {
+      await conn`SELECT pg_advisory_unlock(${DRAIN_LOCK_KEY})`;
     }
-
-    let done = 0;
-    let failed = 0;
-    let retried = 0;
-    let skipped = 0;
-
-    for (const [connectionId, group] of byConnection) {
-      if (Date.now() - startedAt > TIME_BUDGET_MS) {
-        // Hand the rest back rather than being killed holding them.
-        await db
-          .update(syncJobs)
-          .set({ status: "queued", runAfter: new Date() })
-          .where(inArray(syncJobs.id, group.map((j) => j.id)));
-        skipped += group.length;
-        continue;
-      }
-
-      const connection = connections.get(connectionId);
-
-      if (!connection || connection.status === "archived") {
-        await db
-          .update(syncJobs)
-          .set({
-            status: "done",
-            finishedAt: new Date(),
-            lastError: "Connection removed or archived; skipped.",
-          })
-          .where(inArray(syncJobs.id, group.map((j) => j.id)));
-        skipped += group.length;
-        continue;
-      }
-
-      if (connection.status === "paused") {
-        // Paused is deliberate and temporary, so the work waits rather than
-        // being dropped: the sheet gets the backlog when it resumes.
-        await db
-          .update(syncJobs)
-          .set({
-            status: "queued",
-            runAfter: new Date(Date.now() + 15 * 60_000),
-            lastError: "Connection paused; waiting.",
-          })
-          .where(inArray(syncJobs.id, group.map((j) => j.id)));
-        skipped += group.length;
-        continue;
-      }
-
-      try {
-        await drainConnection(
-          connection,
-          labels.get(connectionId) ?? "Work log",
-          group,
-          entries,
-        );
-        await markDone(group.map((j) => j.id), connectionId);
-        done += group.length;
-      } catch (err) {
-        const outcome = await failJobs(group, connectionId, err);
-        failed += outcome.failed;
-        retried += outcome.retried;
-      }
-    }
-
-    log.info("sync.drain", { reclaimed, claimed: jobs.length, done, failed, retried, skipped });
-    return { reclaimed, claimed: jobs.length, done, failed, retried, skipped };
   } finally {
-    await db.execute(sql`SELECT pg_advisory_unlock(${DRAIN_LOCK_KEY})`);
+    conn.release();
   }
+}
+
+export async function runSyncWorker(limit = BATCH_SIZE) {
+  const result = await withDrainLock(() => drain(limit));
+  return result ?? { skipped: "another drain is running" as const };
+}
+
+async function drain(limit: number) {
+  const startedAt = Date.now();
+  const reclaimed = await reclaimStuckJobs();
+  const jobs = await claimJobs(limit);
+  if (jobs.length === 0)
+    return {
+      reclaimed,
+      claimed: 0,
+      done: 0,
+      failed: 0,
+      retried: 0,
+      skipped: 0,
+    };
+
+  const entries = await loadEntries([
+    ...new Set(jobs.map((j) => j.workLogId).filter(Boolean) as string[]),
+  ]);
+
+  // The label heads column B and titles a new month's tab: what the sheet is
+  // about, which is the project.
+  const connectionRows = await db
+    .select({ connection: sheetConnections, projectName: projects.name })
+    .from(sheetConnections)
+    .innerJoin(projects, eq(sheetConnections.projectId, projects.id))
+    .where(
+      inArray(sheetConnections.id, [
+        ...new Set(jobs.map((j) => j.connectionId)),
+      ]),
+    );
+
+  const connections = new Map(
+    connectionRows.map((r) => [r.connection.id, r.connection]),
+  );
+  const labels = new Map(
+    connectionRows.map((r) => [r.connection.id, r.projectName]),
+  );
+
+  const byConnection = new Map<string, ClaimedJob[]>();
+  for (const job of jobs) {
+    const list = byConnection.get(job.connectionId) ?? [];
+    list.push(job);
+    byConnection.set(job.connectionId, list);
+  }
+
+  let done = 0;
+  let failed = 0;
+  let retried = 0;
+  let skipped = 0;
+
+  for (const [connectionId, group] of byConnection) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      // Hand the rest back rather than being killed holding them.
+      await db
+        .update(syncJobs)
+        .set({ status: "queued", runAfter: new Date() })
+        .where(
+          inArray(
+            syncJobs.id,
+            group.map((j) => j.id),
+          ),
+        );
+      skipped += group.length;
+      continue;
+    }
+
+    const connection = connections.get(connectionId);
+
+    if (!connection || connection.status === "archived") {
+      await db
+        .update(syncJobs)
+        .set({
+          status: "done",
+          finishedAt: new Date(),
+          lastError: "Connection removed or archived; skipped.",
+        })
+        .where(
+          inArray(
+            syncJobs.id,
+            group.map((j) => j.id),
+          ),
+        );
+      skipped += group.length;
+      continue;
+    }
+
+    if (connection.status === "paused") {
+      // Paused is deliberate and temporary, so the work waits rather than
+      // being dropped: the sheet gets the backlog when it resumes.
+      await db
+        .update(syncJobs)
+        .set({
+          status: "queued",
+          runAfter: new Date(Date.now() + 15 * 60_000),
+          lastError: "Connection paused; waiting.",
+        })
+        .where(
+          inArray(
+            syncJobs.id,
+            group.map((j) => j.id),
+          ),
+        );
+      skipped += group.length;
+      continue;
+    }
+
+    try {
+      await drainConnection(
+        connection,
+        labels.get(connectionId) ?? "Work log",
+        group,
+        entries,
+      );
+      await markDone(
+        group.map((j) => j.id),
+        connectionId,
+      );
+      done += group.length;
+    } catch (err) {
+      const outcome = await failJobs(group, connectionId, err);
+      failed += outcome.failed;
+      retried += outcome.retried;
+    }
+  }
+
+  log.info("sync.drain", {
+    reclaimed,
+    claimed: jobs.length,
+    done,
+    failed,
+    retried,
+    skipped,
+  });
+  return { reclaimed, claimed: jobs.length, done, failed, retried, skipped };
 }
